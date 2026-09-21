@@ -1,0 +1,43 @@
+services:
+  # Graph database. Speaks RESP on 6379.
+  # Published to the host so local scripts (python) can connect on localhost:6379.
+  falkordb-server:
+    image: falkordb/falkordb-server:latest
+    ports:
+      - "6379:6379"
+    environment:
+      REDIS_ARGS: ${FALKORDB_PASSWORD:+--requirepass ${FALKORDB_PASSWORD}}
+      FALKORDB_ARGS: THREAD_COUNT ${FALKORDB_THREADS:-4}
+    volumes:
+      - falkordb_data:/data
+
+  # Browser UI. Published so you can open http://localhost:3000.
+  # It connects to the server itself, over the compose network, so its
+  # login form takes host "falkordb-server" (not localhost).
+  falkordb-browser:
+    image: falkordb/falkordb-browser:latest
+    ports:
+      - "3000:3000"
+    depends_on:
+      - falkordb-server
+
+  # MCP server. Published so MCP clients reach http://localhost:8080/mcp.
+  # Reaches the database over the compose network. Read-only by design:
+  # ingest happens on 6379, MCP clients only query.
+  falkordb-mcp:
+    image: falkordb/mcpserver:latest
+    ports:
+      - "8080:8080"
+    environment:
+      FALKORDB_HOST: falkordb-server
+      FALKORDB_PORT: 6379
+      FALKORDB_PASSWORD: ${FALKORDB_PASSWORD:-}
+      FALKORDB_DEFAULT_READONLY: "true"
+      FALKORDB_STRICT_READONLY: "true"
+      MCP_TRANSPORT: http
+      MCP_PORT: 8080
+    depends_on:
+      - falkordb-server
+
+volumes:
+  falkordb_data:
