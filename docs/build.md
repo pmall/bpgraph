@@ -37,17 +37,17 @@ graph — not for uptime.
 A run may skip stage 3. It may not skip stage 4, nor steps 2–5 above.
 
 Stage 3 is fetched beforehand rather than run here, by two commands that write
-into `data/` and never touch the graph:
+into the run directory and never touch the graph:
 
 ```sh
-uv run bpgraph-functions data/graph-2026-09-09   # functions-2026-09-09.tsv
-uv run bpgraph-go data/graph-2026-09-09          # go_{terms,edges,annotations}-2026-09-09.tsv
+uv run bpgraph-functions data/2026-09-09   # functions.tsv
+uv run bpgraph-go data/2026-09-09          # go_{terms,edges,annotations}.tsv
 ```
 
-The loader reads them from `data/` — not from the export directory, which holds
-only what the relational database exports. Each file is named after the
-directory it was fetched for, so a new export looks for ones that do not exist
-yet instead of reading the last export's. Without them a run builds proteins
+The loader reads them from the run directory — not from its `export/`, which
+holds only what the relational database exports. A new export is a new run
+directory, so it looks for files that do not exist yet instead of reading the
+last export's. Without them a run builds proteins
 with an empty `function` and no `:GoTerm` at all, and says so in the log. The
 GO files are written together and read together: some of the three without the
 others is an error rather than a partial load.
