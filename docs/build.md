@@ -36,6 +36,14 @@ graph — not for uptime.
 
 A run may skip stage 3. It may not skip stage 4, nor steps 2–5 above.
 
+Stage 3 is fetched beforehand rather than run here: `uv run bpgraph-functions
+data/graph-2026-09-09` writes `data/functions-2026-09-09.tsv`, and the loader
+reads it from `data/` — not from the export directory, which holds only what
+the relational database exports. The file is named after the directory it was
+fetched for, so a new export looks for one that does not exist yet instead of
+reading the last one's text. Without it a run builds proteins with an empty
+`function`, and says so in the log.
+
 ## Writing
 
 Nothing pre-exists in a fresh graph, so `MERGE` buys nothing and costs a lookup

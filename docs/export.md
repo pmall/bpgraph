@@ -27,13 +27,14 @@ Conventions for every file:
   expected number of columns is rejected by its line number.
 
 [`docs/example-export/`](example-export) holds a small working example of every
-file, and every snippet below is a row from it. Loading that directory builds
-the graph [`queries.md`](queries.md) walks through.
+file this document asks you for, and every snippet in the sections below is a
+row from it. Loading that directory builds the graph
+[`queries.md`](queries.md) walks through.
 
 **Proteins are referenced by their natural key, never by an id** — the ids are
-derived during the build. Which key depends on the file. `descriptions.tsv` and
-`peptides.tsv` can name either partner, so they carry `accession`, `start` and
-`stop`. `memberships.tsv` and `go_annotations.tsv` apply only to human
+derived during the build. Which key depends on the file. `descriptions.tsv`
+and `peptides.tsv` can name either partner, so they carry `accession`, `start`
+and `stop`. `memberships.tsv` and `go_annotations.tsv` apply only to human
 proteins, and a human accession identifies exactly one of those, so they carry
 `accession` alone.
 
@@ -109,7 +110,8 @@ A protein whose taxon changes between rows is an error rather than a majority
 vote — that is a different protein, not a restatement. Everything the warnings
 report is worth fixing upstream; none of it stops a build.
 
-`Protein.function` has no column at all — see [enriched here](#enriched-here-not-exported).
+`Protein.function` has no column at all — it is fetched from UniProt, not
+exported; see [generated here](#generated-here-not-exported).
 
 ## publications.tsv *(required)*
 
@@ -182,9 +184,9 @@ ferroptosis  O60488     activator
 ## go_terms.tsv, go_edges.tsv, go_annotations.tsv *(not from your database)*
 
 These are not in the relational database — they will be generated in this repo
-from UniProt/GOA and the GO ontology, written into the same directory in
-exactly this shape, and read by the same loader. Documented here because the
-format is the contract either way.
+from UniProt/GOA and the GO ontology, written into `data/` beside the
+function text, and read by the same loader. Documented here because the shape
+is the contract either way.
 
 They must carry the annotated terms **plus their full ancestor closure**, or
 rolling an annotation up to a coarse process stops working.
@@ -227,24 +229,78 @@ simply has no parent — it stays queryable, it just falls out of family
 rollups. Keeping another rank is a one-line change and the chain rebuilds
 itself.
 
-### Enriched here, not exported
+### Generated here, not exported
 
-Two things the relational database does not hold, to be built in this repo and
-written into the export directory alongside the export:
+Two things the relational database does not hold, built in this repo from
+UniProt and written into **`data/` itself, not into an export directory**.
+They outlive any one export, the way the taxonomy does, and the export
+directory stays exactly what your database produced:
 
-- **`function` on proteins** — the UniProt `CC FUNCTION` text. It has no column
-  in `descriptions.tsv`; proteins are built with it empty and a later step
-  fills it. `description` does come from the export.
-- **The GO trio** — terms, ontology edges and annotations, from UniProt/GOA.
-  You never write these files; they are generated in the shape above.
+- **`data/functions-<export>.tsv`** — `function` on proteins, the UniProt
+  `CC FUNCTION` text. It has no column in `descriptions.tsv`; `description`
+  does come from the export. Written by `uv run bpgraph-functions <export
+  directory>`, which reads that export to learn which proteins to fetch.
+- **The GO trio** — terms, ontology edges and annotations, from UniProt/GOA,
+  in the shape above. Still to build.
 
-Until those exist, a build produces proteins with an empty `function` and no
-`:GoTerm` nodes. Everything else — interactions, descriptions, peptides,
-taxonomy — works from your export alone.
+`TsvExport` reads them from its `enrichment` directory, `data/` by default,
+and a run without them loads all the same: its proteins land with an empty
+`function` and it gets no `:GoTerm` nodes, with a line in the log saying so.
+Everything else — interactions, descriptions, peptides, taxonomy — works from
+your export alone.
+
+#### functions-&lt;export&gt;.tsv
+
+**Named after the export directory it was fetched for**, so the pair is
+visible at a glance and a new export cannot quietly read the last one's text:
+`data/graph-2026-09-09` goes with `data/functions-2026-09-09.tsv`, and a
+directory named by some other convention keeps its whole name. A new export
+directory means a file that is not there yet — fetch again.
+
+| column | notes |
+|---|---|
+| `type` | `h` or `v` |
+| `accession`, `start`, `stop` | the protein, exactly as `descriptions.tsv` gives it |
+| `function` | the text. A protein with none has no row |
+
+```
+type  accession  start  stop  function
+h     P36969     1      197   Essential antioxidant peroxidase that directly…
+v     P27958     1973   2419  Phosphorylated protein that is indispensable f…
+```
+
+A UniProt entry is one accession, but a row here is one protein, and a viral
+polyprotein holds a mature protein per chain. UniProt scopes a FUNCTION comment
+to a chain by naming its molecule, and the fetcher matches the two **by
+coordinates rather than by name** — curation and UniProt disagree about the
+exact boundary often enough, the row above being one residue short of UniProt's
+NS5A chain, while two chains of one entry never sit close enough for the
+overlap to be ambiguous. A protein spanning several chains, a whole polyprotein
+being the usual case, takes all of their text, each paragraph under its chain's
+name.
+
+**Only text about the protein is written.** An entry's own FUNCTION describes
+the whole accession, so it is used only where the export names no other part of
+that accession. Where a polyprotein is cut into mature proteins by an entry
+UniProt never split into chains, there is nothing to say about any one of them,
+and they all keep `function` empty rather than sharing one text. Accessions
+UniProt has retired — deleted, or merged into another — come back with nothing
+and land the same way.
+
+A row naming a protein the export does not have means the file and the
+directory it is named after have parted ways — the export was rebuilt in
+place, most likely — and the loader rejects it by its line number rather than
+loading half-stale text.
 
 ---
 
 ## Running it
+
+Fetch the function text once for the export, then build:
+
+```sh
+uv run bpgraph-functions data/graph-2026-09-09    # -> data/functions-2026-09-09.tsv
+```
 
 ```python
 from pathlib import Path
