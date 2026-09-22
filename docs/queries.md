@@ -1,18 +1,12 @@
 # bpgraph — canonical queries
 
-The queries this schema is optimized for. Keep them working. See
-[`schema.md`](schema.md) for the model.
+The queries this schema is optimized for. Keep them working. See [`schema.md`](schema.md) for the model.
 
 ## Worked example
 
-*HCV NS5A (P27958, 1973–2419) binds human GPX4 (P36969), reported in PMID
-12345678 by two-hybrid and by anti-bait coIP, with the peptide `PSLKATC` from
-NS5A sufficient for the interaction.*
+*HCV NS5A (P27958, 1973–2419) binds human GPX4 (P36969), reported in PMID 12345678 by two-hybrid and by anti-bait coIP, with the peptide `PSLKATC` from NS5A sufficient for the interaction.*
 
-This is exactly the graph [`docs/example-export/`](example-export) builds, so
-every value below can be loaded and queried rather than taken on trust.
-`function` is empty because it is fetched per run rather than
-exported — see [`export.md`](export.md).
+This is exactly the graph [`docs/example-export/`](example-export) builds, so every value below can be loaded and queried rather than taken on trust. `function` is empty because it is fetched per run rather than exported — see [`export.md`](export.md).
 
 ```
 (:Protein:Human {id:"P36969", accession:"P36969", start:1, stop:197,
@@ -45,21 +39,13 @@ exported — see [`export.md`](export.md).
          (:ProteinSet {name:"ferroptosis"})
 ```
 
-`source_side: "b"` is what makes the peptide directed: side `b` is NS5A, so the
-peptide is *from* NS5A and *binds* GPX4. `D-00418` is the same pair by a second
-method, so it adds one `:Description`, bumps `n_descriptions` and `n_methods`,
-and reuses everything else.
+`source_side: "b"` is what makes the peptide directed: side `b` is NS5A, so the peptide is *from* NS5A and *binds* GPX4. `D-00418` is the same pair by a second method, so it adds one `:Description`, bumps `n_descriptions` and `n_methods`, and reuses everything else.
 
-The same export also reports `PSLKATC` from GPX4 against ACSL4 (`D-00901`), and
-that reuses the one `:Peptide` node — on an `:HH` interaction whose side `a` is
-`O60488`, because two human ids order alphabetically. The pairing stays exact
-even so, because each description names its own source side.
+The same export also reports `PSLKATC` from GPX4 against ACSL4 (`D-00901`), and that reuses the one `:Peptide` node — on an `:HH` interaction whose side `a` is `O60488`, because two human ids order alphabetically. The pairing stays exact even so, because each description names its own source side.
 
-The taxon shows something else: the export says `11103`, the graph says
-`3052230`. NCBI retired the former, and the loader follows the merge, so the
-graph only ever holds ids and names NCBI still uses.
+The taxon shows something else: the export says `11103`, the graph says `3052230`. NCBI retired the former, and the loader follows the merge, so the graph only ever holds ids and names NCBI still uses.
 
----
+______________________________________________________________________
 
 ## Differential: how do viral families act on a protein set?
 
@@ -89,9 +75,7 @@ ORDER BY x.length ASC
 
 ## Peptides *targeting* one protein, with their evidence
 
-The `hv.side <> r.source_side` test is what excludes peptides *derived from*
-this protein. Flip it to `=` for the other direction — without it the two are
-silently mixed.
+The `hv.side <> r.source_side` test is what excludes peptides *derived from* this protein. Flip it to `=` for the other direction — without it the two are silently mixed.
 
 ```cypher
 MATCH (h:Protein {id: $pid})<-[hv:INVOLVES]-(i:Interaction)<-[:SUPPORTS]-(d:Description)
@@ -104,8 +88,7 @@ RETURN x.sequence, x.length, s.name AS source,
 ORDER BY size(pmids) DESC
 ```
 
-Never enter from the peptide. A peptide node is shared across every target it
-was reported against, so this collects evidence for all of them:
+Never enter from the peptide. A peptide node is shared across every target it was reported against, so this collects evidence for all of them:
 
 ```cypher
 // WRONG
@@ -167,22 +150,13 @@ RETURN g.name, count(DISTINCT h) AS n_proteins
 ORDER BY n_proteins DESC LIMIT 40
 ```
 
-`*0..` is what makes this a rollup: zero hops keeps the terms the proteins are
-annotated with, and every hop above them is an ancestor the build loaded for
-exactly this. **Filter the qualifier.** GOA states what a protein is *not*
-involved in as an ordinary annotation with `NOT` in front of its qualifier, so
-counting it would put the protein in the one process it is known to stay out
-of.
+`*0..` is what makes this a rollup: zero hops keeps the terms the proteins are annotated with, and every hop above them is an ancestor the build loaded for exactly this. **Filter the qualifier.** GOA states what a protein is *not* involved in as an ordinary annotation with `NOT` in front of its qualifier, so counting it would put the protein in the one process it is known to stay out of.
 
-Swap `namespace` to ask the same question along another axis:
-`molecular_function` for the activities a family engages, `cellular_component`
-for the compartments it reaches.
+Swap `namespace` to ask the same question along another axis: `molecular_function` for the activities a family engages, `cellular_component` for the compartments it reaches.
 
 ## Human interactome context around a set
 
-First-shell partners that are not themselves members, ranked by support. The
-`n <> h` test does double duty: it drops the members, and it drops the
-homodimers, whose two `:INVOLVES` edges both land on `h` itself.
+First-shell partners that are not themselves members, ranked by support. The `n <> h` test does double duty: it drops the members, and it drops the homodimers, whose two `:INVOLVES` edges both land on `h` itself.
 
 ```cypher
 MATCH (h:Human)-[:MEMBER_OF]->(:ProteinSet {name: $set})
