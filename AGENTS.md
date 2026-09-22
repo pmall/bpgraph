@@ -24,6 +24,8 @@ Read these when the task reaches them, not before:
 - [`docs/export.md`](docs/export.md) — the TSV files a run ingests, and their columns.
 - [`docs/build.md`](docs/build.md) — how a run builds, validates and swaps a graph, and how to audit the result.
 - [`docs/queries.md`](docs/queries.md) — canonical queries and a worked example.
+- [`docs/mcp-client.md`](docs/mcp-client.md) — the schema digest handed to MCP
+  clients. Update it with `docs/schema.md`.
 
 ## Layout
 
