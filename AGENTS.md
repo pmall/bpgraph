@@ -2,11 +2,11 @@
 
 A FalkorDB knowledge graph of protein–protein interactions, human–human and
 virus–human, enriched with UniProt descriptions, NCBI taxonomy, and the
-publications and detection methods behind every interaction. UniProt function
-text and GO biological processes are designed for and not yet built — see
-**Still to build**. Claude queries it through a read-only MCP server to run
-interactome analyses — typically: take a curated set of human proteins
-(e.g. ferroptosis) and compare how viral families act on it.
+publications and detection methods behind every interaction. GO biological
+processes are designed for and not yet built — see **Still to build**. Claude
+queries it through a read-only MCP server to run interactome analyses —
+typically: take a curated set of human proteins (e.g. ferroptosis) and compare
+how viral families act on it.
 
 Curation happens in a separate relational database. A run exports it as TSV
 files into `data/` — gitignored — and builds a fresh graph; the graph is never
@@ -28,7 +28,8 @@ Read these when the task reaches them, not before:
 ## Layout
 
 ```
-data/           dated export directories a build reads. Gitignored
+data/           dated export directories a build reads, plus the taxonomy
+                and one function file per export. Gitignored
 src/bpgraph/
   config.py     env-driven connection settings
   client.py     thin FalkorDB wrapper: parameterized query/write
@@ -37,6 +38,7 @@ src/bpgraph/
   models.py     Pydantic models mirroring docs/schema.md
   dedupe.py     collapse repeated records, and reject ones that disagree
   taxonomy.py   the NCBI dump in SQLite; cuts the taxa the graph keeps
+  uniprot.py    fetches the function text into data/, named per export
   schema.py     index and constraint DDL, and the validation gate
   build.py      run a full build: stages, validation gate, swap
   audit.py      check a built graph against docs/schema.md
@@ -111,15 +113,11 @@ than working around it:
 
 ## Still to build
 
-Two things the relational database does not hold, so they are this repo's job.
-Both write into `data/` in the shape `docs/export.md` already specifies, and
-the existing loader reads them without changes:
-
-- **`Protein.function`** — the UniProt `CC FUNCTION` text. It has no column in
-  the export, so proteins currently land with it empty. `description` does come
-  from the export.
-- **GO** — terms, ontology edges and annotations from UniProt/GOA, including
-  the full ancestor closure above every annotated term.
+**GO** — terms, ontology edges and annotations from UniProt/GOA, including the
+full ancestor closure above every annotated term. Like the function text they
+belong to this repo rather than to the export, so they write into `data/` in
+the shape `docs/export.md` specifies, and the existing loader reads them from
+there without changes.
 
 `memberships.tsv` comes from a later export; nothing to build for it.
 

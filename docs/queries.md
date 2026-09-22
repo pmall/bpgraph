@@ -11,15 +11,19 @@ NS5A sufficient for the interaction.*
 
 This is exactly the graph [`docs/example-export/`](example-export) builds, so
 every value below can be loaded and queried rather than taken on trust.
+`function` is empty because it is fetched per export into `data/` rather than
+exported — see [`export.md`](export.md).
 
 ```
 (:Protein:Human {id:"P36969", accession:"P36969", start:1, stop:197,
-                 name:"GPX4", function:"",
+                 name:"GPX4",
                  description:"Phospholipid hydroperoxide glutathione peroxidase",
+                 function:"",
                  taxon_id:9606, taxon_name:"Homo sapiens"})
 (:Protein:Viral {id:"P27958:1973-2419", accession:"P27958",
                  start:1973, stop:2419, name:"NS5A",
-                 description:"Genome polyprotein", taxon_id:3052230,
+                 description:"Genome polyprotein",
+                 function:"", taxon_id:3052230,
                  taxon_name:"Orthohepacivirus hominis"})
 
 (:Interaction:VH {id:"P36969|P27958:1973-2419",

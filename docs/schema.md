@@ -41,7 +41,7 @@ from a polyprotein. Human or viral comes from `labels(p)`.
 | `stop` | int | 1-based inclusive |
 | `name` | str | standardized mature-protein name (`NS5A`) / gene symbol (`GPX4`) |
 | `description` | str | UniProt protein name, e.g. `Glutathione peroxidase 4` |
-| `function` | str | UniProt `CC FUNCTION` text |
+| `function` | str | UniProt `CC FUNCTION` text — the chain's, where the entry scopes it |
 | `taxon_id` | int | NCBI taxon id |
 | `taxon_name` | str | NCBI scientific name |
 
