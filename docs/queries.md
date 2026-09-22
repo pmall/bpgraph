@@ -11,7 +11,7 @@ NS5A sufficient for the interaction.*
 
 This is exactly the graph [`docs/example-export/`](example-export) builds, so
 every value below can be loaded and queried rather than taken on trust.
-`function` is empty because it is fetched per export into `data/` rather than
+`function` is empty because it is fetched per run rather than
 exported — see [`export.md`](export.md).
 
 ```

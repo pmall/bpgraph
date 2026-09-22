@@ -1,12 +1,11 @@
 """The Gene Ontology, cut to what an export's human proteins are annotated with.
 
 The relational database holds no GO at all, so it is built here from two public
-dumps and written beside the function text — `data/go_terms-2026-09-09.tsv` and
-its two companions for the export directory `data/graph-2026-09-09`, outside it
-because the files are this repo's and not the relational database's, named
-after it because they are only true of that one export. The loader reads them
-back from there; this module never touches the graph, and those files are the
-only thing between the two.
+dumps and written into the run directory beside the function text —
+`data/2026-09-09/go_terms.tsv` and its two companions, beside `export/` rather
+than in it because the files are this repo's and not the relational
+database's. The loader reads them back from there; this module never touches
+the graph, and those files are the only thing between the two.
 
 **Human proteins only.** GOA does annotate viral proteins — there is a whole
 branch of terms about what a virus does to its host — but it annotates a whole
@@ -16,8 +15,8 @@ function text gets away with it because UniProt scopes a FUNCTION comment to a
 chain by naming its molecule; there is no equivalent here, so attributing a
 term to NS5A rather than to the polyprotein around it would be a guess.
 
-Two dumps, cached in `data/` the way the taxonomy is, because both outlive any
-one export:
+Two dumps, fetched into the run directory the way the taxonomy is, so a run
+reads releases at least as recent as its export:
 
 - **`go-basic.obo`** is the ontology. It is the release filtered to the
   relations annotations propagate over and guaranteed acyclic, which is exactly
@@ -46,15 +45,13 @@ from shutil import copyfileobj
 from urllib.request import Request, urlopen
 
 from bpgraph.enums import GoNamespace, GoRelation, ProteinKind
-from bpgraph.loaders.tsv import DATA_DIRECTORY, GoPaths, go_paths
 from bpgraph.models import GoEdge, GoTerm
+from bpgraph.run import Run
 
 logger = logging.getLogger(__name__)
 
 ONTOLOGY_URL = "https://purl.obolibrary.org/obo/go/go-basic.obo"
 ANNOTATIONS_URL = "https://ftp.ebi.ac.uk/pub/databases/GO/goa/HUMAN/goa_human.gaf.gz"
-ONTOLOGY = DATA_DIRECTORY / "go-basic.obo"
-ANNOTATIONS = DATA_DIRECTORY / "goa_human.gaf.gz"
 
 USER_AGENT = "bpgraph"
 """The CDN in front of the ontology answers `403` to urllib's own agent."""
@@ -160,7 +157,7 @@ class Ontology:
 
 
 def download(url: str, destination: Path) -> Path:
-    """Fetch a dump into `data/`, where it outlives any one export."""
+    """Fetch a dump into a run directory."""
     destination.parent.mkdir(parents=True, exist_ok=True)
     request = Request(url, headers={"User-Agent": USER_AGENT})
     with urlopen(request) as response, destination.open("wb") as handle:
@@ -171,9 +168,8 @@ def download(url: str, destination: Path) -> Path:
 def cached(url: str, destination: Path) -> Path:
     """The local copy of a dump, fetched if it is not there yet.
 
-    Both dumps are reissued regularly and neither is tied to an export, so the
-    copy is kept rather than re-fetched: deleting the file is how a run picks
-    up a new release.
+    A run directory is new with every export, so the first fetch into it takes
+    the current release, and every fetch after it reuses that one.
     """
     if not destination.exists():
         logger.info("go: fetching %s", url)
@@ -335,20 +331,18 @@ class Counts:
     """Proteins with at least one annotation, out of those asked for."""
 
 
-def write_go(
-    accessions: Iterable[str],
-    paths: GoPaths,
-    ontology: Path = ONTOLOGY,
-    annotations: Path = ANNOTATIONS,
-) -> Counts:
+def write_go(accessions: Iterable[str], run: Run) -> Counts:
     """Cut the GO these proteins reach out of the two dumps and write the trio.
 
     Everything is in hand before a file is opened, so a dump that gives out
     part way leaves whatever was there already rather than three files that
     disagree with each other.
     """
-    parsed = read_ontology(cached(ONTOLOGY_URL, ontology))
-    found = read_annotations(cached(ANNOTATIONS_URL, annotations), accessions, parsed)
+    paths = run.go
+    parsed = read_ontology(cached(ONTOLOGY_URL, run.ontology))
+    found = read_annotations(
+        cached(ANNOTATIONS_URL, run.annotations), accessions, parsed
+    )
     terms, edges = parsed.closure({annotation.go_id for annotation in found})
     return Counts(
         terms=_write(
@@ -382,28 +376,29 @@ def write_go(
 
 
 def main() -> None:
-    """Fetch the GO one export directory's human proteins reach.
+    """Fetch the GO one run directory's human proteins reach.
 
-    `uv run bpgraph-go data/graph-2026-09-09` reads that export to learn which
+    `uv run bpgraph-go data/2026-09-09` reads that run's export to learn which
     human proteins it names, cuts the ontology down to what they are annotated
-    with and writes `data/go_terms-2026-09-09.tsv`, `data/go_edges-2026-09-09.tsv`
-    and `data/go_annotations-2026-09-09.tsv`. Rebuilding is what puts them in
-    the graph.
+    with and writes `go_terms.tsv`, `go_edges.tsv` and `go_annotations.tsv`
+    beside it. Rebuilding is what puts them in the graph.
     """
     import sys
 
     from bpgraph.loaders import TsvExport
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    directory = Path(sys.argv[1]) if len(sys.argv) > 1 else DATA_DIRECTORY
-    paths = go_paths(directory)
-    export = TsvExport(directory).load()
+    if len(sys.argv) != 2:
+        sys.exit("usage: bpgraph-go <run directory>")
+    loader = TsvExport.open(Path(sys.argv[1]))
+    export = loader.load()
     humans = {
         protein.accession
         for protein in export.proteins
         if protein.kind is ProteinKind.HUMAN
     }
-    counts = write_go(sorted(humans), paths)
+    counts = write_go(sorted(humans), loader.run)
+    paths = loader.run.go
     print(
         f"{paths.terms}: {counts.terms} terms, {counts.edges} edges\n"
         f"{paths.annotations}: {counts.annotations} annotations on "

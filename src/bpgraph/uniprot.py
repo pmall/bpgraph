@@ -1,10 +1,9 @@
 """UniProt `CC FUNCTION` text, fetched for the proteins an export names.
 
 The relational database does not hold it, so it is fetched here and written
-beside the taxonomy — `data/functions-2026-09-09.tsv` for the export directory
-`data/graph-2026-09-09`, outside it because the file is this repo's and not
-the relational database's, named after it because it is only true of that one
-export. The loader reads it back from there; this module never touches the
+into the run directory — `data/2026-09-09/functions.tsv`, beside `export/`
+rather than in it because the file is this repo's and not the relational
+database's. The loader reads it back from there; this module never touches the
 graph, and that file is the only thing between the two. It is also the cache:
 a fetch runs once per export, and every build after it reads what is there.
 
@@ -36,7 +35,6 @@ from typing import NotRequired, TypedDict, cast
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
-from bpgraph.loaders.tsv import DATA_DIRECTORY, functions_path
 from bpgraph.models import Protein
 
 logger = logging.getLogger(__name__)
@@ -296,20 +294,21 @@ def write_functions(proteins: Iterable[Protein], path: Path) -> int:
 
 
 def main() -> None:
-    """Fetch the function text for one export directory's proteins.
+    """Fetch the function text for one run directory's proteins.
 
-    `uv run bpgraph-functions data/graph-2026-09-09` reads that export to learn
+    `uv run bpgraph-functions data/2026-09-09` reads that run's export to learn
     which proteins it names, fetches their function text and writes
-    `data/functions-2026-09-09.tsv`. Rebuilding is what puts the text in the
-    graph.
+    `functions.tsv` beside it. Rebuilding is what puts the text in the graph.
     """
     import sys
 
     from bpgraph.loaders import TsvExport
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    directory = Path(sys.argv[1]) if len(sys.argv) > 1 else DATA_DIRECTORY
-    path = functions_path(directory)
-    export = TsvExport(directory).load()
+    if len(sys.argv) != 2:
+        sys.exit("usage: bpgraph-functions <run directory>")
+    loader = TsvExport.open(Path(sys.argv[1]))
+    path = loader.run.functions
+    export = loader.load()
     written = write_functions(export.proteins, path)
     print(f"{path}: {written} of {len(export.proteins)} proteins have function text")
