@@ -15,6 +15,7 @@ dependencies = [
 [project.scripts]
 bpgraph = "bpgraph:main"
 bpgraph-audit = "bpgraph.audit:main"
+bpgraph-functions = "bpgraph.uniprot:main"
 
 [build-system]
 requires = ["uv_build>=0.12.3,<0.13.0"]

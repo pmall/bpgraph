@@ -17,8 +17,12 @@ coordinates.
 Human or viral is not a column either. It follows from `type` and the slot: a
 `vh` row's second partner is the viral one, and every other partner is human.
 
-`Protein.function` has no column: the relational database does not hold it, and
-a later enrichment step fills it from UniProt.
+`Protein.function` has no column: the relational database does not hold it.
+`bpgraph.uniprot` fetches it into `data/functions-<export>.tsv`, and the GO
+trio will land beside it. Those files are this repo's rather than the export's,
+so they sit outside the export directory and are read from `enrichment` —
+parsed here all the same, since they are TSV in the shape docs/export.md
+specifies.
 """
 
 import csv
@@ -52,6 +56,8 @@ from bpgraph.taxonomy import Taxonomy, TaxonomyUnavailable
 
 logger = logging.getLogger(__name__)
 
+DATA_DIRECTORY = Path("data")
+
 DESCRIPTIONS = "descriptions.tsv"
 PUBLICATIONS = "publications.tsv"
 PEPTIDES = "peptides.tsv"
@@ -61,6 +67,9 @@ GO_EDGES = "go_edges.tsv"
 GO_ANNOTATIONS = "go_annotations.tsv"
 
 REQUIRED = (DESCRIPTIONS, PUBLICATIONS)
+
+FUNCTIONS = "functions-{}.tsv"
+EXPORT_PREFIX = "graph-"
 
 MEMBERSHIP_COLUMNS = frozenset({"set_name", "accession"})
 AUTHOR_SEPARATOR = ";"
@@ -81,6 +90,19 @@ class ExportError(ValueError):
     """The export is missing something, or holds something it should not."""
 
 
+def functions_path(directory: Path, enrichment: Path = DATA_DIRECTORY) -> Path:
+    """Where the function text fetched for one export directory lives.
+
+    Outside that directory, because it is this repo's file rather than the
+    relational database's — but named after it, so the pair is visible at a
+    glance: `data/graph-2026-09-09` goes with `data/functions-2026-09-09.tsv`.
+    A new export is a new directory, so it looks for a file that does not exist
+    yet rather than quietly reading the last one. A directory named by some
+    other convention keeps its whole name.
+    """
+    return enrichment / FUNCTIONS.format(directory.name.removeprefix(EXPORT_PREFIX))
+
+
 @dataclass(frozen=True, slots=True)
 class _Cursor:
     """Where we are, so every error names a file and a line."""
@@ -92,7 +114,7 @@ class _Cursor:
         return ExportError(f"{self.path.name}:{self.line}: {message}")
 
 
-def _rows(directory: Path, name: str) -> Iterator[tuple[_Cursor, Mapping[str, str]]]:
+def _rows(path: Path) -> Iterator[tuple[_Cursor, Mapping[str, str]]]:
     """Yield the rows of one file, or nothing at all if it is absent.
 
     One line is one row and a tab is always a separator: quoting is off, so a
@@ -101,16 +123,15 @@ def _rows(directory: Path, name: str) -> Iterator[tuple[_Cursor, Mapping[str, st
     caught here, by the line, rather than silently swallowing the rows around
     it. Free text goes into the export with both stripped out.
     """
-    path = directory / name
     if not path.exists():
-        if name in REQUIRED:
-            raise ExportError(f"{name} is required and missing from {directory}")
+        if path.name in REQUIRED:
+            raise ExportError(f"{path.name} is required and missing from {path.parent}")
         return
     with path.open(encoding="utf-8-sig", newline="") as handle:
         reader = csv.reader(handle, delimiter="\t", quoting=csv.QUOTE_NONE)
         header = next(reader, None)
         if header is None:
-            raise ExportError(f"{name} has no header row")
+            raise ExportError(f"{path.name} has no header row")
         columns = [column.strip() for column in header]
         for offset, values in enumerate(reader, start=2):
             if not values:
@@ -461,19 +482,23 @@ def _collapse(reported: Iterator[ReportedPeptide]) -> tuple[ReportedPeptide, ...
     return tuple(unique.values())
 
 
-DATA_DIRECTORY = Path("data")
-
-
 @dataclass(frozen=True, slots=True)
 class TsvExport:
     """Reads one export directory. See docs/export.md for the file list."""
 
     directory: Path = DATA_DIRECTORY
+    enrichment: Path = DATA_DIRECTORY
+    """Where the files this repo generates live — the function text, and the GO
+    trio once it exists. Deliberately not the export directory: that one holds
+    what the relational database exports and nothing else, while these outlive
+    any one export the way the taxonomy does."""
+
     taxonomy: Taxonomy = field(default_factory=Taxonomy.open)
 
     def load(self) -> Export:
         publications = self._publications()
         proteins, methods = self._scan()
+        self._enrich(proteins)
         taxa, taxon_links = self.taxonomy.resolve(
             protein.taxon_id
             for protein in proteins.values()
@@ -506,7 +531,7 @@ class TsvExport:
         """First pass over `descriptions.tsv`: the entities it restates inline."""
         registry = _Registry(taxonomy=self.taxonomy)
         methods: dict[str, Method] = {}
-        for cursor, row in _rows(self.directory, DESCRIPTIONS):
+        for cursor, row in _rows(self.directory / DESCRIPTIONS):
             for mention in _mentions(cursor, row):
                 registry.observe(cursor, mention)
             method = _make(
@@ -532,7 +557,7 @@ class TsvExport:
         peptides = self._peptides()
         descriptions: list[Description] = []
         seen: set[str] = set()
-        for cursor, row in _rows(self.directory, DESCRIPTIONS):
+        for cursor, row in _rows(self.directory / DESCRIPTIONS):
             stable_id = _required(cursor, row, "stable_id")
             if stable_id in seen:
                 raise cursor.fail(f"stable_id {stable_id!r} appears twice")
@@ -571,7 +596,7 @@ class TsvExport:
         """Group the rows by description. Their source is resolved later,
         against the two partners of the description they belong to."""
         grouped: dict[str, list[_PeptideReference]] = {}
-        for cursor, row in _rows(self.directory, PEPTIDES):
+        for cursor, row in _rows(self.directory / PEPTIDES):
             reference = _PeptideReference(
                 cursor=cursor,
                 sequence=_required(cursor, row, "sequence").upper(),
@@ -587,8 +612,48 @@ class TsvExport:
             )
         return grouped
 
+    def _enrich(self, proteins: dict[str, Protein]) -> None:
+        """Attach the UniProt function text fetched for this export.
+
+        A protein UniProt says nothing about simply has no row, and keeps the
+        empty `function` it was built with. No file at all means the fetch has
+        not been run for this export — a whole stage missing rather than a
+        protein, so it is worth a line in the log; a row naming a protein this
+        export does not have means the file no longer matches the directory it
+        is named after, and the fix for both is the same command.
+        """
+        path = functions_path(self.directory, self.enrichment)
+        if not path.exists():
+            logger.warning(
+                "%s does not exist: proteins will have no function text. "
+                "Run bpgraph-functions %s",
+                path,
+                self.directory,
+            )
+            return
+        seen: set[str] = set()
+        for cursor, row in _rows(path):
+            identity = protein_id(
+                _required(cursor, row, "accession"),
+                _integer(cursor, row, "start"),
+                _integer(cursor, row, "stop"),
+                _choice(cursor, row, "type", ProteinKind),
+            )
+            if identity in seen:
+                raise cursor.fail(f"{identity} appears twice")
+            seen.add(identity)
+            protein = proteins.get(identity)
+            if protein is None:
+                raise cursor.fail(
+                    f"{identity} is not in {DESCRIPTIONS}: this file no longer "
+                    f"matches {self.directory}, so fetch it again"
+                )
+            proteins[identity] = protein.model_copy(
+                update={"function": _required(cursor, row, "function")}
+            )
+
     def _memberships(self, humans: Mapping[str, Protein]) -> Iterator[SetMembership]:
-        for cursor, row in _rows(self.directory, MEMBERSHIPS):
+        for cursor, row in _rows(self.directory / MEMBERSHIPS):
             protein = _resolve_human(cursor, humans, row)
             attributes = {
                 column: value
@@ -605,7 +670,7 @@ class TsvExport:
 
     def _publications(self) -> dict[str, Publication]:
         publications: dict[str, Publication] = {}
-        for cursor, row in _rows(self.directory, PUBLICATIONS):
+        for cursor, row in _rows(self.directory / PUBLICATIONS):
             authors = _text(cursor, row, "authors")
             publication = _make(
                 cursor,
@@ -627,7 +692,7 @@ class TsvExport:
         return publications
 
     def _go_terms(self) -> Iterator[GoTerm]:
-        for cursor, row in _rows(self.directory, GO_TERMS):
+        for cursor, row in _rows(self.enrichment / GO_TERMS):
             yield _make(
                 cursor,
                 GoTerm,
@@ -638,7 +703,7 @@ class TsvExport:
             )
 
     def _go_edges(self) -> Iterator[GoEdge]:
-        for cursor, row in _rows(self.directory, GO_EDGES):
+        for cursor, row in _rows(self.enrichment / GO_EDGES):
             yield _make(
                 cursor,
                 GoEdge,
@@ -648,7 +713,7 @@ class TsvExport:
             )
 
     def _go_annotations(self, humans: Mapping[str, Protein]) -> Iterator[GoAnnotation]:
-        for cursor, row in _rows(self.directory, GO_ANNOTATIONS):
+        for cursor, row in _rows(self.enrichment / GO_ANNOTATIONS):
             yield _make(
                 cursor,
                 GoAnnotation,
