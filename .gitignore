@@ -9,3 +9,6 @@ wheels/
 # Virtual environments
 .venv
 .env
+
+# The TSV export a build reads.
+/data/
