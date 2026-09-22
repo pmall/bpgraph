@@ -8,7 +8,8 @@ interactome analyses — typically: take a curated set of human proteins (e.g.
 ferroptosis) and compare how viral families act on it.
 
 Curation happens in a separate relational database. A run exports it as TSV
-files into `data/` — gitignored — and builds a fresh graph; the graph is never
+files into `data/<date>/export/` — gitignored — fetches what the export lacks
+beside it, and builds a fresh graph; the graph is never
 edited in place.
 
 ## Documents
@@ -27,17 +28,19 @@ Read these when the task reaches them, not before:
 ## Layout
 
 ```
-data/           dated export directories a build reads, plus the taxonomy
-                and one function file per export. Gitignored
+data/           one directory per run: export/ as the database wrote it,
+                and the taxonomy, function text and GO fetched for it.
+                Gitignored
 src/bpgraph/
   config.py     env-driven connection settings
   client.py     thin FalkorDB wrapper: parameterized query/write
   ids.py        the two derived ids — nothing else may build one
+  run.py        where a run directory keeps each file
   enums.py      closed vocabularies shared by models, ids and writers
   models.py     Pydantic models mirroring docs/schema.md
   dedupe.py     collapse repeated records, and reject ones that disagree
   taxonomy.py   the NCBI dump in SQLite; cuts the taxa the graph keeps
-  uniprot.py    fetches the function text into data/, named per export
+  uniprot.py    fetches the function text into a run directory
   go.py         cuts GO down to what an export reaches, likewise
   schema.py     index and constraint DDL, and the validation gate
   build.py      run a full build: stages, validation gate, swap

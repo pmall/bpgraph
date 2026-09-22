@@ -1,4 +1,4 @@
-"""The NCBI taxonomy, kept in SQLite beside the graph.
+"""The NCBI taxonomy, kept in SQLite in the run directory.
 
 The graph holds only the taxa an analysis groups by — a viral protein's own
 taxon, and the family above it. Deciding which those are needs the whole tree,
@@ -22,8 +22,6 @@ from urllib.request import urlopen
 from bpgraph.models import Taxon, TaxonLink
 
 TAXDUMP_URL = "https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxdmp.zip"
-TAXDUMP = Path("data/taxdmp.zip")
-DATABASE = Path("data/taxonomy.sqlite")
 
 SCIENTIFIC_NAME = "scientific name"
 GROUPING_RANKS = ("family",)
@@ -57,7 +55,7 @@ def _fields(line: bytes) -> list[str]:
     return line.decode("utf-8").rstrip("\n").removesuffix("\t|").split("\t|\t")
 
 
-def download_taxdump(destination: Path = TAXDUMP) -> Path:
+def download_taxdump(destination: Path) -> Path:
     """Fetch the current dump from NCBI. It is reissued regularly."""
     destination.parent.mkdir(parents=True, exist_ok=True)
     with urlopen(TAXDUMP_URL) as response, destination.open("wb") as handle:
@@ -83,7 +81,7 @@ def _nested_set(children: dict[int, list[int]]) -> dict[int, tuple[int, int]]:
     return bounds
 
 
-def load_taxdump(taxdump: Path = TAXDUMP, database: Path = DATABASE) -> int:
+def load_taxdump(taxdump: Path, database: Path) -> int:
     """Copy the dump into SQLite, numbered as a nested set. Returns the taxa count."""
     ranks: dict[int, str] = {}
     children: dict[int, list[int]] = {}
@@ -135,11 +133,11 @@ class Taxonomy:
     connection: sqlite3.Connection
 
     @classmethod
-    def open(cls, database: Path = DATABASE) -> Self:
+    def open(cls, database: Path) -> Self:
         if not database.exists():
             raise TaxonomyUnavailable(
-                f"{database} does not exist. Build it with "
-                "bpgraph.taxonomy.load_taxdump()"
+                f"{database} does not exist. Fetch the dump beside it with "
+                "bpgraph.taxonomy.download_taxdump() and build it with load_taxdump()"
             )
         return cls(sqlite3.connect(f"file:{database}?mode=ro", uri=True))
 

@@ -1,9 +1,9 @@
 # bpgraph — export format
 
 What to export from the relational database, as tab-separated files dropped in
-a directory under **`data/`**, which is gitignored.
-`bpgraph.loaders.tsv.TsvExport` reads one such directory; see
-[`schema.md`](schema.md) for what the files become.
+the **`export/`** subdirectory of a run directory under **`data/`**, which is
+gitignored — `data/2026-09-09/export/`. `bpgraph.loaders.tsv.TsvExport` reads
+one run directory; see [`schema.md`](schema.md) for what the files become.
 
 Three files carry the whole export. There is no protein table and no method
 table: a description row restates its two partners and its detection method
@@ -29,13 +29,15 @@ Conventions for every file:
 [`docs/example-export/`](example-export) holds a small working example of every
 file this document asks you for, and every snippet in the sections below is a
 row from it. Loading that directory builds the graph
-[`queries.md`](queries.md) walks through. It also carries the GO trio this repo
-[generates](#generated-here-not-exported), named for the directory as always
-and kept inside it rather than beside it, so the example is one self-contained
-folder:
+[`queries.md`](queries.md) walks through. It is laid out as a run directory,
+with the GO trio this repo [generates](#generated-here-not-exported) beside
+`export/`, but carries no taxonomy, so it borrows a real run's:
 
 ```python
-TsvExport(Path("docs/example-export"), enrichment=Path("docs/example-export"))
+TsvExport(
+    Run(Path("docs/example-export")),
+    Taxonomy.open(Run(Path("data/2026-09-09")).taxonomy),
+)
 ```
 
 **Proteins are referenced by their natural key, never by an id** — the ids are
@@ -191,8 +193,8 @@ ferroptosis  O60488     activator
 ## The GO trio *(not from your database)*
 
 These are not in the relational database. They are generated in this repo from
-GOA and the GO ontology and written into `data/` beside the function text, by
-`uv run bpgraph-go <export directory>` — see [generated
+GOA and the GO ontology and written into the run directory beside the function
+text, by `uv run bpgraph-go <run directory>` — see [generated
 here](#generated-here-not-exported) for the naming and the sources. Documented
 here because the shape is the contract either way.
 
@@ -203,7 +205,7 @@ two terms and an annotation names one, so the loader rejects a `go_id` that has
 no row in the terms file, and rejects finding some of the three without the
 others.
 
-`go_terms-<export>.tsv`
+`go_terms.tsv`
 
 | column | notes |
 |---|---|
@@ -212,14 +214,14 @@ others.
 | `namespace` | `biological_process`, `molecular_function` or `cellular_component` |
 | `obsolete` | `true`/`false` (`1`/`0`, `yes`/`no` also accepted; empty means false) |
 
-`go_edges-<export>.tsv`
+`go_edges.tsv`
 
 | column | notes |
 |---|---|
-| `child_go_id`, `parent_go_id` | both must have a row in `go_terms-<export>.tsv` |
+| `child_go_id`, `parent_go_id` | both must have a row in `go_terms.tsv` |
 | `relation` | `IS_A` or `PART_OF` |
 
-`go_annotations-<export>.tsv`
+`go_annotations.tsv`
 
 | column | notes |
 |---|---|
@@ -235,7 +237,8 @@ others.
 
 **Taxa have no file.** The export carries a taxon id per protein and nothing
 else; the `:Taxon` nodes and the species-to-family chain are cut from the NCBI
-dump this repo keeps in SQLite (`bpgraph.taxonomy`). A species links straight
+dump this repo fetches into the run directory and keeps in SQLite
+(`bpgraph.taxonomy`). A species links straight
 to its family however many ranks lie between, and a species with no family
 simply has no parent — it stays queryable, it just falls out of family
 rollups. Keeping another rank is a one-line change and the chain rebuilds
@@ -244,32 +247,28 @@ itself.
 ### Generated here, not exported
 
 Two things the relational database does not hold, built in this repo from
-UniProt and written into **`data/` itself, not into an export directory**.
-They outlive any one export, the way the taxonomy does, and the export
-directory stays exactly what your database produced:
+UniProt and GO and written into **the run directory, beside `export/` rather
+than in it**, so `export/` stays exactly what your database produced:
 
-- **`data/functions-<export>.tsv`** — `function` on proteins, the UniProt
-  `CC FUNCTION` text. It has no column in `descriptions.tsv`; `description`
-  does come from the export. Written by `uv run bpgraph-functions <export
-  directory>`, which reads that export to learn which proteins to fetch.
-- **`data/go_terms-<export>.tsv`, `go_edges-<export>.tsv` and
-  `go_annotations-<export>.tsv`** — the GO an export's human proteins reach.
-  Written by `uv run bpgraph-go <export directory>`, which reads that export to
-  learn which proteins to cut the ontology down to.
+- **`functions.tsv`** — `function` on proteins, the UniProt `CC FUNCTION`
+  text. It has no column in `descriptions.tsv`; `description` does come from
+  the export. Written by `uv run bpgraph-functions <run directory>`, which
+  reads that export to learn which proteins to fetch.
+- **`go_terms.tsv`, `go_edges.tsv` and `go_annotations.tsv`** — the GO an
+  export's human proteins reach. Written by `uv run bpgraph-go <run
+  directory>`, which reads that export to learn which proteins to cut the
+  ontology down to.
 
-`TsvExport` reads them from its `enrichment` directory, `data/` by default,
-and a run without them loads all the same: its proteins land with an empty
+A run without them loads all the same: its proteins land with an empty
 `function` and it gets no `:GoTerm` nodes, with a line in the log saying so.
 Everything else — interactions, descriptions, peptides, taxonomy — works from
 your export alone.
 
-#### functions-&lt;export&gt;.tsv
+#### functions.tsv
 
-**Named after the export directory it was fetched for**, so the pair is
-visible at a glance and a new export cannot quietly read the last one's text:
-`data/graph-2026-09-09` goes with `data/functions-2026-09-09.tsv`, and a
-directory named by some other convention keeps its whole name. A new export
-directory means a file that is not there yet — fetch again.
+**Fetched into the run directory of the export it was fetched for**, so a new
+export cannot quietly read the last one's text: a new export is a new run
+directory, with a file that is not there yet — fetch again.
 
 | column | notes |
 |---|---|
@@ -302,14 +301,14 @@ UniProt has retired — deleted, or merged into another — come back with nothi
 and land the same way.
 
 A row naming a protein the export does not have means the file and the
-directory it is named after have parted ways — the export was rebuilt in
+export beside it have parted ways — the export was rebuilt in
 place, most likely — and the loader rejects it by its line number rather than
 loading half-stale text.
 
 #### The GO trio
 
-Named the same way and for the same reason, and cut from two dumps `bpgraph-go`
-keeps in `data/` the way the taxonomy keeps NCBI's:
+Kept the same way and for the same reason, and cut from two dumps `bpgraph-go`
+fetches into the run directory the way the taxonomy is fetched:
 
 - **`go-basic.obo`**, the ontology, from the Gene Ontology's current release.
   It is the version filtered to the relations annotations propagate over and
@@ -321,8 +320,8 @@ keeps in `data/` the way the taxonomy keeps NCBI's:
   database, so no per-protein request is needed; everything the export does not
   name is dropped as the file goes past.
 
-Both are reissued regularly and neither belongs to an export, so they are kept
-once and reused: deleting a dump is how a run picks up a newer release.
+Both are reissued regularly, so each run directory fetches its own, at least as
+recent as its export, and every fetch after the first reuses it.
 
 Terms are written with the **full ancestor closure** above every annotated one
 — for the 2026-09-09 export, 20,720 of GO's 48,340 terms — so rolling an
@@ -345,11 +344,33 @@ proteins do.
 
 ## Running it
 
-Fetch the function text and the GO once for the export, then build:
+A run directory holds the export and everything fetched for it:
+
+```
+data/2026-09-09/
+  export/            descriptions.tsv, publications.tsv, peptides.tsv
+  taxdmp.zip         taxonomy.sqlite
+  functions.tsv
+  go-basic.obo       goa_human.gaf.gz
+  go_terms.tsv       go_edges.tsv       go_annotations.tsv
+```
+
+Fetch the taxonomy, the function text and the GO once for the export, then
+build:
+
+```python
+from pathlib import Path
+
+from bpgraph.run import Run
+from bpgraph.taxonomy import download_taxdump, load_taxdump
+
+run = Run(Path("data/2026-09-09"))
+load_taxdump(download_taxdump(run.taxdump), run.taxonomy)
+```
 
 ```sh
-uv run bpgraph-functions data/graph-2026-09-09    # -> data/functions-2026-09-09.tsv
-uv run bpgraph-go data/graph-2026-09-09           # -> data/go_{terms,edges,annotations}-2026-09-09.tsv
+uv run bpgraph-functions data/2026-09-09    # -> functions.tsv
+uv run bpgraph-go data/2026-09-09           # -> go_{terms,edges,annotations}.tsv
 ```
 
 ```python
@@ -359,7 +380,7 @@ from bpgraph import Config, build, connect
 from bpgraph.loaders import TsvExport
 
 config = Config.from_env()
-export = TsvExport(Path("data/graph-2026-09-09")).load()
+export = TsvExport.open(Path("data/2026-09-09")).load()
 report = build(connect(config), export, config)
 print(report.counts)
 ```
