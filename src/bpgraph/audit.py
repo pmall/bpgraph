@@ -24,6 +24,11 @@ from falkordb.graph import Graph
 
 EXAMPLES = 5
 
+GO_ROOTS = ("GO:0008150", "GO:0003674", "GO:0005575")
+"""The three namespace roots: biological process, molecular function,
+cellular component. Nothing sits above them, so they are the one place the
+ancestor closure is allowed to stop."""
+
 NODE_PROPERTIES: Mapping[str, Mapping[str, str]] = {
     "Protein": {
         "id": "String",
@@ -85,7 +90,7 @@ RELATIONSHIPS: tuple[tuple[str, str, str, tuple[str, ...] | None], ...] = (
     ("MEMBER_OF", "Protein", "ProteinSet", None),
     (
         "ANNOTATED_WITH",
-        "Protein",
+        "Human",
         "GoTerm",
         ("evidence_code", "assigned_by", "qualifier"),
     ),
@@ -285,6 +290,22 @@ INVARIANTS: tuple[Check, ...] = (
         "WITH t, [(t)-[:PARENT]->(p) | p.taxon_id] AS parents\n"
         "WHERE size(parents) > 1 OR t.taxon_id IN parents\n"
         "RETURN t.taxon_id AS taxon_id, parents",
+    ),
+    Check(
+        "GoTerm.ancestors",
+        "every term sits under a parent, up to a namespace root",
+        "MATCH (t:GoTerm)\n"
+        "WHERE NOT (t)-[:IS_A|PART_OF]->(:GoTerm)\n"
+        "  AND NOT t.obsolete\n"
+        f"  AND NOT t.go_id IN {list(GO_ROOTS)}\n"
+        "RETURN t.go_id AS go_id, t.name AS name",
+    ),
+    Check(
+        "GoTerm.reached",
+        "every term is annotated, or lies above one that is",
+        "MATCH (t:GoTerm)\n"
+        "WHERE NOT (t)<-[:IS_A|PART_OF*0..]-(:GoTerm)<-[:ANNOTATED_WITH]-(:Protein)\n"
+        "RETURN t.go_id AS go_id, t.name AS name",
     ),
     Check(
         "Peptide.sequence",

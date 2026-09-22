@@ -29,20 +29,28 @@ graph — not for uptime.
 1. **Proteins, taxonomy, protein sets** — the entity backbone.
 2. **Interactions** — `:Interaction`, `:Description`, `:Publication`,
    `:Method`, `:Peptide`.
-3. **UniProt** — `function` text, `:GoTerm` annotations and the GO ancestor
-   closure.
+3. **Enrichment** — `function` text, `:GoTerm` nodes with the GO ancestor
+   closure, and the annotations onto human proteins.
 4. **Derive** — the `:Interaction` counters, and the optional
    `:INTERACTS_WITH` shortcut.
 
 A run may skip stage 3. It may not skip stage 4, nor steps 2–5 above.
 
-Stage 3 is fetched beforehand rather than run here: `uv run bpgraph-functions
-data/graph-2026-09-09` writes `data/functions-2026-09-09.tsv`, and the loader
-reads it from `data/` — not from the export directory, which holds only what
-the relational database exports. The file is named after the directory it was
-fetched for, so a new export looks for one that does not exist yet instead of
-reading the last one's text. Without it a run builds proteins with an empty
-`function`, and says so in the log.
+Stage 3 is fetched beforehand rather than run here, by two commands that write
+into `data/` and never touch the graph:
+
+```sh
+uv run bpgraph-functions data/graph-2026-09-09   # functions-2026-09-09.tsv
+uv run bpgraph-go data/graph-2026-09-09          # go_{terms,edges,annotations}-2026-09-09.tsv
+```
+
+The loader reads them from `data/` — not from the export directory, which holds
+only what the relational database exports. Each file is named after the
+directory it was fetched for, so a new export looks for ones that do not exist
+yet instead of reading the last export's. Without them a run builds proteins
+with an empty `function` and no `:GoTerm` at all, and says so in the log. The
+GO files are written together and read together: some of the three without the
+others is an error rather than a partial load.
 
 ## Writing
 

@@ -17,12 +17,12 @@ coordinates.
 Human or viral is not a column either. It follows from `type` and the slot: a
 `vh` row's second partner is the viral one, and every other partner is human.
 
-`Protein.function` has no column: the relational database does not hold it.
-`bpgraph.uniprot` fetches it into `data/functions-<export>.tsv`, and the GO
-trio will land beside it. Those files are this repo's rather than the export's,
-so they sit outside the export directory and are read from `enrichment` —
-parsed here all the same, since they are TSV in the shape docs/export.md
-specifies.
+Neither `Protein.function` nor GO has a column: the relational database holds
+neither. `bpgraph.uniprot` fetches the function text into
+`data/functions-<export>.tsv` and `bpgraph.go` the GO trio beside it. Those
+files are this repo's rather than the export's, so they sit outside the export
+directory and are read from `enrichment` — parsed here all the same, since they
+are TSV in the shape docs/export.md specifies.
 """
 
 import csv
@@ -62,13 +62,14 @@ DESCRIPTIONS = "descriptions.tsv"
 PUBLICATIONS = "publications.tsv"
 PEPTIDES = "peptides.tsv"
 MEMBERSHIPS = "memberships.tsv"
-GO_TERMS = "go_terms.tsv"
-GO_EDGES = "go_edges.tsv"
-GO_ANNOTATIONS = "go_annotations.tsv"
 
 REQUIRED = (DESCRIPTIONS, PUBLICATIONS)
 
 FUNCTIONS = "functions-{}.tsv"
+GO_TERMS = "go_terms-{}.tsv"
+GO_EDGES = "go_edges-{}.tsv"
+GO_ANNOTATIONS = "go_annotations-{}.tsv"
+TRIO = (GO_TERMS, GO_EDGES, GO_ANNOTATIONS)
 EXPORT_PREFIX = "graph-"
 
 MEMBERSHIP_COLUMNS = frozenset({"set_name", "accession"})
@@ -90,8 +91,8 @@ class ExportError(ValueError):
     """The export is missing something, or holds something it should not."""
 
 
-def functions_path(directory: Path, enrichment: Path = DATA_DIRECTORY) -> Path:
-    """Where the function text fetched for one export directory lives.
+def _enriched(template: str, directory: Path, enrichment: Path) -> Path:
+    """Where a file this repo generates for one export directory lives.
 
     Outside that directory, because it is this repo's file rather than the
     relational database's — but named after it, so the pair is visible at a
@@ -100,7 +101,43 @@ def functions_path(directory: Path, enrichment: Path = DATA_DIRECTORY) -> Path:
     yet rather than quietly reading the last one. A directory named by some
     other convention keeps its whole name.
     """
-    return enrichment / FUNCTIONS.format(directory.name.removeprefix(EXPORT_PREFIX))
+    return enrichment / template.format(directory.name.removeprefix(EXPORT_PREFIX))
+
+
+def functions_path(directory: Path, enrichment: Path = DATA_DIRECTORY) -> Path:
+    """The UniProt function text fetched for one export. See `_enriched`."""
+    return _enriched(FUNCTIONS, directory, enrichment)
+
+
+@dataclass(frozen=True, slots=True)
+class GoPaths:
+    """The three GO files fetched for one export, which stand or fall together.
+
+    They are written by one command and read by one loader: terms the edges
+    join, and annotations pointing at those terms. Holding them as a trio is
+    what lets a half-deleted set be caught as such.
+    """
+
+    terms: Path
+    edges: Path
+    annotations: Path
+
+    @property
+    def missing(self) -> tuple[Path, ...]:
+        return tuple(
+            path
+            for path in (self.terms, self.edges, self.annotations)
+            if not path.exists()
+        )
+
+
+def go_paths(directory: Path, enrichment: Path = DATA_DIRECTORY) -> GoPaths:
+    """The GO trio fetched for one export. See `_enriched`."""
+    return GoPaths(
+        terms=_enriched(GO_TERMS, directory, enrichment),
+        edges=_enriched(GO_EDGES, directory, enrichment),
+        annotations=_enriched(GO_ANNOTATIONS, directory, enrichment),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -488,10 +525,10 @@ class TsvExport:
 
     directory: Path = DATA_DIRECTORY
     enrichment: Path = DATA_DIRECTORY
-    """Where the files this repo generates live — the function text, and the GO
-    trio once it exists. Deliberately not the export directory: that one holds
-    what the relational database exports and nothing else, while these outlive
-    any one export the way the taxonomy does."""
+    """Where the files this repo generates live — the function text and the GO
+    trio. Deliberately not the export directory: that one holds what the
+    relational database exports and nothing else, while these outlive any one
+    export the way the taxonomy does."""
 
     taxonomy: Taxonomy = field(default_factory=Taxonomy.open)
 
@@ -510,6 +547,9 @@ class TsvExport:
             if protein.kind is ProteinKind.HUMAN
         }
         memberships = tuple(self._memberships(humans))
+        go = self._go()
+        go_terms = tuple(self._go_terms(go))
+        known = frozenset(term.go_id for term in go_terms)
         return Export(
             proteins=tuple(proteins.values()),
             taxa=taxa,
@@ -522,9 +562,9 @@ class TsvExport:
             publications=tuple(publications.values()),
             methods=methods,
             descriptions=self._descriptions(proteins, publications),
-            go_terms=tuple(self._go_terms()),
-            go_edges=tuple(self._go_edges()),
-            go_annotations=tuple(self._go_annotations(humans)),
+            go_terms=go_terms,
+            go_edges=tuple(self._go_edges(go, known)),
+            go_annotations=tuple(self._go_annotations(go, known, humans)),
         )
 
     def _scan(self) -> tuple[dict[str, Protein], tuple[Method, ...]]:
@@ -691,8 +731,34 @@ class TsvExport:
             publications[publication.pmid] = publication
         return publications
 
-    def _go_terms(self) -> Iterator[GoTerm]:
-        for cursor, row in _rows(self.enrichment / GO_TERMS):
+    def _go(self) -> GoPaths:
+        """Where this export's GO trio lives, having checked it is all there.
+
+        The three files are written by one command against one ontology
+        release, so none of them means anything without the others: an edge
+        names two terms and an annotation names one. All three missing is a
+        run that skipped the fetch, which loads without GO and says so; some of
+        them missing is a set that has been taken apart, and the fix is to
+        fetch it again rather than to build half of it.
+        """
+        paths = go_paths(self.directory, self.enrichment)
+        missing = paths.missing
+        if len(missing) == len(TRIO):
+            logger.warning(
+                "%s does not exist: the graph will have no GO terms. Run bpgraph-go %s",
+                paths.terms,
+                self.directory,
+            )
+        elif missing:
+            raise ExportError(
+                f"{', '.join(path.name for path in missing)} missing beside "
+                f"{paths.terms.name}: the GO files are written together, so "
+                f"fetch them again with bpgraph-go {self.directory}"
+            )
+        return paths
+
+    def _go_terms(self, paths: GoPaths) -> Iterator[GoTerm]:
+        for cursor, row in _rows(paths.terms):
             yield _make(
                 cursor,
                 GoTerm,
@@ -702,19 +768,34 @@ class TsvExport:
                 obsolete=_boolean(cursor, row, "obsolete"),
             )
 
-    def _go_edges(self) -> Iterator[GoEdge]:
-        for cursor, row in _rows(self.enrichment / GO_EDGES):
-            yield _make(
+    def _go_edges(self, paths: GoPaths, known: frozenset[str]) -> Iterator[GoEdge]:
+        """The ontology above the annotated terms.
+
+        Both ends must be terms this export carries. A write resolves an edge
+        by matching its two nodes, so an end that is not there is not an error
+        in the graph — it is an edge that quietly never appears, and with it a
+        rollup that stops short.
+        """
+        for cursor, row in _rows(paths.edges):
+            edge = _make(
                 cursor,
                 GoEdge,
                 child_go_id=_required(cursor, row, "child_go_id"),
                 parent_go_id=_required(cursor, row, "parent_go_id"),
                 relation=_choice(cursor, row, "relation", GoRelation),
             )
+            for go_id in (edge.child_go_id, edge.parent_go_id):
+                if go_id not in known:
+                    raise cursor.fail(f"{go_id} is not in {paths.terms.name}")
+            yield edge
 
-    def _go_annotations(self, humans: Mapping[str, Protein]) -> Iterator[GoAnnotation]:
-        for cursor, row in _rows(self.enrichment / GO_ANNOTATIONS):
-            yield _make(
+    def _go_annotations(
+        self, paths: GoPaths, known: frozenset[str], humans: Mapping[str, Protein]
+    ) -> Iterator[GoAnnotation]:
+        """What the proteins are annotated with. Human only: GO annotates a
+        whole accession, and a viral protein here is one chain of one."""
+        for cursor, row in _rows(paths.annotations):
+            annotation = _make(
                 cursor,
                 GoAnnotation,
                 protein=_resolve_human(cursor, humans, row),
@@ -723,3 +804,6 @@ class TsvExport:
                 assigned_by=_text(cursor, row, "assigned_by"),
                 qualifier=_text(cursor, row, "qualifier"),
             )
+            if annotation.go_id not in known:
+                raise cursor.fail(f"{annotation.go_id} is not in {paths.terms.name}")
+            yield annotation

@@ -53,9 +53,28 @@ def write_go_edges(writer: GraphWriter, edges: Iterable[GoEdge]) -> int:
     )
 
 
+def _identity(annotation: GoAnnotation) -> tuple[str, str, str, str, str]:
+    """Everything an annotation is, which is everything that distinguishes two.
+
+    The qualifier is part of it because `NOT` inverts an annotation: a key that
+    left it out would collapse a protein's `involved_in` and `NOT|involved_in`
+    rows onto whichever came first. The assigning database is part of it
+    because GOA states the same term for the same protein from several sources,
+    and picking one of them arbitrarily would be picking the provenance.
+    """
+    return (
+        annotation.protein.id,
+        annotation.go_id,
+        annotation.qualifier,
+        annotation.evidence_code,
+        annotation.assigned_by,
+    )
+
+
 def write_go_annotations(
     writer: GraphWriter, annotations: Iterable[GoAnnotation]
 ) -> int:
+    """One edge per distinct annotation. See `_identity` for what distinct means."""
     rows: list[Row] = [
         {
             "protein_id": annotation.protein.id,
@@ -64,8 +83,6 @@ def write_go_annotations(
             "assigned_by": annotation.assigned_by,
             "qualifier": annotation.qualifier,
         }
-        for annotation in dedupe(
-            annotations, key=lambda a: (a.protein.id, a.go_id, a.evidence_code)
-        )
+        for annotation in dedupe(annotations, key=_identity)
     ]
     return writer.write(ANNOTATED_WITH, rows)
