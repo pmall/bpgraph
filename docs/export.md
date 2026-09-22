@@ -29,12 +29,19 @@ Conventions for every file:
 [`docs/example-export/`](example-export) holds a small working example of every
 file this document asks you for, and every snippet in the sections below is a
 row from it. Loading that directory builds the graph
-[`queries.md`](queries.md) walks through.
+[`queries.md`](queries.md) walks through. It also carries the GO trio this repo
+[generates](#generated-here-not-exported), named for the directory as always
+and kept inside it rather than beside it, so the example is one self-contained
+folder:
+
+```python
+TsvExport(Path("docs/example-export"), enrichment=Path("docs/example-export"))
+```
 
 **Proteins are referenced by their natural key, never by an id** — the ids are
 derived during the build. Which key depends on the file. `descriptions.tsv`
 and `peptides.tsv` can name either partner, so they carry `accession`, `start`
-and `stop`. `memberships.tsv` and `go_annotations.tsv` apply only to human
+and `stop`. `memberships.tsv` and the GO annotations apply only to human
 proteins, and a human accession identifies exactly one of those, so they carry
 `accession` alone.
 
@@ -181,17 +188,22 @@ ferroptosis  P36969     inhibitor   GPX4 axis
 ferroptosis  O60488     activator
 ```
 
-## go_terms.tsv, go_edges.tsv, go_annotations.tsv *(not from your database)*
+## The GO trio *(not from your database)*
 
-These are not in the relational database — they will be generated in this repo
-from UniProt/GOA and the GO ontology, written into `data/` beside the
-function text, and read by the same loader. Documented here because the shape
-is the contract either way.
+These are not in the relational database. They are generated in this repo from
+GOA and the GO ontology and written into `data/` beside the function text, by
+`uv run bpgraph-go <export directory>` — see [generated
+here](#generated-here-not-exported) for the naming and the sources. Documented
+here because the shape is the contract either way.
 
-They must carry the annotated terms **plus their full ancestor closure**, or
-rolling an annotation up to a coarse process stops working.
+They carry the annotated terms **plus their full ancestor closure**, or rolling
+an annotation up to a coarse process stops working. The three are written
+together against one ontology release and are read the same way: an edge names
+two terms and an annotation names one, so the loader rejects a `go_id` that has
+no row in the terms file, and rejects finding some of the three without the
+others.
 
-`go_terms.tsv`
+`go_terms-<export>.tsv`
 
 | column | notes |
 |---|---|
@@ -200,18 +212,18 @@ rolling an annotation up to a coarse process stops working.
 | `namespace` | `biological_process`, `molecular_function` or `cellular_component` |
 | `obsolete` | `true`/`false` (`1`/`0`, `yes`/`no` also accepted; empty means false) |
 
-`go_edges.tsv`
+`go_edges-<export>.tsv`
 
 | column | notes |
 |---|---|
-| `child_go_id`, `parent_go_id` | |
+| `child_go_id`, `parent_go_id` | both must have a row in `go_terms-<export>.tsv` |
 | `relation` | `IS_A` or `PART_OF` |
 
-`go_annotations.tsv`
+`go_annotations-<export>.tsv`
 
 | column | notes |
 |---|---|
-| `accession` | the human protein |
+| `accession` | the human protein. Viral proteins are not annotated — see below |
 | `go_id` | |
 | `evidence_code` | e.g. `IDA` |
 | `assigned_by` | the database that made the annotation, e.g. `UniProt`. May be empty |
@@ -240,8 +252,10 @@ directory stays exactly what your database produced:
   `CC FUNCTION` text. It has no column in `descriptions.tsv`; `description`
   does come from the export. Written by `uv run bpgraph-functions <export
   directory>`, which reads that export to learn which proteins to fetch.
-- **The GO trio** — terms, ontology edges and annotations, from UniProt/GOA,
-  in the shape above. Still to build.
+- **`data/go_terms-<export>.tsv`, `go_edges-<export>.tsv` and
+  `go_annotations-<export>.tsv`** — the GO an export's human proteins reach.
+  Written by `uv run bpgraph-go <export directory>`, which reads that export to
+  learn which proteins to cut the ontology down to.
 
 `TsvExport` reads them from its `enrichment` directory, `data/` by default,
 and a run without them loads all the same: its proteins land with an empty
@@ -292,14 +306,50 @@ directory it is named after have parted ways — the export was rebuilt in
 place, most likely — and the loader rejects it by its line number rather than
 loading half-stale text.
 
+#### The GO trio
+
+Named the same way and for the same reason, and cut from two dumps `bpgraph-go`
+keeps in `data/` the way the taxonomy keeps NCBI's:
+
+- **`go-basic.obo`**, the ontology, from the Gene Ontology's current release.
+  It is the version filtered to the relations annotations propagate over and
+  guaranteed acyclic. Only `is_a` and `part_of` are kept of those: a protein
+  involved in `regulation of X` is not involved in `X`, so the three
+  `regulates` relations would make a rollup say things the annotations do not.
+- **`goa_human.gaf.gz`**, every GO annotation on the human reference proteome,
+  from the EBI. It carries the evidence code, the qualifier and the assigning
+  database, so no per-protein request is needed; everything the export does not
+  name is dropped as the file goes past.
+
+Both are reissued regularly and neither belongs to an export, so they are kept
+once and reused: deleting a dump is how a run picks up a newer release.
+
+Terms are written with the **full ancestor closure** above every annotated one
+— for the 2026-09-09 export, 20,720 of GO's 48,340 terms — so rolling an
+annotation up to a coarse process is a traversal rather than a lookup table.
+All three namespaces are written, and a query cuts to the one it wants with
+`namespace`, which is indexed.
+
+**Human proteins only.** GOA does annotate viral proteins, but it annotates a
+whole accession, while a viral protein here is one mature chain excised from a
+polyprotein and nothing in GOA says which chain a term belongs to. The function
+text gets away with it because UniProt scopes a FUNCTION comment to a chain by
+naming its molecule; there is no equivalent here, so `go_annotations` naming a
+viral protein is an error rather than a guess.
+
+An accession UniProt has retired, or that is not in the reference proteome,
+simply has no annotation — 16,931 of the 2026-09-09 export's 17,222 human
+proteins do.
+
 ---
 
 ## Running it
 
-Fetch the function text once for the export, then build:
+Fetch the function text and the GO once for the export, then build:
 
 ```sh
 uv run bpgraph-functions data/graph-2026-09-09    # -> data/functions-2026-09-09.tsv
+uv run bpgraph-go data/graph-2026-09-09           # -> data/go_{terms,edges,annotations}-2026-09-09.tsv
 ```
 
 ```python

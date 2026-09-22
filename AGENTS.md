@@ -1,12 +1,11 @@
 # bpgraph — agent guide
 
 A FalkorDB knowledge graph of protein–protein interactions, human–human and
-virus–human, enriched with UniProt descriptions, NCBI taxonomy, and the
-publications and detection methods behind every interaction. GO biological
-processes are designed for and not yet built — see **Still to build**. Claude
-queries it through a read-only MCP server to run interactome analyses —
-typically: take a curated set of human proteins (e.g. ferroptosis) and compare
-how viral families act on it.
+virus–human, enriched with UniProt descriptions, GO annotations on the human
+proteins, NCBI taxonomy, and the publications and detection methods behind
+every interaction. Claude queries it through a read-only MCP server to run
+interactome analyses — typically: take a curated set of human proteins (e.g.
+ferroptosis) and compare how viral families act on it.
 
 Curation happens in a separate relational database. A run exports it as TSV
 files into `data/` — gitignored — and builds a fresh graph; the graph is never
@@ -39,6 +38,7 @@ src/bpgraph/
   dedupe.py     collapse repeated records, and reject ones that disagree
   taxonomy.py   the NCBI dump in SQLite; cuts the taxa the graph keeps
   uniprot.py    fetches the function text into data/, named per export
+  go.py         cuts GO down to what an export reaches, likewise
   schema.py     index and constraint DDL, and the validation gate
   build.py      run a full build: stages, validation gate, swap
   audit.py      check a built graph against docs/schema.md
@@ -112,12 +112,6 @@ than working around it:
 9. Read the diff and confirm it holds only intentional changes.
 
 ## Still to build
-
-**GO** — terms, ontology edges and annotations from UniProt/GOA, including the
-full ancestor closure above every annotated term. Like the function text they
-belong to this repo rather than to the export, so they write into `data/` in
-the shape `docs/export.md` specifies, and the existing loader reads them from
-there without changes.
 
 `memberships.tsv` comes from a later export; nothing to build for it.
 

@@ -160,11 +160,23 @@ RETURN i.id, collect(p.name) AS partners
 ```cypher
 MATCH (v:Viral)-[:IN_TAXON]->(:Taxon)-[:PARENT*1..]->(:Taxon {name: $family})
 MATCH (v)<-[:INVOLVES]-(:VH)-[:INVOLVES]->(h:Human)
-MATCH (h)-[:ANNOTATED_WITH]->(:GoTerm)-[:IS_A|PART_OF*0..]->
+MATCH (h)-[r:ANNOTATED_WITH]->(:GoTerm)-[:IS_A|PART_OF*0..]->
       (g:GoTerm {namespace: 'biological_process'})
+WHERE NOT r.qualifier STARTS WITH 'NOT'
 RETURN g.name, count(DISTINCT h) AS n_proteins
 ORDER BY n_proteins DESC LIMIT 40
 ```
+
+`*0..` is what makes this a rollup: zero hops keeps the terms the proteins are
+annotated with, and every hop above them is an ancestor the build loaded for
+exactly this. **Filter the qualifier.** GOA states what a protein is *not*
+involved in as an ordinary annotation with `NOT` in front of its qualifier, so
+counting it would put the protein in the one process it is known to stay out
+of.
+
+Swap `namespace` to ask the same question along another axis:
+`molecular_function` for the activities a family engages, `cellular_component`
+for the compartments it reaches.
 
 ## Human interactome context around a set
 

@@ -168,12 +168,22 @@ target are one node, and the distinction does not arise.
 | `namespace` | str | `biological_process` / `molecular_function` / `cellular_component` |
 | `obsolete` | bool | |
 
-Load annotated terms **plus their full ancestor closure**, so rolling up to a
-coarse process is a traversal, not a lookup table. GO is the structured
-functional layer; `description` and `function` on `:Protein` say the same thing
-in prose. UniProt's smaller controlled vocabularies — keywords, subcellular
-location, InterPro/Pfam — would each follow this pattern if a query ever wants
-them. None are modelled until then.
+Annotated terms **plus their full ancestor closure**, so rolling up to a coarse
+process is a traversal, not a lookup table. Only the three namespace roots have
+no parent; every other term sits under one. All three namespaces are loaded and
+a query cuts to the one it wants on `namespace` — `biological_process` is the
+process axis, `molecular_function` the mechanistic one, `cellular_component`
+the compartment one.
+
+GO is the structured functional layer; `description` and `function` on
+`:Protein` say the same thing in prose. UniProt's smaller controlled
+vocabularies — keywords, InterPro/Pfam — would each follow this pattern if a
+query ever wants them; subcellular location arrives as `cellular_component`
+already. None are modelled until then.
+
+**Only human proteins are annotated.** GOA annotates a whole accession, while a
+viral protein here is one mature chain of a polyprotein, and nothing in GOA
+says which chain a term belongs to — see [`export.md`](export.md).
 
 ---
 
@@ -189,7 +199,7 @@ them. None are modelled until then.
 | `(:Protein)-[:IN_TAXON]->(:Taxon)` | — | viral only, to the `species` node |
 | `(:Taxon)-[:PARENT]->(:Taxon)` | — | species → family |
 | `(:Protein)-[:MEMBER_OF]->(:ProteinSet)` | arbitrary, see below | curated membership |
-| `(:Protein)-[:ANNOTATED_WITH]->(:GoTerm)` | `evidence_code`, `assigned_by`, `qualifier` | from UniProt/GOA |
+| `(:Protein)-[:ANNOTATED_WITH]->(:GoTerm)` | `evidence_code`, `assigned_by`, `qualifier` | human only, from UniProt/GOA |
 | `(:GoTerm)-[:IS_A]->(:GoTerm)` | — | GO ontology |
 | `(:GoTerm)-[:PART_OF]->(:GoTerm)` | — | GO ontology |
 
