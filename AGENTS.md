@@ -81,7 +81,7 @@ At the end of every coding session, in order, fixing what they surface rather th
 4. `uv run pyright`
 5. `uv run python -m compileall -q src` — add other code roots as they appear.
 6. `uv run pytest`, if there is anything to test. This is ingestion code and query scripts; most of it is verified by running it, not by unit tests.
-7. `uv run mdformat --wrap no --number *.md docs`
+7. `uv run mdformat --wrap no --number *.md docs .agents/skills`
 
 ## Topics
 
