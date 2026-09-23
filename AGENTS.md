@@ -1,6 +1,6 @@
 # bpgraph — agent guide
 
-A FalkorDB knowledge graph of protein–protein interactions, human–human and virus–human, enriched with UniProt descriptions, GO annotations on the human proteins, NCBI taxonomy, and the publications and detection methods behind every interaction. Claude queries it through a read-only MCP server to run interactome analyses — typically: take a topic curated as a list of human proteins (e.g. ferroptosis) and compare how viral families act on it.
+A FalkorDB knowledge graph of protein–protein interactions, human–human and virus–human, enriched with UniProt descriptions, GO annotations on the human proteins, NCBI taxonomy, and the publications and detection methods behind every interaction. This repo holds the graph server, the ingestion that builds it, and the MCP server. Claude queries it through that read-only MCP server to run interactome analyses — typically: take a topic curated as a list of human proteins (e.g. ferroptosis) and compare how viral families act on it.
 
 Curation happens in a separate relational database. A run exports it as TSV files into `data/<date>/export/` — gitignored — fetches what the export lacks beside it, and builds a fresh graph; the graph is never edited in place.
 

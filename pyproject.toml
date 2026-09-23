@@ -1,7 +1,7 @@
 [project]
 name = "bpgraph"
 version = "0.1.0"
-description = "Add your description here"
+description = "FalkorDB graph of protein-protein interactions: ingestion, validation and a read-only MCP server"
 readme = "README.md"
 authors = [
     { name = "pmall", email = "pierre.mallinjoud@gmail.com" }

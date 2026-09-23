@@ -1,3 +1,7 @@
+# Pinned so containers and the data volume keep their names whatever the
+# checkout directory is called.
+name: bpgraph
+
 services:
   # Graph database. Speaks RESP on 6379.
   # Published to the host so local scripts (python) can connect on localhost:6379.
