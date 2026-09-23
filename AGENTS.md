@@ -1,6 +1,6 @@
 # bpgraph — agent guide
 
-A FalkorDB knowledge graph of protein–protein interactions, human–human and virus–human, enriched with UniProt descriptions, GO annotations on the human proteins, NCBI taxonomy, and the publications and detection methods behind every interaction. Claude queries it through a read-only MCP server to run interactome analyses — typically: take a curated set of human proteins (e.g. ferroptosis) and compare how viral families act on it.
+A FalkorDB knowledge graph of protein–protein interactions, human–human and virus–human, enriched with UniProt descriptions, GO annotations on the human proteins, NCBI taxonomy, and the publications and detection methods behind every interaction. Claude queries it through a read-only MCP server to run interactome analyses — typically: take a topic curated as a list of human proteins (e.g. ferroptosis) and compare how viral families act on it.
 
 Curation happens in a separate relational database. A run exports it as TSV files into `data/<date>/export/` — gitignored — fetches what the export lacks beside it, and builds a fresh graph; the graph is never edited in place.
 
@@ -19,8 +19,8 @@ Read these when the task reaches them, not before:
 
 ```
 data/           one directory per run: export/ as the database wrote it,
-                and the taxonomy, function text and GO fetched for it.
-                Gitignored
+                the taxonomy, function text and GO fetched for it, and
+                topics/ resolved against it. Gitignored
 src/bpgraph/
   config.py     env-driven connection settings
   client.py     thin FalkorDB wrapper: parameterized query/write
@@ -83,9 +83,9 @@ At the end of every coding session, in order, fixing what they surface rather th
 6. `uv run pytest`, if there is anything to test. This is ingestion code and query scripts; most of it is verified by running it, not by unit tests.
 7. `uv run mdformat --wrap no --number *.md docs`
 
-## Still to build
+## Topics
 
-`memberships.tsv` comes from a later export; nothing to build for it.
+A topic reaches us as a biologist's spreadsheet, and no two are alike: different columns, symbols with aliases in the cell, genes encoding several proteins. There is no parser for them. Resolve each list by judgment into `data/<run>/topics/<topic>.tsv` — `accession` and whatever the topic records — asking about anything ambiguous, and document its columns in `docs/schema.md` and `TOPIC_PROPERTIES` in `audit.py`. Resolve again for every new export. See [`docs/export.md`](docs/export.md).
 
 ## Git
 

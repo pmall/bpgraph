@@ -46,6 +46,12 @@ class Run:
         return self.directory / "export"
 
     @property
+    def topics(self) -> Path:
+        """The curated topic lists, one TSV per topic, resolved against this
+        export by hand from whatever form the biologists keep them in."""
+        return self.directory / "topics"
+
+    @property
     def functions(self) -> Path:
         """The UniProt function text, written by `bpgraph.uniprot`."""
         return self.directory / "functions.tsv"

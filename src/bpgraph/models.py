@@ -19,10 +19,6 @@ from bpgraph.enums import (
 )
 from bpgraph.ids import interaction_id, protein_id
 
-type Scalar = str | int | float | bool
-type Attribute = Scalar | list[str] | list[int] | list[float] | list[bool]
-"""What a `:MEMBER_OF` property may hold. The engine rejects nested maps."""
-
 ACCESSION = r"^[A-Z0-9]+$"
 
 
@@ -35,7 +31,7 @@ class Record(BaseModel):
 class ProteinRef(Record):
     """A protein's natural key, and the id derived from it.
 
-    Everything that points at a protein — membership, a description, a GO
+    Everything that points at a protein — a topic, a description, a GO
     annotation — takes one of these. A full `Protein` is itself a `ProteinRef`
     and is accepted wherever one is declared, so a loader holding proteins can
     pass them straight through without converting.
@@ -96,18 +92,19 @@ class TaxonLink(Record):
         return self
 
 
-class ProteinSet(Record):
-    """A curated per-project set of proteins of interest."""
+class Topic(Record):
+    """A subject of study, e.g. `ferroptosis`, curated as a list of proteins."""
 
     name: str = Field(min_length=1)
 
 
-class SetMembership(Record):
-    """One protein in one set, with whatever the project records about it."""
+class Involvement(Record):
+    """One human protein in one topic, with whatever that topic records about
+    it. Each topic has its own columns, so they are kept as text, verbatim."""
 
     protein: ProteinRef
-    set_name: str = Field(min_length=1)
-    attributes: Mapping[str, Attribute] = {}
+    topic: str = Field(min_length=1)
+    properties: Mapping[str, str] = {}
 
 
 class Publication(Record):
@@ -241,8 +238,8 @@ class Export(Record):
     proteins: tuple[Protein, ...] = ()
     taxa: tuple[Taxon, ...] = ()
     taxon_links: tuple[TaxonLink, ...] = ()
-    protein_sets: tuple[ProteinSet, ...] = ()
-    memberships: tuple[SetMembership, ...] = ()
+    topics: tuple[Topic, ...] = ()
+    involvements: tuple[Involvement, ...] = ()
     publications: tuple[Publication, ...] = ()
     methods: tuple[Method, ...] = ()
     descriptions: tuple[Description, ...] = ()

@@ -26,7 +26,7 @@ UNIQUE_CONSTRAINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Protein", ("id",)),
     ("Protein", ("accession", "start", "stop")),
     ("Taxon", ("taxon_id",)),
-    ("ProteinSet", ("name",)),
+    ("Topic", ("name",)),
     ("GoTerm", ("go_id",)),
     ("Publication", ("pmid",)),
     ("Method", ("psimi_id",)),

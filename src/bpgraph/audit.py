@@ -42,7 +42,7 @@ NODE_PROPERTIES: Mapping[str, Mapping[str, str]] = {
         "taxon_name": "String",
     },
     "Taxon": {"taxon_id": "Integer", "name": "String", "rank": "String"},
-    "ProteinSet": {"name": "String"},
+    "Topic": {"name": "String"},
     "Publication": {
         "pmid": "String",
         "title": "String",
@@ -87,7 +87,7 @@ RELATIONSHIPS: tuple[tuple[str, str, str, tuple[str, ...] | None], ...] = (
     ("REPORTS", "Description", "Peptide", ("source_side",)),
     ("IN_TAXON", "Viral", "Taxon", ()),
     ("PARENT", "Taxon", "Taxon", ()),
-    ("MEMBER_OF", "Protein", "ProteinSet", None),
+    ("INVOLVED_IN", "Human", "Topic", None),
     (
         "ANNOTATED_WITH",
         "Human",
@@ -97,7 +97,13 @@ RELATIONSHIPS: tuple[tuple[str, str, str, tuple[str, ...] | None], ...] = (
     ("IS_A", "GoTerm", "GoTerm", ()),
     ("PART_OF", "GoTerm", "GoTerm", ()),
 )
-"""Type, the labels it must join, and its properties. `None` means free-form."""
+"""Type, the labels it must join, and its properties. `None` means they vary,
+and are checked by `TOPIC_PROPERTIES`."""
+
+TOPIC_PROPERTIES: Mapping[str, tuple[str, ...]] = {
+    "ferroptosis": ("role",),
+}
+"""Every topic, and the properties its `:INVOLVED_IN` edges carry."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,6 +173,21 @@ def _edge_shape(
             f"WHERE {' OR '.join(tests)}\n"
             "RETURN ID(r) AS edge, labels(a) AS source, labels(b) AS target,\n"
             "       keys(r) AS keys"
+        ),
+    )
+
+
+def _topic_shape(topic: str, properties: tuple[str, ...]) -> Check:
+    """The properties one topic's edges carry, which no other topic shares."""
+    tests = [f"typeOf(r.{name}) = 'Null'" for name in properties]
+    tests.append(f"size(keys(r)) <> {len(properties)}")
+    return Check(
+        name=f"INVOLVED_IN.{topic}",
+        rule=f"{topic} involvements carry {', '.join(properties)}",
+        cypher=(
+            f"MATCH (p)-[r:INVOLVED_IN]->(:Topic {{name: '{topic}'}})\n"
+            f"WHERE {' OR '.join(tests)}\n"
+            "RETURN p.id AS id, keys(r) AS keys"
         ),
     )
 
@@ -246,6 +267,13 @@ INVARIANTS: tuple[Check, ...] = (
         "MATCH (d:Description)-[r:REPORTS]->(:Peptide)\n"
         "WHERE NOT r.source_side IN ['a', 'b']\n"
         "RETURN d.id AS id, r.source_side AS source_side",
+    ),
+    Check(
+        "Topic.documented",
+        "every topic is one schema.md documents",
+        "MATCH (t:Topic)\n"
+        f"WHERE NOT t.name IN {list(TOPIC_PROPERTIES)}\n"
+        "RETURN t.name AS topic",
     ),
     Check(
         "Interaction.counters",
@@ -342,6 +370,7 @@ CHECKS: tuple[Check, ...] = (
     *(_node_shape(label, properties) for label, properties in NODE_PROPERTIES.items()),
     *(_sublabel(base, options) for base, options in SUBLABELS.items()),
     *(_edge_shape(*relationship) for relationship in RELATIONSHIPS),
+    *(_topic_shape(*topic) for topic in TOPIC_PROPERTIES.items()),
     *INVARIANTS,
 )
 
