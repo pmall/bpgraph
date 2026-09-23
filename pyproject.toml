@@ -29,6 +29,7 @@ dev = [
     "pytest>=8",
     "mdformat>=1.0.0",
     "mdformat-gfm>=1.0.0",
+    "mdformat-frontmatter>=2.1.2",
 ]
 
 [tool.ruff.lint]
