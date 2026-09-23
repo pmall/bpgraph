@@ -35,8 +35,6 @@ This is exactly the graph [`docs/example-export/`](example-export) builds, so ev
                                            name:"Orthohepacivirus hominis"})
                       -[:PARENT]-> (:Taxon {taxon_id:3700683, rank:"family",
                                             name:"Hepaciviridae"})
-(P36969) -[:MEMBER_OF {role:"inhibitor", mechanism:"GPX4 axis"}]->
-         (:ProteinSet {name:"ferroptosis"})
 ```
 
 `source_side: "b"` is what makes the peptide directed: side `b` is NS5A, so the peptide is *from* NS5A and *binds* GPX4. `D-00418` is the same pair by a second method, so it adds one `:Description`, bumps `n_descriptions` and `n_methods`, and reuses everything else.
@@ -47,10 +45,10 @@ The taxon shows something else: the export says `11103`, the graph says `3052230
 
 ______________________________________________________________________
 
-## Differential: how do viral families act on a protein set?
+## Differential: how do viral families act on a topic?
 
 ```cypher
-MATCH (h:Human)-[m:MEMBER_OF]->(:ProteinSet {name: $set})
+MATCH (h:Human)-[m:INVOLVED_IN]->(:Topic {name: $topic})
 MATCH (h)<-[:INVOLVES]-(i:VH)-[:INVOLVES]->(v:Viral)
 MATCH (v)-[:IN_TAXON]->(:Taxon)-[:PARENT*1..]->(f:Taxon {rank: 'family'})
 RETURN f.name AS family, m.role AS role,
@@ -60,10 +58,10 @@ RETURN f.name AS family, m.role AS role,
 ORDER BY n_targets DESC
 ```
 
-## Peptides available against a protein set — the shortlist
+## Peptides available against a topic — the shortlist
 
 ```cypher
-MATCH (h:Human)-[:MEMBER_OF]->(:ProteinSet {name: $set})
+MATCH (h:Human)-[:INVOLVED_IN]->(:Topic {name: $topic})
 MATCH (i:VH)-[:INVOLVES {side: 'a'}]->(h)
 MATCH (i)-[:INVOLVES {side: 'b'}]->(v:Viral)
 MATCH (i)<-[:SUPPORTS]-(:Description)-[:REPORTS {source_side: 'b'}]->(x:Peptide)
@@ -110,7 +108,7 @@ ORDER BY b.year DESC
 ## Well-supported interactions lacking a peptide — where to look next
 
 ```cypher
-MATCH (h:Human)-[:MEMBER_OF]->(:ProteinSet {name: $set})
+MATCH (h:Human)-[:INVOLVED_IN]->(:Topic {name: $topic})
 MATCH (h)<-[:INVOLVES]-(i:VH)-[:INVOLVES]->(v:Viral)
 WHERE i.n_peptides = 0 AND i.n_publications >= 2
 RETURN v.name AS viral, h.name AS human,
@@ -154,15 +152,15 @@ ORDER BY n_proteins DESC LIMIT 40
 
 Swap `namespace` to ask the same question along another axis: `molecular_function` for the activities a family engages, `cellular_component` for the compartments it reaches.
 
-## Human interactome context around a set
+## Human interactome context around a topic
 
-First-shell partners that are not themselves members, ranked by support. The `n <> h` test does double duty: it drops the members, and it drops the homodimers, whose two `:INVOLVES` edges both land on `h` itself.
+First-shell partners the topic does not itself involve, ranked by support. The `n <> h` test does double duty: it drops the topic's own proteins, and it drops the homodimers, whose two `:INVOLVES` edges both land on `h` itself.
 
 ```cypher
-MATCH (h:Human)-[:MEMBER_OF]->(:ProteinSet {name: $set})
+MATCH (h:Human)-[:INVOLVED_IN]->(:Topic {name: $topic})
 MATCH (h)<-[:INVOLVES]-(i:HH)-[:INVOLVES]->(n:Human)
-WHERE n <> h AND NOT (n)-[:MEMBER_OF]->(:ProteinSet {name: $set})
+WHERE n <> h AND NOT (n)-[:INVOLVED_IN]->(:Topic {name: $topic})
 RETURN n.name, max(i.n_publications) AS best_support,
-       count(DISTINCT h) AS n_member_neighbours
-ORDER BY n_member_neighbours DESC, best_support DESC
+       count(DISTINCT h) AS n_topic_neighbours
+ORDER BY n_topic_neighbours DESC, best_support DESC
 ```
