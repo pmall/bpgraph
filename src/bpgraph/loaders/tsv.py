@@ -21,7 +21,8 @@ Neither `Protein.function` nor GO has a column: the relational database holds
 neither. `bpgraph.uniprot` fetches the function text and `bpgraph.go` the GO
 trio into the run directory, beside `export/` rather than in it, since they are
 this repo's files and not the export's — parsed here all the same, since they
-are TSV in the shape docs/export.md specifies.
+are TSV in the shape docs/export.md specifies. So are the curated topic lists
+in `topics/`, resolved against this export by hand.
 """
 
 import csv
@@ -44,13 +45,13 @@ from bpgraph.models import (
     GoAnnotation,
     GoEdge,
     GoTerm,
+    Involvement,
     Method,
     Peptide,
     Protein,
-    ProteinSet,
     Publication,
     ReportedPeptide,
-    SetMembership,
+    Topic,
 )
 from bpgraph.run import GoPaths, Run
 from bpgraph.taxonomy import Taxonomy, TaxonomyUnavailable
@@ -60,11 +61,9 @@ logger = logging.getLogger(__name__)
 DESCRIPTIONS = "descriptions.tsv"
 PUBLICATIONS = "publications.tsv"
 PEPTIDES = "peptides.tsv"
-MEMBERSHIPS = "memberships.tsv"
 
 REQUIRED = (DESCRIPTIONS, PUBLICATIONS)
 
-MEMBERSHIP_COLUMNS = frozenset({"set_name", "accession"})
 AUTHOR_SEPARATOR = ";"
 TRUTHY = frozenset({"true", "t", "yes", "y", "1"})
 FALSY = frozenset({"false", "f", "no", "n", "0", ""})
@@ -441,8 +440,8 @@ def _resolve(
 def _resolve_human(
     cursor: _Cursor, humans: Mapping[str, Protein], row: Mapping[str, str]
 ) -> Protein:
-    """Memberships and GO annotations name a human protein by accession alone,
-    which identifies exactly one node."""
+    """GO annotations name a human protein by accession alone, which
+    identifies exactly one node."""
     accession = _required(cursor, row, "accession")
     protein = humans.get(accession)
     if protein is None:
@@ -489,7 +488,7 @@ class TsvExport:
             for protein in proteins.values()
             if protein.kind is ProteinKind.HUMAN
         }
-        memberships = tuple(self._memberships(humans))
+        involvements = tuple(self._involvements(humans))
         go = self._go()
         go_terms = tuple(self._go_terms(go))
         known = frozenset(term.go_id for term in go_terms)
@@ -497,11 +496,10 @@ class TsvExport:
             proteins=tuple(proteins.values()),
             taxa=taxa,
             taxon_links=taxon_links,
-            protein_sets=tuple(
-                ProteinSet(name=name)
-                for name in sorted({m.set_name for m in memberships})
+            topics=tuple(
+                Topic(name=name) for name in sorted({i.topic for i in involvements})
             ),
-            memberships=memberships,
+            involvements=involvements,
             publications=tuple(publications.values()),
             methods=methods,
             descriptions=self._descriptions(proteins, publications),
@@ -635,21 +633,35 @@ class TsvExport:
                 update={"function": _required(cursor, row, "function")}
             )
 
-    def _memberships(self, humans: Mapping[str, Protein]) -> Iterator[SetMembership]:
-        for cursor, row in _rows(self.run.export / MEMBERSHIPS):
-            protein = _resolve_human(cursor, humans, row)
-            attributes = {
-                column: value
-                for column, value in row.items()
-                if column not in MEMBERSHIP_COLUMNS and value
-            }
-            yield _make(
-                cursor,
-                SetMembership,
-                protein=protein,
-                set_name=_required(cursor, row, "set_name"),
-                attributes=attributes,
-            )
+    def _involvements(self, humans: Mapping[str, Protein]) -> Iterator[Involvement]:
+        """Every topic list in the run's `topics/`, one topic per file.
+
+        A list may name a gene with no interaction in this export: it is not a
+        protein here, so it is logged and left out rather than failing the run.
+        """
+        for path in sorted(self.run.topics.glob("*.tsv")):
+            absent: list[str] = []
+            for cursor, row in _rows(path):
+                accession = _required(cursor, row, "accession")
+                protein = humans.get(accession)
+                if protein is None:
+                    absent.append(accession)
+                    continue
+                yield _make(
+                    cursor,
+                    Involvement,
+                    protein=protein,
+                    topic=path.stem,
+                    properties={k: v for k, v in row.items() if k != "accession"},
+                )
+            if absent:
+                logger.warning(
+                    "%s: %d accessions are not human proteins in %s: %s",
+                    path.name,
+                    len(absent),
+                    DESCRIPTIONS,
+                    ", ".join(absent),
+                )
 
     def _publications(self) -> dict[str, Publication]:
         publications: dict[str, Publication] = {}

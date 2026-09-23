@@ -18,7 +18,7 @@ Indexes come **first** so that every `MATCH` a load performs — and each relati
 
 ## Stages within step 2
 
-1. **Proteins, taxonomy, protein sets** — the entity backbone.
+1. **Proteins, taxonomy, topics** — the entity backbone.
 2. **Interactions** — `:Interaction`, `:Description`, `:Publication`, `:Method`, `:Peptide`.
 3. **Enrichment** — `function` text, `:GoTerm` nodes with the GO ancestor closure, and the annotations onto human proteins.
 4. **Derive** — the `:Interaction` counters, and the optional `:INTERACTS_WITH` shortcut.

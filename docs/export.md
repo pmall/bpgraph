@@ -26,7 +26,7 @@ TsvExport(
 )
 ```
 
-**Proteins are referenced by their natural key, never by an id** — the ids are derived during the build. Which key depends on the file. `descriptions.tsv` and `peptides.tsv` can name either partner, so they carry `accession`, `start` and `stop`. `memberships.tsv` and the GO annotations apply only to human proteins, and a human accession identifies exactly one of those, so they carry `accession` alone.
+**Proteins are referenced by their natural key, never by an id** — the ids are derived during the build. Which key depends on the file. `descriptions.tsv` and `peptides.tsv` can name either partner, so they carry `accession`, `start` and `stop`. The GO annotations apply only to human proteins, and a human accession identifies exactly one of those, so they carry `accession` alone.
 
 ______________________________________________________________________
 
@@ -115,24 +115,6 @@ The source columns name one of the description's two partners in full, so they r
 
 **Only the sequence is stored.** The graph keeps one `:Peptide` node per unique sequence, and the peptide's position within its source is not modelled — see [`schema.md`](schema.md). Rows that agree once the position is dropped are the same reported peptide, so a description reporting the same residues twice yields one `:REPORTS` edge, not two.
 
-## memberships.tsv *(later)*
-
-Not yet exported — curated sets come in a later run. Which proteins belong to which curated set. The set itself needs no file — it is created from the names used here.
-
-| column          | notes                                                  |
-| --------------- | ------------------------------------------------------ |
-| `set_name`      | e.g. `ferroptosis`                                     |
-| `accession`     | the human protein. Referencing a viral one is an error |
-| *anything else* | **every further column becomes membership metadata**   |
-
-Extra columns are free-form: add `role`, `mechanism`, `curator`, whatever the project records. An empty cell means the attribute is simply absent for that protein, not that it is empty. Values are stored as text.
-
-```
-set_name     accession  role        mechanism
-ferroptosis  P36969     inhibitor   GPX4 axis
-ferroptosis  O60488     activator
-```
-
 ## The GO trio *(not from your database)*
 
 These are not in the relational database. They are generated in this repo from GOA and the GO ontology and written into the run directory beside the function text, by `uv run bpgraph-go <run directory>` — see [generated here](#generated-here-not-exported) for the naming and the sources. Documented here because the shape is the contract either way.
@@ -217,6 +199,24 @@ Terms are written with the **full ancestor closure** above every annotated one �
 
 An accession UniProt has retired, or that is not in the reference proteome, simply has no annotation — 16,931 of the 2026-09-09 export's 17,222 human proteins do.
 
+## Topic lists *(resolved here, per run)*
+
+A topic is a subject of study, curated by a biologist as a spreadsheet of genes — ferroptosis, from `data/HH-Ferroptosis_completed.xlsx`. Those spreadsheets are kept untouched in `data/`, and they are too irregular to parse: each has its own columns, and cells like `EIF2AK3 (PERK)`. So each is **resolved by hand against a run's export** into `topics/<topic>.tsv` in the run directory, and that is what the build reads. A new export is a new run directory, so its topics are resolved again, against the proteins it actually has.
+
+| column          | notes                                                                |
+| --------------- | -------------------------------------------------------------------- |
+| `accession`     | a human protein of this export                                       |
+| *anything else* | what the topic records about it, e.g. `role`. Each topic has its own |
+
+The file name is the topic's name. Every further column becomes a property of `:INVOLVED_IN`, as text, and must be listed for its topic in [`schema.md`](schema.md). A spreadsheet names genes, so a gene encoding two proteins — `CDKN2A`, p16INK4a and p14ARF — gets a row for each. An accession the export does not have is logged and left out.
+
+```
+accession  role
+P42771     suppressor
+Q8N726     suppressor
+Q9NZJ5     suppressor
+```
+
 ______________________________________________________________________
 
 ## Running it
@@ -230,6 +230,7 @@ data/2026-09-09/
   functions.tsv
   go-basic.obo       goa_human.gaf.gz
   go_terms.tsv       go_edges.tsv       go_annotations.tsv
+  topics/            ferroptosis.tsv
 ```
 
 Fetch the taxonomy, the function text and the GO once for the export, then build:

@@ -1,6 +1,6 @@
 # bpgraph — schema for query clients
 
-A FalkorDB graph, key **`bpgraph`**, queried in Cypher and read-only. Protein–protein interactions, human–human and virus–human, with the publications, detection methods and peptides behind them; the NCBI taxonomy of the viruses; GO annotations on the human proteins.
+A FalkorDB graph, key **`bpgraph`**, queried in Cypher and read-only. Protein–protein interactions, human–human and virus–human, with the publications, detection methods and peptides behind them; the NCBI taxonomy of the viruses; GO annotations on the human proteins; and curated topics, lists of human proteins involved in a subject of study.
 
 ## Nodes
 
@@ -17,22 +17,22 @@ Key in bold. Every property is always present; unknown text is `''`.
 | `:Peptide`                            | **`sequence`**, `length`                                                                            | a subsequence reported sufficient for an interaction                                                        |
 | `:Taxon`                              | **`taxon_id`**, `name`, `rank`                                                                      | viral species and families only                                                                             |
 | `:GoTerm`                             | **`go_id`**, `name`, `namespace`, `obsolete`                                                        | `namespace`: `biological_process`, `molecular_function`, `cellular_component`                               |
-| `:ProteinSet`                         | **`name`**                                                                                          | a curated set of human proteins, e.g. `ferroptosis`                                                         |
+| `:Topic`                              | **`name`**                                                                                          | a subject of study curated as human proteins, e.g. `ferroptosis`                                            |
 
 ## Relationships
 
-| pattern                                         | properties                                          |
-| ----------------------------------------------- | --------------------------------------------------- |
-| `(:Interaction)-[:INVOLVES]->(:Protein)`        | `side`: `'a'` or `'b'`                              |
-| `(:Description)-[:SUPPORTS]->(:Interaction)`    |                                                     |
-| `(:Description)-[:REPORTED_IN]->(:Publication)` |                                                     |
-| `(:Description)-[:DETECTED_BY]->(:Method)`      |                                                     |
-| `(:Description)-[:REPORTS]->(:Peptide)`         | `source_side`: `'a'` or `'b'`                       |
-| `(:Protein:Viral)-[:IN_TAXON]->(:Taxon)`        | to the species                                      |
-| `(:Taxon)-[:PARENT]->(:Taxon)`                  | species → family                                    |
-| `(:Protein:Human)-[:MEMBER_OF]->(:ProteinSet)`  | set-specific, e.g. `role`; read them with `keys(r)` |
-| `(:Protein:Human)-[:ANNOTATED_WITH]->(:GoTerm)` | `evidence_code`, `assigned_by`, `qualifier`         |
-| `(:GoTerm)-[:IS_A\|PART_OF]->(:GoTerm)`         | child → parent                                      |
+| pattern                                         | properties                                                                 |
+| ----------------------------------------------- | -------------------------------------------------------------------------- |
+| `(:Interaction)-[:INVOLVES]->(:Protein)`        | `side`: `'a'` or `'b'`                                                     |
+| `(:Description)-[:SUPPORTS]->(:Interaction)`    |                                                                            |
+| `(:Description)-[:REPORTED_IN]->(:Publication)` |                                                                            |
+| `(:Description)-[:DETECTED_BY]->(:Method)`      |                                                                            |
+| `(:Description)-[:REPORTS]->(:Peptide)`         | `source_side`: `'a'` or `'b'`                                              |
+| `(:Protein:Viral)-[:IN_TAXON]->(:Taxon)`        | to the species                                                             |
+| `(:Taxon)-[:PARENT]->(:Taxon)`                  | species → family                                                           |
+| `(:Protein:Human)-[:INVOLVED_IN]->(:Topic)`     | per topic; `ferroptosis`: `role` is `'driver'`, `'suppressor'` or `'both'` |
+| `(:Protein:Human)-[:ANNOTATED_WITH]->(:GoTerm)` | `evidence_code`, `assigned_by`, `qualifier`                                |
+| `(:GoTerm)-[:IS_A\|PART_OF]->(:GoTerm)`         | child → parent                                                             |
 
 ## Rules
 
@@ -44,10 +44,10 @@ Key in bold. Every property is always present; unknown text is `''`.
 
 ## Examples
 
-Which viral families target a protein set:
+Which viral families target a topic's proteins:
 
 ```cypher
-MATCH (:ProteinSet {name: 'ferroptosis'})<-[:MEMBER_OF]-(h:Human)
+MATCH (:Topic {name: 'ferroptosis'})<-[:INVOLVED_IN]-(h:Human)
       <-[:INVOLVES]-(i:VH)-[:INVOLVES]->(:Viral)
       -[:IN_TAXON]->(:Taxon)-[:PARENT]->(f:Taxon {rank: 'family'})
 RETURN f.name AS family, count(DISTINCT h) AS targets,

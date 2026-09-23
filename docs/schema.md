@@ -49,9 +49,9 @@ The `:PARENT` chain is **derived** at build time from the NCBI taxonomy, which t
 
 `rank` is NCBI's own, so it is an open vocabulary rather than a fixed pair. Two of the three viruses checked against the real dump — HIV-1 and HSV-1 — sit at `no rank`, so constraining it would have rejected them.
 
-### `:ProteinSet`
+### `:Topic`
 
-A curated per-project set of proteins of interest (`ferroptosis`) — not a GO pathway.
+A subject of study (`ferroptosis`), curated as a list of human proteins — not a GO term. The lists are not in the export; see [`export.md`](export.md).
 
 | property | type | notes   |
 | -------- | ---- | ------- |
@@ -143,7 +143,7 @@ ______________________________________________________________________
 | `(:Description)-[:REPORTS]->(:Peptide)`         | `source_side: 'a'\|'b'`                     | the peptide, and which partner it came from |
 | `(:Protein)-[:IN_TAXON]->(:Taxon)`              | —                                           | viral only, to the `species` node           |
 | `(:Taxon)-[:PARENT]->(:Taxon)`                  | —                                           | species → family                            |
-| `(:Protein)-[:MEMBER_OF]->(:ProteinSet)`        | arbitrary, see below                        | curated membership                          |
+| `(:Protein)-[:INVOLVED_IN]->(:Topic)`           | per topic, see below                        | human only, from the curated list           |
 | `(:Protein)-[:ANNOTATED_WITH]->(:GoTerm)`       | `evidence_code`, `assigned_by`, `qualifier` | human only, from UniProt/GOA                |
 | `(:GoTerm)-[:IS_A]->(:GoTerm)`                  | —                                           | GO ontology                                 |
 | `(:GoTerm)-[:PART_OF]->(:GoTerm)`               | —                                           | GO ontology                                 |
@@ -154,9 +154,13 @@ ______________________________________________________________________
 
 Entering from a protein, compare that protein's own `INVOLVES.side` against `source_side`: equal means the protein is the peptide's **source**, different means it is the **target**. Omitting the comparison silently mixes the two. Worked queries are in [`queries.md`](queries.md).
 
-### `:MEMBER_OF` metadata
+### `:INVOLVED_IN` properties
 
-Arbitrary key/value pairs written in one shot with `SET r += $attrs`, e.g. `{role: 'inhibitor', mechanism: 'GPX4 axis'}`. The engine restricts values to **scalars or arrays of scalars**; a nested map is rejected. Allowed keys per set are validated in Python, not in the graph.
+Each topic records its own things about its proteins, so the properties depend on the topic — they are its list's columns, verbatim, as text. A topic is added here with its properties, or the audit rejects it.
+
+| topic         | properties | values                                                                                                          |
+| ------------- | ---------- | --------------------------------------------------------------------------------------------------------------- |
+| `ferroptosis` | `role`     | `driver` promotes ferroptosis, `suppressor` holds it back, `both` does either depending on context. From FerrDB |
 
 ### Derived shortcuts (optional)
 
@@ -175,7 +179,7 @@ Every label has one key property, and it is what `MERGE` and `MATCH` target. Mos
 | `:Method`      | `psimi_id` |                                       |
 | `:GoTerm`      | `go_id`    |                                       |
 | `:Taxon`       | `taxon_id` |                                       |
-| `:ProteinSet`  | `name`     |                                       |
+| `:Topic`       | `name`     |                                       |
 | `:Description` | `id`       | the relational database's `stable_id` |
 | `:Protein`     | `id`       | **derived** — see below               |
 | `:Interaction` | `id`       | **derived**                           |
@@ -208,7 +212,7 @@ CREATE INDEX FOR (p:Protein)     ON (p.name);
 CREATE INDEX FOR (p:Protein)     ON (p.taxon_id);
 CREATE INDEX FOR (t:Taxon)       ON (t.taxon_id);
 CREATE INDEX FOR (t:Taxon)       ON (t.rank);
-CREATE INDEX FOR (s:ProteinSet)  ON (s.name);
+CREATE INDEX FOR (t:Topic)       ON (t.name);
 CREATE INDEX FOR (g:GoTerm)      ON (g.go_id);
 CREATE INDEX FOR (g:GoTerm)      ON (g.namespace);
 CREATE INDEX FOR (b:Publication) ON (b.pmid);
@@ -225,7 +229,7 @@ CALL db.idx.fulltext.createNodeIndex('Publication', 'title', 'abstract');
 GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE Protein     PROPERTIES 1 id
 GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE Protein     PROPERTIES 3 accession start stop
 GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE Taxon       PROPERTIES 1 taxon_id
-GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE ProteinSet  PROPERTIES 1 name
+GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE Topic       PROPERTIES 1 name
 GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE GoTerm      PROPERTIES 1 go_id
 GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE Publication PROPERTIES 1 pmid
 GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE Method      PROPERTIES 1 psimi_id
