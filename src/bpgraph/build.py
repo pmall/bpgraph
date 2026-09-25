@@ -37,13 +37,17 @@ def _load(writer: GraphWriter, export: Export) -> dict[str, int]:
     """Every write of a run, in dependency order.
 
     Order matters twice over: a relationship can only be created once both its
-    endpoints exist, and the two derivations at the end can only run once
+    endpoints exist, and the counters at the end can only be derived once
     everything they read is in place.
     """
     counts = {
         "proteins": api.write_proteins(writer, export.proteins),
-        "taxa": api.write_taxa(writer, export.taxa),
+        "entries": api.write_entries(writer, export.entries),
+        "locations": api.write_locations(writer, export.locations),
+        "viruses": api.write_viruses(writer, export.viruses),
+        "families": api.write_families(writer, export.families),
         "taxon_links": api.write_taxon_links(writer, export.taxon_links),
+        "memberships": api.write_memberships(writer, export.memberships),
         "topics": api.write_topics(writer, export.topics),
         "involvements": api.write_involvements(writer, export.involvements),
         "publications": api.write_publications(writer, export.publications),
@@ -51,12 +55,12 @@ def _load(writer: GraphWriter, export: Export) -> dict[str, int]:
         "peptides": api.write_peptides(writer, export.descriptions),
         "interactions": api.write_interactions(writer, export.descriptions),
         "descriptions": api.write_descriptions(writer, export.descriptions),
+        "observations": api.write_observations(writer, export.descriptions),
         "reported_peptides": api.write_reported_peptides(writer, export.descriptions),
         "go_terms": api.write_go_terms(writer, export.go_terms),
         "go_edges": api.write_go_edges(writer, export.go_edges),
         "go_annotations": api.write_go_annotations(writer, export.go_annotations),
     }
-    api.link_proteins_to_taxa(writer)
     api.update_interaction_counters(writer)
     return counts
 
@@ -84,3 +88,36 @@ def build(db: FalkorDB, export: Export, config: Config) -> BuildReport:
 
     db.connection.rename(config.staging_graph, config.live_graph)
     return BuildReport(graph=config.live_graph, counts=counts, constraints=constraints)
+
+
+def main() -> None:
+    """Build one run directory into the live graph, and report what went in.
+
+    `uv run bpgraph-build data/2026-09-09` loads the export and everything
+    fetched beside it, builds it through staging, and prints the counts and
+    the release of every public dataset the run was fetched from.
+    """
+    import logging
+    import sys
+    from pathlib import Path
+
+    from bpgraph.client import connect
+    from bpgraph.loaders import TsvExport
+    from bpgraph.sources import read_sources
+
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    if len(sys.argv) != 2:
+        sys.exit("usage: bpgraph-build <run directory>")
+    loader = TsvExport.open(Path(sys.argv[1]))
+    config = Config.from_env()
+    report = build(connect(config), loader.load(), config)
+    for name, count in report.counts.items():
+        print(f"{name:<18} {count:>9,}")
+    print(f"{'total':<18} {report.total:>9,}  -> {report.graph}")
+    sources = read_sources(loader.run.sources)
+    if not sources:
+        print(f"no sources recorded in {loader.run.sources}")
+    for source in sources:
+        print(
+            f"{source.dataset:<12} {source.release:<32} {source.fetched}  {source.url}"
+        )

@@ -35,7 +35,8 @@ from typing import NotRequired, TypedDict, cast
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
-from bpgraph.models import Protein
+from bpgraph.models import Location
+from bpgraph.sources import record_source
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,13 @@ class _Record(TypedDict):
 
 class _Response(TypedDict):
     results: list[_Record]
+
+
+@dataclass(frozen=True, slots=True)
+class _Batch:
+    records: list[_Record]
+    release: str
+    """UniProt's release, from the response's `X-UniProt-Release` header."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -204,7 +212,7 @@ def _entry(record: _Record) -> Entry:
     )
 
 
-def _request(accessions: Sequence[str]) -> _Response:
+def _request(accessions: Sequence[str]) -> _Batch:
     """One batch, retried while the failure is UniProt's rather than ours."""
     url = f"{ACCESSIONS_URL}?" + urllib.parse.urlencode(
         {
@@ -217,7 +225,10 @@ def _request(accessions: Sequence[str]) -> _Response:
     while True:
         try:
             with urlopen(url, timeout=TIMEOUT) as response:
-                return cast(_Response, json.load(response))
+                return _Batch(
+                    records=cast(_Response, json.load(response))["results"],
+                    release=response.headers.get("X-UniProt-Release", ""),
+                )
         except (URLError, TimeoutError) as error:
             if isinstance(error, HTTPError) and error.code not in RETRIABLE:
                 raise
@@ -229,68 +240,80 @@ def _request(accessions: Sequence[str]) -> _Response:
             attempt += 1
 
 
-def fetch(accessions: Iterable[str]) -> dict[str, Entry]:
+def fetch(accessions: Iterable[str]) -> tuple[dict[str, Entry], str]:
     """Every entry UniProt still holds, keyed by accession.
 
     An accession it has retired comes back with nothing at all — deleted, or
     merged into another accession, and either way there is no text here to
     attach to it. Those proteins keep an empty `function`, exactly like the
-    ones UniProt describes but says nothing about.
+    ones UniProt describes but says nothing about. Returns the release too.
     """
     wanted = sorted(set(accessions))
     entries: dict[str, Entry] = {}
+    releases: set[str] = set()
     for start in range(0, len(wanted), BATCH_SIZE):
         batch = wanted[start : start + BATCH_SIZE]
-        for record in _request(batch)["results"]:
+        response = _request(batch)
+        releases.add(response.release)
+        for record in response.records:
             entry = _entry(record)
             entries[entry.accession] = entry
         logger.info("uniprot: %d/%d accessions", start + len(batch), len(wanted))
-    return entries
+    if len(releases) > 1:
+        logger.warning("uniprot: the release changed mid-fetch: %s", sorted(releases))
+    return entries, ",".join(sorted(releases))
 
 
-def _rows(proteins: Sequence[Protein]) -> Iterator[tuple[str, ...]]:
-    """The file's rows: one per protein UniProt has something to say about.
+def _rows(
+    locations: Sequence[Location], entries: dict[str, Entry]
+) -> Iterator[tuple[str, ...]]:
+    """The file's rows: one per entry and span UniProt has something to say
+    about.
 
-    A human accession is always one protein, so the count below only ever
-    narrows what a viral polyprotein is allowed to claim.
+    A human accession is always one span, so the count below only ever narrows
+    what a viral polyprotein is allowed to claim.
     """
-    entries = fetch(protein.accession for protein in proteins)
-    parts = Counter(protein.accession for protein in proteins)
-    for protein in proteins:
-        entry = entries.get(protein.accession)
+    spans = {(loc.accession, loc.start, loc.stop): loc for loc in locations}
+    parts = Counter(accession for accession, _, _ in spans)
+    for location in spans.values():
+        entry = entries.get(location.accession)
         function = (
             entry.function_for(
-                protein.start, protein.stop, parts[protein.accession] == 1
+                location.start, location.stop, parts[location.accession] == 1
             )
             if entry
             else ""
         )
         if function:
             yield (
-                protein.kind.value,
-                protein.accession,
-                str(protein.start),
-                str(protein.stop),
+                location.protein.kind.value,
+                location.accession,
+                str(location.start),
+                str(location.stop),
                 function,
             )
 
 
-def write_functions(proteins: Iterable[Protein], path: Path) -> int:
-    """Fetch the text for these proteins and write it. Returns the rows written.
+def write_functions(locations: Iterable[Location], path: Path) -> tuple[int, str]:
+    """Fetch the text for every entry and span and write it. Returns the rows
+    written and the UniProt release they came from.
 
-    A protein UniProt says nothing about — or nothing attributable to it — gets
-    no row: the loader builds it with `function` empty, which is what the
+    A span UniProt says nothing about — or nothing attributable to it — gets no
+    row. The loader then pools the spans of each protein into its one
+    `function`, and a protein with none keeps it empty, which is what the
     schema means by unknown free text.
 
     Every entry is in hand before the file is opened, so a fetch that gives out
     part way leaves whatever was there already rather than half of it.
     """
-    rows = tuple(_rows(tuple(proteins)))
+    wanted = tuple(locations)
+    entries, release = fetch(location.accession for location in wanted)
+    rows = tuple(_rows(wanted, entries))
     with path.open("w", encoding="utf-8", newline="\n") as handle:
         handle.write("\t".join(COLUMNS) + "\n")
         for row in rows:
             handle.write("\t".join(row) + "\n")
-    return len(rows)
+    return len(rows), release
 
 
 def main() -> None:
@@ -310,5 +333,6 @@ def main() -> None:
     loader = TsvExport.open(Path(sys.argv[1]))
     path = loader.run.functions
     export = loader.load()
-    written = write_functions(export.proteins, path)
-    print(f"{path}: {written} of {len(export.proteins)} proteins have function text")
+    written, release = write_functions(export.locations, path)
+    record_source(loader.run.sources, "uniprot", ACCESSIONS_URL, release)
+    print(f"{path}: {written} of {len(export.locations)} spans have function text")

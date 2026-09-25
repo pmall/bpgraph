@@ -47,6 +47,7 @@ from urllib.request import Request, urlopen
 from bpgraph.enums import GoNamespace, GoRelation, ProteinKind
 from bpgraph.models import GoEdge, GoTerm
 from bpgraph.run import Run
+from bpgraph.sources import record_source
 
 logger = logging.getLogger(__name__)
 
@@ -156,24 +157,26 @@ class Ontology:
         )
 
 
+def _release(path: Path) -> str:
+    """The release a dump names in its header: `data-version` in the ontology,
+    `date-generated` in the annotations."""
+    opener = gzip.open if path.suffix == ".gz" else open
+    with opener(path, mode="rt", encoding="utf-8") as handle:
+        for line in handle:
+            if not line.startswith(("!", "format-version", "data-version")):
+                break
+            for tag in ("data-version:", "!date-generated:"):
+                if line.startswith(tag):
+                    return line.removeprefix(tag).strip()
+    return ""
+
+
 def download(url: str, destination: Path) -> Path:
     """Fetch a dump into a run directory."""
     destination.parent.mkdir(parents=True, exist_ok=True)
     request = Request(url, headers={"User-Agent": USER_AGENT})
     with urlopen(request) as response, destination.open("wb") as handle:
         copyfileobj(response, handle)
-    return destination
-
-
-def cached(url: str, destination: Path) -> Path:
-    """The local copy of a dump, fetched if it is not there yet.
-
-    A run directory is new with every export, so the first fetch into it takes
-    the current release, and every fetch after it reuses that one.
-    """
-    if not destination.exists():
-        logger.info("go: fetching %s", url)
-        download(url, destination)
     return destination
 
 
@@ -334,15 +337,23 @@ class Counts:
 def write_go(accessions: Iterable[str], run: Run) -> Counts:
     """Cut the GO these proteins reach out of the two dumps and write the trio.
 
+    A run directory is new with every export, so the first fetch into it takes
+    the current release, and every fetch after it reuses that one.
+
     Everything is in hand before a file is opened, so a dump that gives out
     part way leaves whatever was there already rather than three files that
     disagree with each other.
     """
     paths = run.go
-    parsed = read_ontology(cached(ONTOLOGY_URL, run.ontology))
-    found = read_annotations(
-        cached(ANNOTATIONS_URL, run.annotations), accessions, parsed
-    )
+    for dataset, url, path in (
+        ("go", ONTOLOGY_URL, run.ontology),
+        ("goa", ANNOTATIONS_URL, run.annotations),
+    ):
+        if not path.exists():
+            logger.info("go: fetching %s", url)
+            record_source(run.sources, dataset, url, _release(download(url, path)))
+    parsed = read_ontology(run.ontology)
+    found = read_annotations(run.annotations, accessions, parsed)
     terms, edges = parsed.closure({annotation.go_id for annotation in found})
     return Counts(
         terms=_write(
@@ -393,9 +404,7 @@ def main() -> None:
     loader = TsvExport.open(Path(sys.argv[1]))
     export = loader.load()
     humans = {
-        protein.accession
-        for protein in export.proteins
-        if protein.kind is ProteinKind.HUMAN
+        protein.id for protein in export.proteins if protein.kind is ProteinKind.HUMAN
     }
     counts = write_go(sorted(humans), loader.run)
     paths = loader.run.go

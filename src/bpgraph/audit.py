@@ -3,7 +3,8 @@
 The constraint gate in `schema.py` only proves that keys are unique. Everything
 else the schema promises — that no property is missing or mistyped, that a
 `:Protein` is human or viral and never both, that a derived id agrees with the
-values it was derived from, that `:VH` puts the human on side `a`, that the
+values it was derived from, that each side of a description was observed on an
+entry of that side's protein, that `:VH` puts the human on side `a`, that the
 counters match what they count — is unchecked at build time, because FalkorDB
 has no schema to check it against.
 
@@ -32,16 +33,18 @@ ancestor closure is allowed to stop."""
 NODE_PROPERTIES: Mapping[str, Mapping[str, str]] = {
     "Protein": {
         "id": "String",
-        "accession": "String",
-        "start": "Integer",
-        "stop": "Integer",
         "name": "String",
         "description": "String",
         "function": "String",
+    },
+    "Entry": {
+        "accession": "String",
         "taxon_id": "Integer",
         "taxon_name": "String",
+        "description": "String",
     },
-    "Taxon": {"taxon_id": "Integer", "name": "String", "rank": "String"},
+    "Virus": {"taxon_id": "Integer", "name": "String", "full_name": "String"},
+    "Family": {"taxon_id": "Integer", "name": "String"},
     "Topic": {"name": "String"},
     "Publication": {
         "pmid": "String",
@@ -71,22 +74,26 @@ NODE_PROPERTIES: Mapping[str, Mapping[str, str]] = {
 """Every property schema.md lists, and the type FalkorDB should report for it.
 
 A missing property types as `Null`, so one test catches both absence and drift.
+`:Taxon` is checked through its two sublabels, whose properties differ.
 """
 
 SUBLABELS: Mapping[str, tuple[str, str]] = {
     "Protein": ("Human", "Viral"),
     "Interaction": ("HH", "VH"),
+    "Taxon": ("Virus", "Family"),
 }
 """Labels that carry a type: exactly one of the pair, beside the base label."""
 
 RELATIONSHIPS: tuple[tuple[str, str, str, tuple[str, ...] | None], ...] = (
     ("INVOLVES", "Interaction", "Protein", ("side",)),
+    ("ON_ENTRY", "Protein", "Entry", None),
     ("SUPPORTS", "Description", "Interaction", ()),
+    ("OBSERVED_ON", "Description", "Entry", ("side",)),
     ("REPORTED_IN", "Description", "Publication", ()),
     ("DETECTED_BY", "Description", "Method", ()),
     ("REPORTS", "Description", "Peptide", ("source_side",)),
-    ("IN_TAXON", "Viral", "Taxon", ()),
-    ("PARENT", "Taxon", "Taxon", ()),
+    ("IN_TAXON", "Viral", "Virus", ()),
+    ("PARENT", "Virus", "Family", ()),
     ("INVOLVED_IN", "Human", "Topic", None),
     (
         "ANNOTATED_WITH",
@@ -97,8 +104,9 @@ RELATIONSHIPS: tuple[tuple[str, str, str, tuple[str, ...] | None], ...] = (
     ("IS_A", "GoTerm", "GoTerm", ()),
     ("PART_OF", "GoTerm", "GoTerm", ()),
 )
-"""Type, the labels it must join, and its properties. `None` means they vary,
-and are checked by `TOPIC_PROPERTIES`."""
+"""Type, the labels it must join, and its properties. `None` means they vary:
+by topic for `INVOLVED_IN`, checked by `TOPIC_PROPERTIES`, and by the protein's
+kind for `ON_ENTRY`, checked by the invariants."""
 
 TOPIC_PROPERTIES: Mapping[str, tuple[str, ...]] = {
     "ferroptosis": ("role",),
@@ -192,7 +200,7 @@ def _topic_shape(topic: str, properties: tuple[str, ...]) -> Check:
     )
 
 
-KNOWN_LABELS = tuple(NODE_PROPERTIES)
+KNOWN_LABELS = (*NODE_PROPERTIES, "Taxon")
 
 INVARIANTS: tuple[Check, ...] = (
     Check(
@@ -203,22 +211,46 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN ID(n) AS node, labels(n) AS labels",
     ),
     Check(
-        "Protein.id",
-        "a human id is its bare accession, a viral one carries its span",
-        "MATCH (p:Protein)\n"
-        "WITH p, CASE WHEN p:Human THEN p.accession\n"
-        "            ELSE p.accession + ':' + toString(p.start)\n"
-        "                 + '-' + toString(p.stop)\n"
-        "       END AS derived\n"
-        "WHERE p.id <> derived\n"
-        "RETURN p.id AS id, derived",
+        "Human.entry",
+        "a human protein is on exactly one entry, its id, by a bare ON_ENTRY",
+        "MATCH (p:Human)\n"
+        "WITH p, [(p)-[r:ON_ENTRY]->(e) | [e.accession, size(keys(r))]] AS entries\n"
+        "WHERE size(entries) <> 1 OR entries[0][0] <> p.id OR entries[0][1] <> 0\n"
+        "RETURN p.id AS id, entries",
     ),
     Check(
-        "Protein.coordinates",
-        "1 <= start <= stop, and a human protein is the full chain",
-        "MATCH (p:Protein)\n"
-        "WHERE p.start < 1 OR p.stop < p.start OR (p:Human AND p.start <> 1)\n"
-        "RETURN p.id AS id, p.start AS start, p.stop AS stop",
+        "Viral.entries",
+        "a viral protein is on at least one entry, each edge a span 1 <= start <= stop",
+        "MATCH (p:Viral)\n"
+        "OPTIONAL MATCH (p)-[r:ON_ENTRY]->(:Entry)\n"
+        "WITH p, r\n"
+        "WHERE r IS NULL OR size(keys(r)) <> 2\n"
+        "   OR typeOf(r.start) <> 'Integer' OR typeOf(r.stop) <> 'Integer'\n"
+        "   OR r.start < 1 OR r.stop < r.start\n"
+        "RETURN p.id AS id, r.start AS start, r.stop AS stop",
+    ),
+    Check(
+        "Viral.id",
+        "a viral id is its curated virus's taxon id and its name",
+        "MATCH (p:Viral)-[:IN_TAXON]->(v:Virus)\n"
+        "WHERE p.id <> toString(v.taxon_id) + ':' + p.name\n"
+        "RETURN p.id AS id, v.taxon_id AS virus, p.name AS name",
+    ),
+    Check(
+        "Entry.proteins",
+        "every entry carries a protein, and never both a human and a viral one",
+        "MATCH (e:Entry)\n"
+        "WITH e, size([(e)<-[:ON_ENTRY]-(h:Human) | h]) AS human,\n"
+        "        size([(e)<-[:ON_ENTRY]-(v:Viral) | v]) AS viral\n"
+        "WHERE human + viral = 0 OR (human > 0 AND viral > 0)\n"
+        "RETURN e.accession AS accession, human, viral",
+    ),
+    Check(
+        "Entry.human_taxon",
+        "a human protein's entry is taxon 9606",
+        "MATCH (:Human)-[:ON_ENTRY]->(e:Entry)\n"
+        "WHERE e.taxon_id <> 9606\n"
+        "RETURN e.accession AS accession, e.taxon_id AS taxon_id",
     ),
     Check(
         "Interaction.slots",
@@ -262,6 +294,19 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN d.id AS id, claims, papers, methods",
     ),
     Check(
+        "Description.observed_on",
+        "a description names the entry each side was seen on, an entry of that "
+        "side's protein",
+        "MATCH (d:Description)-[:SUPPORTS]->(i:Interaction)\n"
+        "WITH d, i, [(d)-[o:OBSERVED_ON]->() | o.side] AS sides\n"
+        "OPTIONAL MATCH (d)-[o:OBSERVED_ON]->(e:Entry)\n"
+        "OPTIONAL MATCH (i)-[r:INVOLVES {side: o.side}]->(p:Protein)\n"
+        "WITH d, sides, o, e, p\n"
+        "WHERE size(sides) <> 2 OR NOT 'a' IN sides OR NOT 'b' IN sides\n"
+        "   OR p IS NULL OR NOT (p)-[:ON_ENTRY]->(e)\n"
+        "RETURN d.id AS id, sides, e.accession AS entry, p.id AS protein",
+    ),
+    Check(
         "REPORTS.source_side",
         "a reported peptide names a slot of its description's interaction",
         "MATCH (d:Description)-[r:REPORTS]->(:Peptide)\n"
@@ -298,26 +343,32 @@ INVARIANTS: tuple[Check, ...] = (
     ),
     Check(
         "Viral.taxon",
-        "a viral protein has one IN_TAXON edge, to the taxon it names",
+        "a viral protein has one IN_TAXON edge",
         "MATCH (p:Viral)\n"
         "WITH p, [(p)-[:IN_TAXON]->(t) | t.taxon_id] AS taxa\n"
-        "WHERE size(taxa) <> 1 OR taxa[0] <> p.taxon_id\n"
-        "RETURN p.id AS id, p.taxon_id AS taxon_id, taxa",
+        "WHERE size(taxa) <> 1\n"
+        "RETURN p.id AS id, taxa",
     ),
     Check(
         "Human.taxon",
-        "a human protein is taxon 9606 and gets no Taxon node",
-        "MATCH (p:Human)\n"
-        "WHERE p.taxon_id <> 9606 OR (p)-[:IN_TAXON]->()\n"
-        "RETURN p.id AS id, p.taxon_id AS taxon_id",
+        "a human protein gets no Taxon node",
+        "MATCH (p:Human)-[:IN_TAXON]->()\nRETURN p.id AS id",
     ),
     Check(
         "Taxon.parent",
-        "a taxon has at most one parent, and is not its own",
-        "MATCH (t:Taxon)\n"
+        "a virus has at most one family",
+        "MATCH (t:Virus)\n"
         "WITH t, [(t)-[:PARENT]->(p) | p.taxon_id] AS parents\n"
-        "WHERE size(parents) > 1 OR t.taxon_id IN parents\n"
+        "WHERE size(parents) > 1\n"
         "RETURN t.taxon_id AS taxon_id, parents",
+    ),
+    Check(
+        "Taxon.used",
+        "every virus has a protein, and every family a virus",
+        "MATCH (t:Taxon)\n"
+        "WHERE (t:Virus AND NOT (t)<-[:IN_TAXON]-(:Viral))\n"
+        "   OR (t:Family AND NOT (t)<-[:PARENT]-(:Virus))\n"
+        "RETURN t.taxon_id AS taxon_id, t.name AS name",
     ),
     Check(
         "GoTerm.ancestors",

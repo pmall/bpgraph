@@ -1,26 +1,35 @@
-"""Writing `:Taxon` nodes, the species-to-family chain, and `:IN_TAXON`."""
+"""Writing the curated viruses, their families, and `:IN_TAXON`."""
 
 from collections.abc import Iterable
 
 from bpgraph.client import GraphWriter, Row
 from bpgraph.dedupe import dedupe
-from bpgraph.models import Taxon, TaxonLink
+from bpgraph.enums import TaxonKind
+from bpgraph.models import Family, Membership, TaxonLink, Virus
 
 PARENT = """MATCH (child:Taxon {taxon_id: r.child_taxon_id})
 MATCH (parent:Taxon {taxon_id: r.parent_taxon_id})
 CREATE (child)-[:PARENT]->(parent)"""
 
-IN_TAXON = """MATCH (protein:Viral)
-MATCH (taxon:Taxon {taxon_id: protein.taxon_id})
+IN_TAXON = """MATCH (protein:Protein {id: r.protein_id})
+MATCH (taxon:Taxon {taxon_id: r.taxon_id})
 CREATE (protein)-[:IN_TAXON]->(taxon)"""
 
 
-def write_taxa(writer: GraphWriter, taxa: Iterable[Taxon]) -> int:
+def write_viruses(writer: GraphWriter, viruses: Iterable[Virus]) -> int:
     rows: list[Row] = [
-        {"taxon_id": taxon.taxon_id, "name": taxon.name, "rank": taxon.rank}
-        for taxon in dedupe(taxa, key=lambda taxon: taxon.taxon_id)
+        {"taxon_id": virus.taxon_id, "name": virus.name, "full_name": virus.full_name}
+        for virus in dedupe(viruses, key=lambda virus: virus.taxon_id)
     ]
-    return writer.create("Taxon", rows)
+    return writer.create(f"Taxon:{TaxonKind.VIRUS.value}", rows)
+
+
+def write_families(writer: GraphWriter, families: Iterable[Family]) -> int:
+    rows: list[Row] = [
+        {"taxon_id": family.taxon_id, "name": family.name}
+        for family in dedupe(families, key=lambda family: family.taxon_id)
+    ]
+    return writer.create(f"Taxon:{TaxonKind.FAMILY.value}", rows)
 
 
 def write_taxon_links(writer: GraphWriter, links: Iterable[TaxonLink]) -> int:
@@ -36,10 +45,9 @@ def write_taxon_links(writer: GraphWriter, links: Iterable[TaxonLink]) -> int:
     return writer.write(PARENT, rows)
 
 
-def link_proteins_to_taxa(writer: GraphWriter) -> None:
-    """Derive `:IN_TAXON` from the `taxon_id` every viral protein already carries.
-
-    Run after both proteins and taxa are written. A viral protein whose taxon is
-    missing from the export simply gets no edge.
-    """
-    writer.run(IN_TAXON)
+def write_memberships(writer: GraphWriter, memberships: Iterable[Membership]) -> int:
+    rows: list[Row] = [
+        {"protein_id": membership.protein.id, "taxon_id": membership.taxon_id}
+        for membership in dedupe(memberships, key=lambda m: m.protein.id)
+    ]
+    return writer.write(IN_TAXON, rows)

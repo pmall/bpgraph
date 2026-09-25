@@ -165,7 +165,7 @@
   cy.on("tap", "node", (e) => {
     const p = proteins.get(e.target.id());
     show(p.name, [
-      ["id", p.id], ["protein", p.description], ["taxon", p.taxon_name],
+      ["id", p.id], ["protein", p.description], ["virus", p.taxon_name],
       ["partners", e.target.degree(false)],
       ...Object.entries(p.attributes),
     ]);
