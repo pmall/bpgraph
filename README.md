@@ -46,6 +46,12 @@ uv run bpgraph-audit   # check the live graph against the schema
 
 Point an MCP client at `http://localhost:8080/mcp` and give it [`docs/mcp-client.md`](docs/mcp-client.md), a digest of the schema written for query clients. [`docs/queries.md`](docs/queries.md) has canonical queries and a worked example.
 
+To draw a subnetwork, gather it into a `network.json` and render it; no database connection is needed. The `network-view` skill in `.agents/skills` describes the file:
+
+```sh
+uv run bpgraph-network ferroptosis-flaviviridae.json   # -> ferroptosis-flaviviridae.cytoscape.html
+```
+
 ## Documentation
 
 - [`docs/schema.md`](docs/schema.md) — the schema contract. FalkorDB is schemaless; this document is what keeps the graph coherent.
