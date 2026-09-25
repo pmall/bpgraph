@@ -35,6 +35,8 @@ src/bpgraph/
   schema.py     index and constraint DDL, and the validation gate
   build.py      run a full build: stages, validation gate, swap
   audit.py      check a built graph against docs/schema.md
+  network.py    draw a network: network.json in, a standard page out
+  templates/    the network renderers, one HTML file each
   api/          batched writers, one module per area
   loaders/      tsv.py: the export parser -> Pydantic models
 ```
