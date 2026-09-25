@@ -1,6 +1,6 @@
 # bpgraph
 
-A [FalkorDB](https://www.falkordb.com/) knowledge graph of protein–protein interactions, human–human and virus–human, and the tooling that builds and explores it. Every interaction carries the publications, detection methods and peptides behind it, abstracts included; proteins are enriched with UniProt function text, GO annotations and the NCBI taxonomy of the viruses; and curated topics — lists of human proteins involved in a subject such as ferroptosis — make it possible to ask how viral families act on a biological process.
+A [FalkorDB](https://www.falkordb.com/) knowledge graph of protein–protein interactions, human–human and virus–human, and the tooling that builds and explores it. Every interaction carries the publications, detection methods and peptides behind it, abstracts included. A viral protein is a curated one — `HBx` of HBV, `NS5A` of HCV — pooled over every strain and UniProt accession it was observed on, so its evidence is counted once rather than scattered; the accessions stay in the graph as the entries each observation used. Proteins are enriched with UniProt function text and GO annotations, viruses are grouped by a curated list and rolled up to their NCBI family, and curated topics — lists of human proteins involved in a subject such as ferroptosis — make it possible to ask how viral families act on a biological process.
 
 The graph is built to be explored by an agent. Scripts do the deterministic work; the agent reads the connected text — function descriptions, GO annotations, abstracts — and draws the connections a person would need years of reading to make.
 
@@ -31,14 +31,16 @@ uv sync
 
 ## Building a graph
 
-A run lives in its own directory, `data/<date>/` (gitignored): the TSV files the curation database exports go in `export/`, and what the export lacks is fetched beside it.
+A run lives in its own directory, `data/<date>/` (gitignored): the TSV files the curation database exports go in `export/`, and what the export lacks is fetched beside it, each fetch recording its release in `sources.tsv`. The viruses proteins are grouped by are curated in [`curation/viruses.tsv`](curation/viruses.tsv): [`curation/NAMING.md`](curation/NAMING.md) explains the choices and [`curation/PROCESS.md`](curation/PROCESS.md) how to produce the list again.
 
 ```sh
+uv run bpgraph-taxonomy data/2026-09-09    # NCBI taxonomy
 uv run bpgraph-functions data/2026-09-09   # UniProt function text
 uv run bpgraph-go data/2026-09-09          # GO terms, ancestry and annotations
+uv run bpgraph-build data/2026-09-09       # build and publish the graph
 ```
 
-The build then loads the export into Pydantic models, writes it to `bpgraph_staging`, adds the unique constraints as a validation gate, and renames the result to the live graph `bpgraph`. A malformed export fails before anything is written. See [`docs/build.md`](docs/build.md) for the full sequence and [`docs/export.md`](docs/export.md) for a worked example.
+The build loads the export into Pydantic models, writes it to `bpgraph_staging`, adds the unique constraints as a validation gate, and renames the result to the live graph `bpgraph`. A malformed export, or a viral taxon with no curated virus, fails before anything is written. See [`docs/build.md`](docs/build.md) for the full sequence and [`docs/export.md`](docs/export.md) for a worked example.
 
 ```sh
 uv run bpgraph         # what the live graph holds

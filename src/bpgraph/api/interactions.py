@@ -9,7 +9,7 @@ from collections.abc import Iterable
 
 from bpgraph.client import GraphWriter, Row
 from bpgraph.dedupe import dedupe
-from bpgraph.enums import InteractionKind
+from bpgraph.enums import InteractionKind, Side
 from bpgraph.models import Description, Method, Publication
 
 DESCRIPTION = """MATCH (interaction:Interaction {id: r.interaction_id})
@@ -19,6 +19,10 @@ CREATE (description:Description {id: r.id})
 CREATE (description)-[:SUPPORTS]->(interaction)
 CREATE (description)-[:REPORTED_IN]->(publication)
 CREATE (description)-[:DETECTED_BY]->(method)"""
+
+OBSERVED_ON = """MATCH (description:Description {id: r.description_id})
+MATCH (entry:Entry {accession: r.accession})
+CREATE (description)-[:OBSERVED_ON {side: r.side}]->(entry)"""
 
 REPORTS = """MATCH (description:Description {id: r.description_id})
 MATCH (peptide:Peptide {sequence: r.sequence})
@@ -50,7 +54,7 @@ def _interaction_statement(label: str) -> str:
 
 def _claim_row(identity: str, description: Description) -> Row:
     side_a, side_b = description.partners
-    return {"id": identity, "side_a": side_a.id, "side_b": side_b.id}
+    return {"id": identity, "side_a": side_a.protein.id, "side_b": side_b.protein.id}
 
 
 def write_publications(writer: GraphWriter, publications: Iterable[Publication]) -> int:
@@ -121,6 +125,21 @@ def write_descriptions(writer: GraphWriter, descriptions: Iterable[Description])
         for description in dedupe(descriptions, key=lambda d: d.stable_id)
     ]
     return writer.write(DESCRIPTION, rows)
+
+
+def write_observations(writer: GraphWriter, descriptions: Iterable[Description]) -> int:
+    """Which entry each side was observed on. Pooling proteins across strains
+    is what loses it from the interaction, so it is kept here, per description."""
+    rows: list[Row] = [
+        {
+            "description_id": description.stable_id,
+            "accession": partner.accession,
+            "side": side.value,
+        }
+        for description in descriptions
+        for side, partner in zip(Side, description.partners, strict=True)
+    ]
+    return writer.write(OBSERVED_ON, rows)
 
 
 def write_reported_peptides(

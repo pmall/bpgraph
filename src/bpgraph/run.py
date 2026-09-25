@@ -52,6 +52,11 @@ class Run:
         return self.directory / "topics"
 
     @property
+    def sources(self) -> Path:
+        """Which release of each public dataset was fetched, by `bpgraph.sources`."""
+        return self.directory / "sources.tsv"
+
+    @property
     def functions(self) -> Path:
         """The UniProt function text, written by `bpgraph.uniprot`."""
         return self.directory / "functions.tsv"

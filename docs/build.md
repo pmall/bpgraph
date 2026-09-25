@@ -12,27 +12,32 @@ The graph is rebuilt, never updated. Curation happens in the relational database
 
 Indexes come **first** so that every `MATCH` a load performs — and each relationship write is a key lookup — is index-backed. Constraints come **last**, because that is what makes them a gate rather than a write-time cost. A range index may precede its constraint; the reverse is an error, since creating a unique constraint also creates the index it needs.
 
-`bpgraph.build.build()` runs all five.
+`bpgraph.build.build()` runs all five; `uv run bpgraph-build <run directory>` loads a run and calls it, then prints the counts and the dataset releases the run was fetched from.
+
+Before step 1, loading has its own gate: **every viral taxon must belong to a curated virus** in [`curation/viruses.tsv`](../curation/viruses.tsv). A taxon no row encloses fails the load, naming the taxa to add; nothing falls back to an NCBI rank.
 
 `RENAME` overwrites its destination, so step 5 is the whole deployment. Old graphs are not kept. Staging exists so a bad export cannot land on the live graph — not for uptime.
 
 ## Stages within step 2
 
-1. **Proteins, taxonomy, topics** — the entity backbone.
-2. **Interactions** — `:Interaction`, `:Description`, `:Publication`, `:Method`, `:Peptide`.
+1. **Proteins, entries, taxonomy, topics** — the entity backbone, with `:ON_ENTRY` and `:IN_TAXON`.
+2. **Interactions** — `:Interaction`, `:Description` with `:OBSERVED_ON`, `:Publication`, `:Method`, `:Peptide`.
 3. **Enrichment** — `function` text, `:GoTerm` nodes with the GO ancestor closure, and the annotations onto human proteins.
-4. **Derive** — the `:Interaction` counters, and the optional `:INTERACTS_WITH` shortcut.
+4. **Derive** — the `:Interaction` counters. The `:INTERACTS_WITH` shortcut [`schema.md`](schema.md) describes would go here; it is not built.
 
 A run may skip stage 3. It may not skip stage 4, nor steps 2–5 above.
 
-Stage 3 is fetched beforehand rather than run here, by two commands that write into the run directory and never touch the graph:
+Stage 3, and the taxonomy stage 1 needs, are fetched beforehand rather than run here, by commands that write into the run directory and never touch the graph. The taxonomy comes first, since the other two load the export and loading resolves viruses:
 
 ```sh
+uv run bpgraph-taxonomy data/2026-09-09    # taxdmp.zip, taxonomy.sqlite
 uv run bpgraph-functions data/2026-09-09   # functions.tsv
 uv run bpgraph-go data/2026-09-09          # go_{terms,edges,annotations}.tsv
 ```
 
-The loader reads them from the run directory — not from its `export/`, which holds only what the relational database exports. A new export is a new run directory, so it looks for files that do not exist yet instead of reading the last export's. Without them a run builds proteins with an empty `function` and no `:GoTerm` at all, and says so in the log. The GO files are written together and read together: some of the three without the others is an error rather than a partial load.
+Each records what it fetched in `sources.tsv`: dataset, URL, fetch date and the release the source names. That file is how a graph says which UniProt, GO and taxonomy it describes.
+
+The loader reads them from the run directory — not from its `export/`, which holds only what the relational database exports. A new export is a new run directory, so it looks for files that do not exist yet instead of reading the last export's. The taxonomy is required. Without the other two a run builds proteins with an empty `function` and no `:GoTerm` at all, and says so in the log. The GO files are written together and read together: some of the three without the others is an error rather than a partial load.
 
 ## Writing
 
@@ -40,10 +45,8 @@ Nothing pre-exists in a fresh graph, so `MERGE` buys nothing and costs a lookup 
 
 ```cypher
 UNWIND $rows AS r
-CREATE (:Protein:Human {id: r.id, accession: r.accession,
-                        start: r.start, stop: r.stop, name: r.name,
-                        description: r.description, function: r.function,
-                        taxon_id: r.taxon_id, taxon_name: r.taxon_name})
+CREATE (:Protein:Human {id: r.id, name: r.name,
+                        description: r.description, function: r.function})
 ```
 
 `GraphWriter.create` writes that clause itself, from the keys of the rows it is given, so a node's properties and the record behind them are one list rather than two that can drift.
@@ -67,11 +70,11 @@ type    label    properties  entitytype  status
 UNIQUE  Protein  [id]        NODE        FAILED
 ```
 
-Step 4 is therefore a hard gate: `FAILED` means the export violated a key, and the staging graph is dropped rather than swapped in. This is what the `id` and `(accession, start, stop)` constraints are for.
+Step 4 is therefore a hard gate: `FAILED` means the export violated a key, and the staging graph is dropped rather than swapped in.
 
 **Wait it out first.** A constraint is applied asynchronously, and reports `PENDING` and then `UNDER CONSTRUCTION` while it scans — on a graph this size, for several seconds. Neither is a verdict, and reading one as a failure fails a sound export; `validate_constraints` polls until every row has settled on `OPERATIONAL` or `FAILED`.
 
-The gate covers what deduplication cannot see. `bpgraph.dedupe` collapses records that repeat identically and raises `ConflictingRecords` when two share a key and disagree, and the loader rejects an accession given as human on one row and viral on another — but those two mentions have different ids, so anything the loader misses lands on the composite constraint instead.
+The gate covers what deduplication cannot see. `bpgraph.dedupe` collapses records that repeat identically and raises `ConflictingRecords` when two share a key and disagree, and the loader rejects an accession given as human on one row and viral on another; whatever slips past both lands on a constraint.
 
 ## Counters
 
@@ -79,8 +82,16 @@ The gate covers what deduplication cannot see. `bpgraph.dedupe` collapses record
 
 ## Auditing what was built
 
-The constraint gate proves keys are unique and nothing else, so `uv run bpgraph-audit` reads the live graph and checks it against every other promise in [`schema.md`](schema.md): properties present and correctly typed, no property the schema does not list, one of `:Human`/`:Viral` and one of `:HH`/`:VH`, derived ids agreeing with the values behind them, every edge joining the labels it is declared to join, slot `a` holding the human protein, the counters equalling what they count, no publication or peptide left with nothing pointing at it. Each check is one read-only query returning the rows that break its rule, so an empty result is a pass; the command exits non-zero when anything fails and prints a few offenders per failure.
+The constraint gate proves keys are unique and nothing else, so `uv run bpgraph-audit` reads the live graph and checks it against every other promise in [`schema.md`](schema.md): properties present and correctly typed, no property the schema does not list, one of `:Human`/`:Viral`, `:HH`/`:VH` and `:Virus`/`:Family`, derived ids agreeing with the values behind them, every edge joining the labels it is declared to join, `:ON_ENTRY` carrying a span exactly when the protein is viral, each side of a description observed on an entry of that side's protein, slot `a` holding the human protein, the counters equalling what they count, no publication or peptide left with nothing pointing at it. Each check is one read-only query returning the rows that break its rule, so an empty result is a pass; the command exits non-zero when anything fails and prints a few offenders per failure.
 
 Run it after a build, and after anything that touches the writers. It takes about as long as a build.
 
 `bpgraph.audit` restates those rules by hand rather than deriving them from the models or the writers — code checked against itself always agrees. Changing the schema means changing `schema.md`, the writers, **and** the audit, and the audit failing is what tells you one of the three was missed.
+
+## What the load reports
+
+Some things are worth a human's look without being wrong enough to stop a build. The load logs them:
+
+- **Viral names within one virus that differ only in case.** Names are case-sensitive, and EBV's `BARF1` / `BaRF1` and `BCRF1` / `BcRF1` are genuinely different proteins; any new pair may be a typo.
+- **Grouped viral proteins whose members differ in length by more than half** — HBV `HBsAg` over its S/M/L forms, or a fragment. Such members may not be one chain, and may not share one function text.
+- **Proteins whose entries carry different function text.** The protein keeps the commonest, weighted by descriptions.

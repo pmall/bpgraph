@@ -20,13 +20,22 @@ Conventions for every file:
 [`docs/example-export/`](example-export) holds a small working example of every file this document asks you for, and every snippet in the sections below is a row from it. Loading that directory builds the graph [`queries.md`](queries.md) walks through. It is laid out as a run directory, with the GO trio this repo [generates](#generated-here-not-exported) beside `export/`, but carries no taxonomy, so it borrows a real run's:
 
 ```python
-TsvExport(
-    Run(Path("docs/example-export")),
-    Taxonomy.open(Run(Path("data/2026-09-09")).taxonomy),
-)
+taxonomy = Taxonomy.open(Run(Path("data/2026-09-09")).taxonomy)
+TsvExport(Run(Path("docs/example-export")), taxonomy, CuratedViruses.load(taxonomy))
 ```
 
-**Proteins are referenced by their natural key, never by an id** — the ids are derived during the build. Which key depends on the file. `descriptions.tsv` and `peptides.tsv` can name either partner, so they carry `accession`, `start` and `stop`. The GO annotations apply only to human proteins, and a human accession identifies exactly one of those, so they carry `accession` alone.
+**Proteins are referenced by what curation recorded, never by an id** — the ids are derived during the build. `descriptions.tsv` and `peptides.tsv` name a partner by `accession`, `start` and `stop`, the entry and span it was observed at. The GO annotations apply only to human proteins, and a human accession identifies exactly one of those, so they carry `accession` alone.
+
+### What the build derives
+
+The export names an entry and a span per partner; the graph's proteins are coarser. The build derives, from the columns below and [`curation/viruses.tsv`](../curation/viruses.tsv):
+
+- **`:Entry`** — one per accession, with its taxon and description.
+- **the curated virus** — the most specific row of `viruses.tsv` enclosing the entry's taxon. A viral taxon that no row encloses **fails the build**, naming the taxa to add.
+- **`:Protein`** — a human accession, or a curated virus plus the row's `name`. Every strain's `HBx` of HBV is one protein, and so is `nsp2` on pp1a and on pp1ab.
+- **`:ON_ENTRY`** — every entry and span each viral protein was observed at, and each human protein's one entry.
+
+A description keeps the entry each side was observed on, as `:OBSERVED_ON`.
 
 ______________________________________________________________________
 
@@ -55,29 +64,30 @@ D-00901    hh    22222222  MI:0006   anti bait…   P36969      1       197    G
 
 The first two rows are the same pair by different methods. They become one `:Interaction` carrying two `:Description` nodes, and its counters record two descriptions, one publication and two methods — which is what makes the counters a confidence signal rather than a row count.
 
-**Slot 1 is always the human partner.** Nothing else says which side is viral: a `vh` row's second partner is the viral one, every other partner is human, and an accession that appears on both sides of that line is rejected. The build then puts the human protein on side `a` of the interaction regardless of the order it was given in.
+**Slot 1 is always the human partner.** Nothing else says which side is viral: a `vh` row's second partner is the viral one, every other partner is human, and an accession given as human on one row and viral on another is rejected. The build then puts the human protein on side `a` of the interaction regardless of the order it was given in.
 
 Two viral proteins may not interact, so there is no `vv`. A pair **may** interact with itself: a homodimer is an ordinary `hh` row with the same accession and coordinates twice, and becomes one interaction whose two `:INVOLVES` edges point at the one protein.
 
 ### The protein columns
 
-A protein is a full-length human chain, or a mature viral protein excised from a polyprotein. It is described once per row it takes part in, so the same protein is restated hundreds of times over.
+A partner is a full-length human chain, or a mature viral protein excised from a polyprotein, observed on one entry. It is described once per row it takes part in, so the same protein is restated hundreds of times over.
 
 | column          | notes                                                                                                                                |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `accession`     | UniProt accession, canonical — not an isoform. Uppercase                                                                             |
 | `start`         | 1-based inclusive, on the accession's sequence. Always `1` for human                                                                 |
 | `stop`          | 1-based inclusive. The sequence length for human                                                                                     |
-| `name`          | mature-protein name (`NS5A`) for viral, gene symbol (`GPX4`) for human                                                               |
+| `name`          | curated mature-protein name (`NS5A`) for viral, gene symbol (`GPX4`) for human. Case-sensitive: part of a viral protein's identity   |
 | `description`   | UniProt protein name. May be empty                                                                                                   |
 | `ncbi_taxon_id` | NCBI taxon id. `9606` for human. Retired ids are followed to the current one — the example's `11103` lands in the graph as `3052230` |
 
-The restatements do not have to agree, and where they do not the **commonest wins**, with a warning naming the protein and the variants:
+The restatements do not have to agree, and where they do not the **commonest wins**:
 
-- A **name or description** that changed part-way through curation — a renamed gene — takes its majority value.
-- **Coordinates** that changed between UniProt releases take the longest span. This only arises for human proteins: a viral id carries its coordinates, so a different span there is a different protein, while a human id is a bare accession and the two rows are one node.
+- A human protein's **name** that changed part-way through curation — a renamed gene — takes its majority value. A viral protein's name is its identity, so a different name there is a different protein.
+- A **description** takes its majority value, per protein and per entry.
+- A human entry's **coordinates** that changed between UniProt releases take the longest span, with a warning. A viral protein keeps every span it was observed at, one `:ON_ENTRY` each.
 
-A protein whose taxon changes between rows is an error rather than a majority vote — that is a different protein, not a restatement. Everything the warnings report is worth fixing upstream; none of it stops a build.
+An accession whose taxon changes between rows is an error rather than a majority vote. The build also warns, without stopping, about viral names within one virus that differ only in case, and grouped viral proteins whose spans differ in length by more than half — members that may not be one chain.
 
 `Protein.function` has no column at all — it is fetched from UniProt, not exported; see [generated here](#generated-here-not-exported).
 
@@ -111,9 +121,9 @@ D-00417    PSLKATC   v            P27958            1973          2419
 D-00901    PSLKATC   h            P36969            1             197
 ```
 
-The source columns name one of the description's two partners in full, so they repeat that partner's own row exactly; naming anything else is an error. That partner is the peptide's source and the other is its target — which is why **the same sequence can appear against many sources and many targets**: the two rows above are one `:Peptide`, a viral peptide from NS5A against GPX4 and the same sequence as a human peptide from GPX4 against ACSL4.
+The source columns name one of the description's two partners in full, so they repeat that partner's own row exactly (a human partner is matched by accession alone); naming anything else is an error. That partner is the peptide's source and the other is its target — which is why **the same sequence can appear against many sources and many targets**: the two rows above are one `:Peptide`, a viral peptide from NS5A against GPX4 and the same sequence as a human peptide from GPX4 against ACSL4.
 
-**Only the sequence is stored.** The graph keeps one `:Peptide` node per unique sequence, and the peptide's position within its source is not modelled — see [`schema.md`](schema.md). Rows that agree once the position is dropped are the same reported peptide, so a description reporting the same residues twice yields one `:REPORTS` edge, not two.
+**Only the sequence is stored.** The graph keeps one `:Peptide` node per unique sequence, and the peptide's position within its source is not modelled — see [`schema.md`](schema.md). Rows that agree once the position is dropped are the same reported peptide, so a description reporting the same residues twice from the same partner yields one `:REPORTS` edge, not two. The same residues from each partner are two edges, one per direction.
 
 ## The GO trio *(not from your database)*
 
@@ -151,26 +161,26 @@ ______________________________________________________________________
 
 ## Not exported
 
-**Taxa have no file.** The export carries a taxon id per protein and nothing else; the `:Taxon` nodes and the species-to-family chain are cut from the NCBI dump this repo fetches into the run directory and keeps in SQLite (`bpgraph.taxonomy`). A species links straight to its family however many ranks lie between, and a species with no family simply has no parent — it stays queryable, it just falls out of family rollups. Keeping another rank is a one-line change and the chain rebuilds itself.
+**Taxa have no file in the export.** It carries a taxon id per partner and nothing else. The curated viruses come from [`curation/viruses.tsv`](../curation/viruses.tsv), kept in this repo, and the virus-to-family edge from the NCBI dump this repo fetches into the run directory and keeps in SQLite (`bpgraph.taxonomy`). A virus with no family simply has no parent — it stays queryable, it just falls out of family rollups.
 
 ### Generated here, not exported
 
 Two things the relational database does not hold, built in this repo from UniProt and GO and written into **the run directory, beside `export/` rather than in it**, so `export/` stays exactly what your database produced:
 
-- **`functions.tsv`** — `function` on proteins, the UniProt `CC FUNCTION` text. It has no column in `descriptions.tsv`; `description` does come from the export. Written by `uv run bpgraph-functions <run directory>`, which reads that export to learn which proteins to fetch.
+- **`functions.tsv`** — `function` on proteins, the UniProt `CC FUNCTION` text. It has no column in `descriptions.tsv`; `description` does come from the export. Written by `uv run bpgraph-functions <run directory>`, which reads that export to learn which entries and spans to fetch.
 - **`go_terms.tsv`, `go_edges.tsv` and `go_annotations.tsv`** — the GO an export's human proteins reach. Written by `uv run bpgraph-go <run directory>`, which reads that export to learn which proteins to cut the ontology down to.
 
-A run without them loads all the same: its proteins land with an empty `function` and it gets no `:GoTerm` nodes, with a line in the log saying so. Everything else — interactions, descriptions, peptides, taxonomy — works from your export alone.
+A run without them loads all the same: its proteins land with an empty `function` and it gets no `:GoTerm` nodes, with a line in the log saying so. Everything else — interactions, descriptions, peptides, entries — works from your export, the taxonomy and the curated virus list alone.
 
 #### functions.tsv
 
 **Fetched into the run directory of the export it was fetched for**, so a new export cannot quietly read the last one's text: a new export is a new run directory, with a file that is not there yet — fetch again.
 
-| column                       | notes                                               |
-| ---------------------------- | --------------------------------------------------- |
-| `type`                       | `h` or `v`                                          |
-| `accession`, `start`, `stop` | the protein, exactly as `descriptions.tsv` gives it |
-| `function`                   | the text. A protein with none has no row            |
+| column                       | notes                                                     |
+| ---------------------------- | --------------------------------------------------------- |
+| `type`                       | `h` or `v`                                                |
+| `accession`, `start`, `stop` | an entry and span, exactly as `descriptions.tsv` gives it |
+| `function`                   | the text. A span with none has no row                     |
 
 ```
 type  accession  start  stop  function
@@ -178,11 +188,11 @@ h     P36969     1      197   Essential antioxidant peroxidase that directly…
 v     P27958     1973   2419  Phosphorylated protein that is indispensable f…
 ```
 
-A UniProt entry is one accession, but a row here is one protein, and a viral polyprotein holds a mature protein per chain. UniProt scopes a FUNCTION comment to a chain by naming its molecule, and the fetcher matches the two **by coordinates rather than by name** — curation and UniProt disagree about the exact boundary often enough, the row above being one residue short of UniProt's NS5A chain, while two chains of one entry never sit close enough for the overlap to be ambiguous. A protein spanning several chains, a whole polyprotein being the usual case, takes all of their text, each paragraph under its chain's name.
+A row is one entry and span, not one protein: a viral protein observed on several entries has several rows, and the build pools them into its one `function` — the commonest text, weighted by how many descriptions saw each entry — logging every protein whose entries disagree. A UniProt entry is one accession, and a viral polyprotein holds a mature protein per chain. UniProt scopes a FUNCTION comment to a chain by naming its molecule, and the fetcher matches the two **by coordinates rather than by name** — curation and UniProt disagree about the exact boundary often enough, the row above being one residue short of UniProt's NS5A chain, while two chains of one entry never sit close enough for the overlap to be ambiguous. A span covering several chains, a whole polyprotein being the usual case, takes all of their text, each paragraph under its chain's name.
 
-**Only text about the protein is written.** An entry's own FUNCTION describes the whole accession, so it is used only where the export names no other part of that accession. Where a polyprotein is cut into mature proteins by an entry UniProt never split into chains, there is nothing to say about any one of them, and they all keep `function` empty rather than sharing one text. Accessions UniProt has retired — deleted, or merged into another — come back with nothing and land the same way.
+**Only text about the span is written.** An entry's own FUNCTION describes the whole accession, so it is used only where the export names no other part of that accession. Where a polyprotein is cut into mature proteins by an entry UniProt never split into chains, there is nothing to say about any one of them, and they all keep `function` empty rather than sharing one text. Accessions UniProt has retired — deleted, or merged into another — come back with nothing and land the same way.
 
-A row naming a protein the export does not have means the file and the export beside it have parted ways — the export was rebuilt in place, most likely — and the loader rejects it by its line number rather than loading half-stale text.
+A row naming a span the export does not have means the file and the export beside it have parted ways — the export was rebuilt in place, most likely — and the loader rejects it by its line number rather than loading half-stale text.
 
 #### The GO trio
 
@@ -226,6 +236,7 @@ A run directory holds the export and everything fetched for it:
 ```
 data/2026-09-09/
   export/            descriptions.tsv, publications.tsv, peptides.tsv
+  sources.tsv        which release of each dataset was fetched
   taxdmp.zip         taxonomy.sqlite
   functions.tsv
   go-basic.obo       goa_human.gaf.gz
@@ -233,34 +244,16 @@ data/2026-09-09/
   topics/            ferroptosis.tsv
 ```
 
-Fetch the taxonomy, the function text and the GO once for the export, then build:
-
-```python
-from pathlib import Path
-
-from bpgraph.run import Run
-from bpgraph.taxonomy import download_taxdump, load_taxdump
-
-run = Run(Path("data/2026-09-09"))
-load_taxdump(download_taxdump(run.taxdump), run.taxonomy)
-```
+Fetch the taxonomy first — the other two read the export, which resolves viruses against it — then build:
 
 ```sh
+uv run bpgraph-taxonomy data/2026-09-09     # -> taxdmp.zip, taxonomy.sqlite
 uv run bpgraph-functions data/2026-09-09    # -> functions.tsv
 uv run bpgraph-go data/2026-09-09           # -> go_{terms,edges,annotations}.tsv
+uv run bpgraph-build data/2026-09-09        # -> the live graph
 ```
 
-```python
-from pathlib import Path
-
-from bpgraph import Config, build, connect
-from bpgraph.loaders import TsvExport
-
-config = Config.from_env()
-export = TsvExport.open(Path("data/2026-09-09")).load()
-report = build(connect(config), export, config)
-print(report.counts)
-```
+Every fetch records its dataset in `sources.tsv`: the URL, the day it was fetched, and the release the source names — the taxdump's `Last-Modified`, UniProt's `X-UniProt-Release`, the ontology's `data-version`, the GOA dump's `date-generated`. `bpgraph-build` prints them after the counts.
 
 Loading happens before anything is written, so a malformed export fails with a file and a line — `descriptions.tsv:2: EY0001: virus-virus interactions are not modelled` — and the live graph is never touched. Whatever survives loading then has to pass the constraint gate in [`build.md`](build.md).
 

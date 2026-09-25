@@ -8,11 +8,11 @@ publication; `peptides.tsv` holds the peptides a description reports.
 
 There is no protein table and no method table. A protein is whatever the
 description rows say it is, so `descriptions.tsv` is read twice: the first pass
-reconciles the restated columns into one protein per id and one method per
-PSI-MI id, and the second builds the descriptions against them. Two passes
-rather than one because a description can only be resolved once every mention
-of its partners has been seen — reconciling is what decides a protein's
-coordinates.
+reconciles the restated columns into one entry per accession, one protein per
+id and one method per PSI-MI id, and the second builds the descriptions against
+them. A viral protein's id is its curated virus and its name, so the first pass
+is also where every viral taxon must find its virus in `curation/viruses.tsv`,
+and where every entry and span a protein was seen on is gathered.
 
 Human or viral is not a column either. It follows from `type` and the slot: a
 `vh` row's second partner is the viral one, and every other partner is human.
@@ -28,7 +28,7 @@ in `topics/`, resolved against this export by hand.
 import csv
 import logging
 from collections import Counter
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -38,23 +38,29 @@ from pydantic import BaseModel, ValidationError
 from pydantic_core import ErrorDetails
 
 from bpgraph.enums import GoNamespace, GoRelation, InteractionKind, ProteinKind
-from bpgraph.ids import protein_id
+from bpgraph.ids import human_protein_id, viral_protein_id
 from bpgraph.models import (
     Description,
+    Entry,
     Export,
     GoAnnotation,
     GoEdge,
     GoTerm,
     Involvement,
+    Location,
+    Membership,
     Method,
+    Partner,
     Peptide,
     Protein,
     Publication,
     ReportedPeptide,
     Topic,
+    Virus,
 )
 from bpgraph.run import GoPaths, Run
 from bpgraph.taxonomy import Taxonomy, TaxonomyUnavailable
+from bpgraph.viruses import CuratedViruses
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +82,10 @@ INTERACTION_KINDS: Mapping[str, InteractionKind] = {
 
 HUMAN_START = 1
 """A human protein is a full-length chain, so its coordinates start at 1."""
+
+LENGTH_SPREAD = 0.5
+"""A grouped viral protein whose shortest member is under half its longest is
+reported: those members may not be one chain, and may not share one function."""
 
 
 class ExportError(ValueError):
@@ -190,6 +200,10 @@ def _describe(problem: ErrorDetails) -> str:
     return f"{column}: {message}" if column else message
 
 
+type _Site = tuple[str, int, int]
+"""Where a mention sits: accession, start, stop."""
+
+
 @dataclass(frozen=True, slots=True)
 class _Mention:
     """One partner as one description row names it, before reconciliation."""
@@ -203,8 +217,8 @@ class _Mention:
     taxon_id: int
 
     @property
-    def id(self) -> str:
-        return protein_id(self.accession, self.start, self.stop, self.kind)
+    def site(self) -> _Site:
+        return (self.accession, self.start, self.stop)
 
 
 def _interaction_kind(cursor: _Cursor, row: Mapping[str, str]) -> InteractionKind:
@@ -224,7 +238,7 @@ def _mention(
     if kind is ProteinKind.HUMAN and start != HUMAN_START:
         raise cursor.fail(
             f"human protein {accession} starts at {start}: a human protein is a "
-            "full-length chain, and its id carries no coordinates"
+            "full-length chain"
         )
     return _Mention(
         accession=accession,
@@ -255,41 +269,48 @@ def _mentions(cursor: _Cursor, row: Mapping[str, str]) -> tuple[_Mention, _Menti
 
 
 @dataclass(slots=True)
-class _Draft:
+class _EntryDraft:
+    """Every mention of one accession."""
+
+    cursor: _Cursor
+    taxon_id: int
+    taxon_name: str
+    descriptions: Counter[str] = field(default_factory=Counter)
+
+
+@dataclass(slots=True)
+class _ProteinDraft:
     """Every mention of one protein, gathered before a node is made of it.
 
     A protein has no table of its own, so it is described once per description
-    row it takes part in — hundreds of times over, and not always identically.
-    The counters are what decides between the variants.
+    row it takes part in — hundreds of times over, across strains and entries,
+    and not always identically. The counters are what decides between the
+    variants, and `sites` is how often each entry and span carried it.
     """
 
     cursor: _Cursor
     kind: ProteinKind
-    accession: str
-    taxon_id: int
-    taxon_name: str
-    spans: Counter[tuple[int, int]] = field(default_factory=Counter)
     names: Counter[str] = field(default_factory=Counter)
     descriptions: Counter[str] = field(default_factory=Counter)
+    sites: Counter[_Site] = field(default_factory=Counter)
 
 
-def _widest(identity: str, spans: Counter[tuple[int, int]]) -> tuple[int, int]:
-    """The longest span one protein was exported with.
+def _widest(identity: str, spans: Iterable[tuple[int, int]]) -> tuple[int, int]:
+    """The longest span a human entry was exported with.
 
-    Only a human protein can reach here with more than one. A viral id carries
-    its own coordinates, so a second span there is a second protein; a human id
-    is a bare accession, so two UniProt releases disagreeing about the sequence
-    length land on one node, and the later — the longer — wins.
+    Two UniProt releases disagreeing about a sequence's length land on one
+    entry, and the longer wins, on the assumption that it is the later.
     """
-    widest = max(spans, key=lambda span: span[1] - span[0])
-    if len(spans) > 1:
-        seen = ", ".join(f"{start}-{stop}" for start, stop in sorted(spans))
+    distinct = sorted(set(spans))
+    widest = max(distinct, key=lambda span: span[1] - span[0])
+    if len(distinct) > 1:
+        seen = ", ".join(f"{start}-{stop}" for start, stop in distinct)
         logger.warning("%s was exported as %s; keeping %s-%s", identity, seen, *widest)
     return widest
 
 
 def _majority(identity: str, column: str, values: Counter[str]) -> str:
-    """The commonest value a column held for one protein.
+    """The commonest value a column held for one protein or entry.
 
     Every description row restates a protein's name and description, and a few
     disagree — a gene renamed after some of the rows were written. The majority
@@ -300,26 +321,29 @@ def _majority(identity: str, column: str, values: Counter[str]) -> str:
         seen = ", ".join(
             f"{other!r} ({count})" for other, count in values.most_common()
         )
-        logger.warning(
-            "%s: %s is given as %s; keeping %r", identity, column, seen, value
-        )
+        logger.debug("%s: %s is given as %s; keeping %r", identity, column, seen, value)
     return value
 
 
 @dataclass(slots=True)
 class _Registry:
-    """The protein table, rebuilt from the mentions in `descriptions.tsv`.
+    """The protein and entry tables, rebuilt from `descriptions.tsv`.
 
-    Keyed by derived id rather than by `(accession, start, stop)`, because that
-    is the identity the graph enforces: two human rows differing only in `stop`
-    are one node, and collapsing them here is what keeps the id constraint and
-    the coordinates agreeing.
+    A human protein is its accession. A viral one is its curated virus and its
+    curated name, so every strain's copy of `HBx` lands on one draft, and the
+    entries and spans it was seen on are what `:ON_ENTRY` records.
     """
 
     taxonomy: Taxonomy
-    drafts: dict[str, _Draft] = field(default_factory=dict)
+    curated: CuratedViruses
     kinds: dict[str, ProteinKind] = field(default_factory=dict)
+    entries: dict[str, _EntryDraft] = field(default_factory=dict)
+    drafts: dict[str, _ProteinDraft] = field(default_factory=dict)
     taxa: dict[int, tuple[int, str]] = field(default_factory=dict)
+    viruses: dict[int, Virus | None] = field(default_factory=dict)
+    virus_of: dict[str, int] = field(default_factory=dict)
+    """Each viral protein's curated virus, by taxon id."""
+    uncurated: set[int] = field(default_factory=set)
 
     def observe(self, cursor: _Cursor, mention: _Mention) -> None:
         declared = self.kinds.setdefault(mention.accession, mention.kind)
@@ -328,25 +352,41 @@ class _Registry:
                 f"{mention.accession} is {declared.name.lower()} elsewhere and "
                 f"{mention.kind.name.lower()} here"
             )
-        draft = self.drafts.get(mention.id)
-        if draft is None:
-            taxon_id, taxon_name = self._taxon(cursor, mention.taxon_id)
-            draft = _Draft(
-                cursor=cursor,
-                kind=mention.kind,
-                accession=mention.accession,
-                taxon_id=taxon_id,
-                taxon_name=taxon_name,
-            )
-            self.drafts[mention.id] = draft
-        elif self._taxon(cursor, mention.taxon_id)[0] != draft.taxon_id:
+        taxon_id, taxon_name = self._taxon(cursor, mention.taxon_id)
+        entry = self.entries.get(mention.accession)
+        if entry is None:
+            entry = _EntryDraft(cursor=cursor, taxon_id=taxon_id, taxon_name=taxon_name)
+            self.entries[mention.accession] = entry
+        elif entry.taxon_id != taxon_id:
             raise cursor.fail(
-                f"{mention.id} is taxon {draft.taxon_id} elsewhere and "
+                f"{mention.accession} is taxon {entry.taxon_id} elsewhere and "
                 f"{mention.taxon_id} here"
             )
-        draft.spans[(mention.start, mention.stop)] += 1
+        entry.descriptions[mention.description] += 1
+
+        virus = self._virus(taxon_id) if mention.kind is ProteinKind.VIRAL else None
+        if mention.kind is ProteinKind.VIRAL and virus is None:
+            self.uncurated.add(taxon_id)
+            return
+        identity = self.identity(cursor, mention)
+        draft = self.drafts.get(identity)
+        if draft is None:
+            draft = _ProteinDraft(cursor=cursor, kind=mention.kind)
+            self.drafts[identity] = draft
+            if virus is not None:
+                self.virus_of[identity] = virus.taxon_id
         draft.names[mention.name] += 1
         draft.descriptions[mention.description] += 1
+        draft.sites[mention.site] += 1
+
+    def identity(self, cursor: _Cursor, mention: _Mention) -> str:
+        """The id of the protein a mention names."""
+        if mention.kind is ProteinKind.HUMAN:
+            return human_protein_id(mention.accession)
+        virus = self._virus(self._taxon(cursor, mention.taxon_id)[0])
+        if virus is None:
+            raise cursor.fail(f"taxon {mention.taxon_id} has no curated virus")
+        return viral_protein_id(virus.taxon_id, mention.name)
 
     def _taxon(self, cursor: _Cursor, taxon_id: int) -> tuple[int, str]:
         """Canonicalize a taxon id and name it from the local taxonomy.
@@ -363,62 +403,158 @@ class _Registry:
             current = self.taxonomy.canonical(taxon_id)
         except TaxonomyUnavailable as error:
             raise cursor.fail(str(error)) from None
-        resolved = (current, self.taxonomy.get(current).name)
+        resolved = (current, self.taxonomy.name(current))
         self.taxa[taxon_id] = resolved
         return resolved
 
+    def _virus(self, taxon_id: int) -> Virus | None:
+        if taxon_id not in self.viruses:
+            self.viruses[taxon_id] = self.curated.enclosing(taxon_id)
+        return self.viruses[taxon_id]
+
+    def require_curated(self) -> None:
+        """The build gate: every viral taxon belongs to a curated virus."""
+        if self.uncurated:
+            self.curated.require(self.uncurated)
+
     def proteins(self) -> dict[str, Protein]:
-        """One `:Protein` per id, with the variants reconciled."""
         return {
-            identity: _reconcile(identity, draft)
+            identity: _make(
+                draft.cursor,
+                Protein,
+                id=identity,
+                kind=draft.kind,
+                name=_majority(identity, "name", draft.names),
+                description=_majority(identity, "description", draft.descriptions),
+            )
             for identity, draft in self.drafts.items()
         }
 
+    def entry_models(self) -> tuple[Entry, ...]:
+        return tuple(
+            _make(
+                entry.cursor,
+                Entry,
+                accession=accession,
+                taxon_id=entry.taxon_id,
+                taxon_name=entry.taxon_name,
+                description=_majority(accession, "description", entry.descriptions),
+            )
+            for accession, entry in self.entries.items()
+        )
 
-def _reconcile(identity: str, draft: _Draft) -> Protein:
-    """One protein out of every mention of it."""
-    start, stop = _widest(identity, draft.spans)
-    return _make(
-        draft.cursor,
-        Protein,
-        accession=draft.accession,
-        start=start,
-        stop=stop,
-        kind=draft.kind,
-        name=_majority(identity, "name", draft.names),
-        description=_majority(identity, "description", draft.descriptions),
-        taxon_id=draft.taxon_id,
-        taxon_name=draft.taxon_name,
-    )
+    def locations(self, proteins: Mapping[str, Protein]) -> tuple[Location, ...]:
+        """Every entry and span a protein was seen on. A human protein is its
+        one entry, at the widest span it was exported with."""
+        located: list[Location] = []
+        for identity, draft in self.drafts.items():
+            protein = proteins[identity]
+            if draft.kind is ProteinKind.HUMAN:
+                start, stop = _widest(
+                    identity, ((start, stop) for _, start, stop in draft.sites)
+                )
+                sites: Iterable[_Site] = ((identity, start, stop),)
+            else:
+                sites = draft.sites
+            located.extend(
+                _make(
+                    draft.cursor,
+                    Location,
+                    protein=protein,
+                    accession=accession,
+                    start=start,
+                    stop=stop,
+                )
+                for accession, start, stop in sites
+            )
+        return tuple(located)
+
+    def memberships(self, proteins: Mapping[str, Protein]) -> tuple[Membership, ...]:
+        return tuple(
+            Membership(protein=proteins[identity], taxon_id=virus)
+            for identity, virus in self.virus_of.items()
+        )
+
+    def used_viruses(self) -> tuple[Virus, ...]:
+        used = set(self.virus_of.values())
+        return tuple(
+            virus for virus in self.curated.viruses.values() if virus.taxon_id in used
+        )
+
+    def report(self) -> None:
+        """The checks a human should look at, none of which stops a build.
+
+        Names are case-sensitive, so names differing only in case are two
+        proteins — genuinely so for EBV's `BARF1` and `BaRF1`, but any new pair
+        is worth a look. And the entries of one grouped protein should be one
+        chain: members whose lengths differ by more than half are listed.
+        """
+        by_folded: dict[tuple[int, str], set[str]] = {}
+        for identity, virus in self.virus_of.items():
+            (name, _), *_ = self.drafts[identity].names.most_common()
+            by_folded.setdefault((virus, name.lower()), set()).add(name)
+        collisions = sorted(
+            f"{self.curated.viruses[virus].name} {'/'.join(sorted(names))}"
+            for (virus, _), names in by_folded.items()
+            if len(names) > 1
+        )
+        if collisions:
+            logger.warning(
+                "%d viral protein names differ only in case: %s",
+                len(collisions),
+                "; ".join(collisions),
+            )
+        spread: list[str] = []
+        for identity, draft in self.drafts.items():
+            if draft.kind is not ProteinKind.VIRAL:
+                continue
+            lengths = [stop - start + 1 for _, start, stop in draft.sites]
+            if min(lengths) < LENGTH_SPREAD * max(lengths):
+                spread.append(f"{identity} {min(lengths)}-{max(lengths)}")
+        if spread:
+            logger.warning(
+                "%d grouped viral proteins have members differing in length by "
+                "more than half: %s",
+                len(spread),
+                ", ".join(sorted(spread)),
+            )
 
 
 @dataclass(frozen=True, slots=True)
 class _PeptideReference:
     """A `peptides.tsv` row, before its source is matched to a partner.
 
-    The row names the source protein in full — kind, accession and span — which
-    is exactly what a derived id is made of, so the match against the
-    description's two partners is an id comparison.
+    The row names the source in full — kind, accession and span — so it is
+    matched against where each of the description's two partners was seen. A
+    human partner is its whole entry, so there the accession alone decides.
     """
 
     cursor: _Cursor
     sequence: str
-    source_id: str
+    kind: ProteinKind
+    site: _Site
+
+    def names(self, mention: _Mention) -> bool:
+        if self.kind is not mention.kind:
+            return False
+        if self.kind is ProteinKind.HUMAN:
+            return self.site[0] == mention.accession
+        return self.site == mention.site
 
 
 def _reported(
-    reference: _PeptideReference, partners: tuple[Protein, Protein]
+    reference: _PeptideReference, partners: Sequence[tuple[_Mention, Protein]]
 ) -> ReportedPeptide:
     """Match a peptide's source to one of its description's partners.
 
     Naming anything else is an export bug, caught here with the peptide row's
     own line number.
     """
-    source = next((p for p in partners if p.id == reference.source_id), None)
+    source = next((p for m, p in partners if reference.names(m)), None)
     if source is None:
+        accession, start, stop = reference.site
         raise reference.cursor.fail(
-            f"source {reference.source_id} is not a partner of this description "
-            f"({partners[0].id}, {partners[1].id})"
+            f"source {accession}:{start}-{stop} is not a partner of this description"
         )
     return _make(
         reference.cursor,
@@ -428,22 +564,13 @@ def _reported(
     )
 
 
-def _resolve(
-    cursor: _Cursor, proteins: Mapping[str, Protein], mention: _Mention
-) -> Protein:
-    protein = proteins.get(mention.id)
-    if protein is None:
-        raise cursor.fail(f"{mention.id} was not seen while scanning {DESCRIPTIONS}")
-    return protein
-
-
 def _resolve_human(
     cursor: _Cursor, humans: Mapping[str, Protein], row: Mapping[str, str]
 ) -> Protein:
     """GO annotations name a human protein by accession alone, which
     identifies exactly one node."""
     accession = _required(cursor, row, "accession")
-    protein = humans.get(accession)
+    protein = humans.get(human_protein_id(accession))
     if protein is None:
         raise cursor.fail(f"{accession} is not a human protein in {DESCRIPTIONS}")
     return protein
@@ -467,24 +594,25 @@ class TsvExport:
 
     run: Run
     taxonomy: Taxonomy
+    curated: CuratedViruses
 
     @classmethod
     def open(cls, directory: Path) -> Self:
-        """Read `directory` against the taxonomy fetched into it."""
+        """Read `directory` against the taxonomy fetched into it and the
+        curated virus list."""
         run = Run(directory)
-        return cls(run, Taxonomy.open(run.taxonomy))
+        taxonomy = Taxonomy.open(run.taxonomy)
+        return cls(run, taxonomy, CuratedViruses.load(taxonomy))
 
     def load(self) -> Export:
         publications = self._publications()
-        proteins, methods = self._scan()
-        self._enrich(proteins)
-        taxa, taxon_links = self.taxonomy.resolve(
-            protein.taxon_id
-            for protein in proteins.values()
-            if protein.kind is ProteinKind.VIRAL
-        )
+        registry, methods = self._scan()
+        proteins = registry.proteins()
+        self._enrich(registry, proteins)
+        viruses = registry.used_viruses()
+        families, taxon_links = self.taxonomy.families(v.taxon_id for v in viruses)
         humans = {
-            protein.accession: protein
+            protein.id: protein
             for protein in proteins.values()
             if protein.kind is ProteinKind.HUMAN
         }
@@ -494,23 +622,27 @@ class TsvExport:
         known = frozenset(term.go_id for term in go_terms)
         return Export(
             proteins=tuple(proteins.values()),
-            taxa=taxa,
+            entries=registry.entry_models(),
+            locations=registry.locations(proteins),
+            viruses=viruses,
+            families=families,
             taxon_links=taxon_links,
+            memberships=registry.memberships(proteins),
             topics=tuple(
                 Topic(name=name) for name in sorted({i.topic for i in involvements})
             ),
             involvements=involvements,
             publications=tuple(publications.values()),
             methods=methods,
-            descriptions=self._descriptions(proteins, publications),
+            descriptions=self._descriptions(registry, proteins, publications),
             go_terms=go_terms,
             go_edges=tuple(self._go_edges(go, known)),
             go_annotations=tuple(self._go_annotations(go, known, humans)),
         )
 
-    def _scan(self) -> tuple[dict[str, Protein], tuple[Method, ...]]:
+    def _scan(self) -> tuple[_Registry, tuple[Method, ...]]:
         """First pass over `descriptions.tsv`: the entities it restates inline."""
-        registry = _Registry(taxonomy=self.taxonomy)
+        registry = _Registry(taxonomy=self.taxonomy, curated=self.curated)
         methods: dict[str, Method] = {}
         for cursor, row in _rows(self.run.export / DESCRIPTIONS):
             for mention in _mentions(cursor, row):
@@ -527,10 +659,13 @@ class TsvExport:
                     f"{method.psimi_id} is {known.name!r} elsewhere and "
                     f"{method.name!r} here"
                 )
-        return registry.proteins(), tuple(methods.values())
+        registry.require_curated()
+        registry.report()
+        return registry, tuple(methods.values())
 
     def _descriptions(
         self,
+        registry: _Registry,
         proteins: Mapping[str, Protein],
         publications: Mapping[str, Publication],
     ) -> tuple[Description, ...]:
@@ -546,21 +681,24 @@ class TsvExport:
             pmid = _required(cursor, row, "pmid")
             if pmid not in publications:
                 raise cursor.fail(f"pmid {pmid} is not in {PUBLICATIONS}")
-            first, second = (
-                _resolve(cursor, proteins, mention)
+            partners = [
+                (mention, proteins[registry.identity(cursor, mention)])
                 for mention in _mentions(cursor, row)
-            )
+            ]
+            (first_mention, first), (second_mention, second) = partners
             descriptions.append(
                 _make(
                     cursor,
                     Description,
                     stable_id=stable_id,
-                    protein_1=first,
-                    protein_2=second,
+                    partner_1=Partner(protein=first, accession=first_mention.accession),
+                    partner_2=Partner(
+                        protein=second, accession=second_mention.accession
+                    ),
                     pmid=pmid,
                     psimi_id=_required(cursor, row, "psimi_id"),
                     peptides=_collapse(
-                        _reported(reference, (first, second))
+                        _reported(reference, partners)
                         for reference in peptides.get(stable_id, ())
                     ),
                 )
@@ -581,11 +719,11 @@ class TsvExport:
             reference = _PeptideReference(
                 cursor=cursor,
                 sequence=_required(cursor, row, "sequence").upper(),
-                source_id=protein_id(
+                kind=_choice(cursor, row, "source_type", ProteinKind),
+                site=(
                     _required(cursor, row, "source_accession"),
                     _integer(cursor, row, "source_start"),
                     _integer(cursor, row, "source_stop"),
-                    _choice(cursor, row, "source_type", ProteinKind),
                 ),
             )
             grouped.setdefault(_required(cursor, row, "stable_id"), []).append(
@@ -593,13 +731,17 @@ class TsvExport:
             )
         return grouped
 
-    def _enrich(self, proteins: dict[str, Protein]) -> None:
+    def _enrich(self, registry: _Registry, proteins: dict[str, Protein]) -> None:
         """Attach the UniProt function text fetched for this export.
 
-        A protein UniProt says nothing about simply has no row, and keeps the
-        empty `function` it was built with. No file at all means the fetch has
-        not been run for this export — a whole stage missing rather than a
-        protein, so it is worth a line in the log; a row naming a protein this
+        The file holds one text per entry and span, and a viral protein seen on
+        several entries gets several. Curation groups one chain across strains,
+        so they should agree; the text the protein takes is the commonest,
+        weighted by how many description rows saw each entry and span, and the
+        proteins whose entries disagree are logged.
+
+        No file at all means the fetch has not been run for this export — a
+        whole stage missing, worth a line in the log; a row naming a span this
         export does not have means the file no longer matches the export beside
         it, and the fix for both is the same command.
         """
@@ -612,25 +754,49 @@ class TsvExport:
                 self.run.directory,
             )
             return
-        seen: set[str] = set()
+        texts: dict[tuple[ProteinKind, _Site], str] = {}
         for cursor, row in _rows(path):
-            identity = protein_id(
+            kind = _choice(cursor, row, "type", ProteinKind)
+            site = (
                 _required(cursor, row, "accession"),
                 _integer(cursor, row, "start"),
                 _integer(cursor, row, "stop"),
-                _choice(cursor, row, "type", ProteinKind),
             )
-            if identity in seen:
-                raise cursor.fail(f"{identity} appears twice")
-            seen.add(identity)
-            protein = proteins.get(identity)
-            if protein is None:
-                raise cursor.fail(
-                    f"{identity} is not in {DESCRIPTIONS}: this file no longer "
-                    f"matches {self.run.directory}, so fetch it again"
-                )
-            proteins[identity] = protein.model_copy(
-                update={"function": _required(cursor, row, "function")}
+            if (kind, site) in texts:
+                raise cursor.fail(f"{site} appears twice")
+            texts[(kind, site)] = _required(cursor, row, "function")
+
+        located: set[tuple[ProteinKind, _Site]] = set()
+        disagreeing: list[str] = []
+        for identity, draft in registry.drafts.items():
+            weights: Counter[str] = Counter()
+            for site, count in draft.sites.items():
+                located.add((draft.kind, site))
+                text = texts.get((draft.kind, site))
+                if text:
+                    weights[text] += count
+            if not weights:
+                continue
+            if len(weights) > 1:
+                disagreeing.append(identity)
+            (function, _), *_ = weights.most_common()
+            proteins[identity] = proteins[identity].model_copy(
+                update={"function": function}
+            )
+
+        stale = set(texts) - located
+        if stale:
+            raise ExportError(
+                f"{path.name} names {len(stale)} spans not in {DESCRIPTIONS}, e.g. "
+                f"{sorted(stale)[0][1]}: it no longer matches {self.run.directory}, "
+                "so fetch it again"
+            )
+        if disagreeing:
+            logger.warning(
+                "%d proteins carry different function text on different entries; "
+                "each keeps the commonest: %s",
+                len(disagreeing),
+                ", ".join(sorted(disagreeing)),
             )
 
     def _involvements(self, humans: Mapping[str, Protein]) -> Iterator[Involvement]:

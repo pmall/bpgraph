@@ -10,6 +10,13 @@ class ProteinKind(StrEnum):
     VIRAL = "v"
 
 
+class TaxonKind(StrEnum):
+    """The second label on a taxon node: a curated virus, or its family."""
+
+    VIRUS = "Virus"
+    FAMILY = "Family"
+
+
 class InteractionKind(StrEnum):
     """The second label on an interaction node. Human-human or virus-human."""
 
