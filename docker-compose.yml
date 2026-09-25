@@ -25,23 +25,5 @@ services:
     depends_on:
       - falkordb-server
 
-  # MCP server. Published so MCP clients reach http://localhost:8080/mcp.
-  # Reaches the database over the compose network. Read-only by design:
-  # ingest happens on 6379, MCP clients only query.
-  falkordb-mcp:
-    image: falkordb/mcpserver:latest
-    ports:
-      - "8080:8080"
-    environment:
-      FALKORDB_HOST: falkordb-server
-      FALKORDB_PORT: 6379
-      FALKORDB_PASSWORD: ${FALKORDB_PASSWORD:-}
-      FALKORDB_DEFAULT_READONLY: "true"
-      FALKORDB_STRICT_READONLY: "true"
-      MCP_TRANSPORT: http
-      MCP_PORT: 8080
-    depends_on:
-      - falkordb-server
-
 volumes:
   falkordb_data:

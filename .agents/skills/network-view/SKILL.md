@@ -19,7 +19,7 @@ Three steps:
 
 ## 1. The dataset
 
-Query the graph through whatever access the environment provides, such as the MCP server. The schema is in `docs/schema.md`. Then write:
+Query the live graph with `uv run bpgraph-query`, as `docs/queries.md` describes, and nothing else. The schema is in `docs/schema.md`. Then write:
 
 ```json
 {
