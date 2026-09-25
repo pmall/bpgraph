@@ -1,0 +1,76 @@
+psimi_id	name	class
+MI:0232	transcriptional complementation assay	two hybrid
+MI:2412	membrane two hybrid	membrane two hybrid
+MI:0090	protein complementation assay	protein complementation assay
+MI:0809	bimolecular fluorescence complementation	protein complementation assay
+MI:2170	bimolecular luminiscence complementation	protein complementation assay
+MI:2219	gaussia luciferase protein tag	protein complementation assay
+MI:1215	bifc tag	protein complementation assay
+MI:0004	affinity chromatography technology	affinity purification
+MI:0400	affinity technology	affinity purification
+MI:0946	miniaturized immunoprecipitation	affinity purification
+MI:0943	detection by mass spectrometry	affinity purification
+MI:1234	silac	affinity purification
+MI:0427	Identification by mass spectrometry	affinity purification
+MI:0082	peptide massfingerprinting	affinity purification
+MI:0032	de novo protein sequencing by mass spectrometry	affinity purification
+MI:0068	mass detection of residue modification	affinity purification
+MI:2223	inference by quantitative co-purification	affinity purification
+MI:0944	mass spectrometry study of hydrogen/deuterium exchange	biophysical
+MI:1246	ion mobility mass spectrometry of complexes	biophysical
+MI:0096	pull down	pull down
+MI:2437	holdup assay	pull down
+MI:0008	array technology	protein array
+MI:0921	surface plasmon resonance array	protein array
+MI:0892	solid phase assay	binding assay
+MI:0411	enzyme linked immunosorbent assay	binding assay
+MI:0405	competition binding	binding assay
+MI:0440	saturation binding	binding assay
+MI:0034	display technology	display technology
+MI:0115	yeast display	display technology
+MI:0813	proximity ligation assay	proximity ligation assay
+MI:0091	chromatography technology	cofractionation
+MI:0071	molecular sieving	cofractionation
+MI:0027	cosedimentation	cofractionation
+MI:0982	electrophoretic mobility-based method	cofractionation
+MI:0070	mobility shift	cofractionation
+MI:1232	aggregation assay	aggregation assay
+MI:0928	filter trap assay	aggregation assay
+MI:0953	polymerization	aggregation assay
+MI:1313	proximity labelling technology	proximity labelling
+MI:0030	cross-linking study	cross-linking
+MI:0415	enzymatic study	enzymatic assay
+MI:0420	kinase homogeneous time resolved fluorescence	enzymatic assay
+MI:0425	kinase scintillation proximity assay	enzymatic assay
+MI:1036	nucleotide exchange assay	enzymatic assay
+MI:0414	enzymatic reaction	enzymatic assay
+MI:0417	footprinting	footprinting
+MI:0013	biophysical	biophysical
+MI:0968	biosensor	biosensor
+MI:0107	surface plasmon resonance	biosensor
+MI:0114	x-ray crystallography	crystallography
+MI:0894	electron diffraction	crystallography
+MI:0077	nuclear magnetic resonance	nuclear magnetic resonance
+MI:0043	electron resonance	spectroscopy
+MI:0016	circular dichroism	spectroscopy
+MI:0964	infrared spectroscopy	spectroscopy
+MI:0966	ultraviolet-visible spectroscopy	spectroscopy
+MI:0065	isothermal titration calorimetry	calorimetry
+MI:1311	differential scanning calorimetry	calorimetry
+MI:0067	light scattering	scattering
+MI:0888	small angle neutron scattering	scattering
+MI:0051	fluorescence technology	fluorescence
+MI:0055	fluorescent resonance energy transfer	energy transfer
+MI:0012	bioluminescence resonance energy transfer	energy transfer
+MI:0510	homogeneous time resolved fluorescence	energy transfer
+MI:0905	amplified luminescent proximity homogeneous assay	energy transfer
+MI:2171	complemented donor-acceptor resonance energy transfer	energy transfer
+MI:0428	imaging technique	imaging
+MI:0040	electron microscopy	electron microscopy
+MI:0045	experimental interaction detection	unspecified
+MI:0401	biochemical	unspecified
+MI:0659	experimental feature detection	unspecified
+MI:0396	predetermined participant	unspecified
+MI:0190	interaction type	unspecified
+MI:0116	feature type	unspecified
+MI:0590	attribute name	unspecified

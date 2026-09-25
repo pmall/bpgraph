@@ -1,6 +1,6 @@
 # Curated viruses — the naming and grouping choices
 
-[`viruses.tsv`](viruses.tsv) names the viruses this graph groups viral proteins by. One row is one virus: the NCBI taxon that defines it, the familiar short name everyone uses, and the full name. [`PROCESS.md`](PROCESS.md) is how the list is produced, step by step.
+[`viruses.tsv`](viruses.tsv) names the viruses this graph groups viral proteins by. One row is one virus: the NCBI taxon that defines it, the familiar short name everyone uses, and the full name.
 
 | column      | notes                                                  |
 | ----------- | ------------------------------------------------------ |
@@ -19,6 +19,10 @@ NCBI attaches a UniProt entry to whatever organism the entry names, which is alm
 Rolling up to NCBI's own species does not fix it either. The current ICTV binomials — *Orthohepadnavirus hominoidei*, *Lentivirus humimdef1*, *Betacoronavirus pandemicum* — sit above the familiar names, carry no acronym, and sometimes merge viruses nobody would pool: *Betacoronavirus pandemicum* holds both SARS-CoV-2 and SARS-CoV.
 
 So the level is curated here rather than taken from a rank.
+
+## When the build fails on a taxon
+
+A viral taxon no row encloses fails the build, naming it. Add a row for it by the rules below: group it at the node they give, name it as they say, and fill `family`, `n_proteins` and `n_interactions` from the export for review. Do not regenerate the list: moving a group or renaming a virus changes protein ids (`{taxon_id}:{name}`) in the graph, so every change to an existing row is a decision, recorded here with why.
 
 ## How a group was chosen
 

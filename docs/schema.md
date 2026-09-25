@@ -51,7 +51,7 @@ An entry carries human proteins or viral ones, never both. A human protein is on
 
 Only the curated viruses a viral protein belongs to, and the family above each. Human proteins get no `:Taxon` node, and strains get none either: they are `taxon_id` on `:Entry`.
 
-`:Virus` — one row of [`curation/viruses.tsv`](../curation/viruses.tsv), which [`curation/NAMING.md`](../curation/NAMING.md) explains. A viral protein belongs to the most specific row enclosing its entry's taxon.
+`:Virus` — one row of [`curation/viruses.tsv`](../curation/viruses.tsv), which [`curation/viruses.md`](../curation/viruses.md) explains. A viral protein belongs to the most specific row enclosing its entry's taxon.
 
 | property    | type | notes                                              |
 | ----------- | ---- | -------------------------------------------------- |

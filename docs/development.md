@@ -8,8 +8,8 @@ Conventions for changing the code, whether the build or a skill's script.
 data/           one directory per run: export/ as the database wrote it,
                 the taxonomy, function text and GO fetched for it, and
                 topics/ resolved against it. Gitignored
-curation/       viruses.tsv, the curated viruses; NAMING.md, why;
-                PROCESS.md, how to produce it again
+curation/       viruses.tsv, the curated viruses; viruses.md, why;
+                methods.tsv, the method classes; methods.md, why
 src/bpgraph/
   config.py     env-driven connection settings
   client.py     thin FalkorDB wrapper: parameterized query/write

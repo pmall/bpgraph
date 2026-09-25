@@ -18,11 +18,15 @@ bpgraph = "bpgraph:main"
 bpgraph-audit = "bpgraph.audit:main"
 bpgraph-functions = "bpgraph.uniprot:main"
 bpgraph-go = "bpgraph.go:main"
+bpgraph-intact = "bpgraph.intact:main"
+bpgraph-methods = "bpgraph.methods:main"
 bpgraph-network = "bpgraph.network:main"
 bpgraph-taxonomy = "bpgraph.taxonomy:main"
 bpgraph-build = "bpgraph.build:main"
 bpgraph-mcp = "bpgraph.server:main"
+bpgraph-psimi = "bpgraph.psimi:main"
 bpgraph-query = "bpgraph.query:main"
+bpgraph-swissprot = "bpgraph.swissprot:main"
 
 [build-system]
 requires = ["uv_build>=0.12.3,<0.13.0"]
