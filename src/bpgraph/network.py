@@ -1,8 +1,8 @@
 """Draw a network: a `network.json` in, a fixed page out.
 
 Choosing what a network holds is judgment, and belongs to whoever gathers it —
-usually an agent following the `network-view` skill, querying the graph through
-MCP. Drawing it is not: every network goes through the same file format and
+usually an agent following the `network-view` skill, querying the live graph.
+Drawing it is not: every network goes through the same file format and
 the same renderer, so two networks made a month apart look alike and compare
 directly. Rendering needs no database, only the file.
 

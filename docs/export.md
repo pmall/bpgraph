@@ -208,7 +208,7 @@ A topic is a subject of study, curated by a biologist as a spreadsheet of genes 
 | `accession`     | a human protein of this export                                       |
 | *anything else* | what the topic records about it, e.g. `role`. Each topic has its own |
 
-The file name is the topic's name. Every further column becomes a property of `:INVOLVED_IN`, as text, and must be listed for its topic in [`schema.md`](schema.md). A spreadsheet names genes, so a gene encoding two proteins — `CDKN2A`, p16INK4a and p14ARF — gets a row for each. An accession the export does not have is logged and left out.
+The file name is the topic's name. Every further column becomes a property of `:INVOLVED_IN`, as text, and must be listed for its topic in [`schema.md`](schema.md). A spreadsheet names genes, so a gene encoding two proteins — `CDKN2A`, p16INK4a and p14ARF — gets a row for each. An accession the export does not have is logged and left out. Resolve by judgment, asking about anything ambiguous, and list a new topic's columns in `schema.md` and in `TOPIC_PROPERTIES` in `audit.py`.
 
 ```
 accession  role
