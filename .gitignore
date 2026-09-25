@@ -12,3 +12,6 @@ wheels/
 
 # The TSV export a build reads.
 /data/
+
+# What analyses produce from the graph.
+/reports/
