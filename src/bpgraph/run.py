@@ -89,3 +89,18 @@ class Run:
     def taxonomy(self) -> Path:
         """The NCBI taxonomy dump, loaded into SQLite by `bpgraph.taxonomy`."""
         return self.directory / "taxonomy.sqlite"
+
+    @property
+    def psimi(self) -> Path:
+        """The PSI-MI ontology, as downloaded by `bpgraph.psimi`."""
+        return self.directory / "psi-mi.obo"
+
+    @property
+    def swissprot(self) -> Path:
+        """Every reviewed human UniProt entry, written by `bpgraph.swissprot`."""
+        return self.directory / "swissprot_human.tsv"
+
+    @property
+    def intact(self) -> Path:
+        """IntAct's human interactions, filtered by `bpgraph.intact`."""
+        return self.directory / "intact.tsv"

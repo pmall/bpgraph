@@ -31,7 +31,7 @@ uv sync
 
 ## Building a graph
 
-A run lives in its own directory, `data/<date>/` (gitignored): the TSV files the curation database exports go in `export/`, and what the export lacks is fetched beside it, each fetch recording its release in `sources.tsv`. The viruses proteins are grouped by are curated in [`curation/viruses.tsv`](curation/viruses.tsv): [`curation/NAMING.md`](curation/NAMING.md) explains the choices and [`curation/PROCESS.md`](curation/PROCESS.md) how to produce the list again.
+A run lives in its own directory, `data/<date>/` (gitignored): the TSV files the curation database exports go in `export/`, and what the export lacks is fetched beside it, each fetch recording its release in `sources.tsv`. The viruses proteins are grouped by are curated in [`curation/viruses.tsv`](curation/viruses.tsv), and [`curation/viruses.md`](curation/viruses.md) explains the choices.
 
 ```sh
 uv run bpgraph-taxonomy data/2026-09-09    # NCBI taxonomy

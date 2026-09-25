@@ -46,6 +46,7 @@ from urllib.request import Request, urlopen
 
 from bpgraph.enums import GoNamespace, GoRelation, ProteinKind
 from bpgraph.models import GoEdge, GoTerm
+from bpgraph.obo import TERM, stanzas, target
 from bpgraph.run import Run
 from bpgraph.sources import record_source
 
@@ -57,17 +58,12 @@ ANNOTATIONS_URL = "https://ftp.ebi.ac.uk/pub/databases/GO/goa/HUMAN/goa_human.ga
 USER_AGENT = "bpgraph"
 """The CDN in front of the ontology answers `403` to urllib's own agent."""
 
-TERM = "[Term]"
-"""The only stanza kind that carries a term. The file ends with typedefs."""
-
 IS_A = "is_a"
 RELATIONSHIP = "relationship"
 PART_OF = "part_of"
 ALT_ID = "alt_id"
 OBSOLETE = "is_obsolete"
 TRUE = "true"
-DANGLING = " ! "
-"""OBO closes a reference with the target's name, for people to read."""
 
 GAF_COMMENT = "!"
 GAF_COLUMNS = 17
@@ -185,33 +181,6 @@ def _clean(text: str) -> str:
     return " ".join(text.split())
 
 
-def _target(value: str) -> str:
-    """An OBO reference, without the name OBO closes it with."""
-    return value.split(DANGLING)[0].strip()
-
-
-def _stanzas(path: Path) -> Iterator[tuple[str, Mapping[str, list[str]]]]:
-    """The file's stanzas, each as its tag lines grouped by tag.
-
-    A tag may repeat — `is_a` once per parent — so every one of them is a list.
-    The header above the first stanza has no heading and is never yielded.
-    """
-    heading = ""
-    fields: dict[str, list[str]] = {}
-    with path.open(encoding="utf-8") as handle:
-        for line in handle:
-            stripped = line.strip()
-            if stripped.startswith("["):
-                if heading:
-                    yield heading, fields
-                heading, fields = stripped, {}
-            elif ": " in stripped:
-                tag, _, value = stripped.partition(": ")
-                fields.setdefault(tag, []).append(value.strip())
-    if heading:
-        yield heading, fields
-
-
 def _parents(go_id: str, fields: Mapping[str, list[str]]) -> Iterator[GoEdge]:
     """The `is_a` and `part_of` edges out of one stanza.
 
@@ -221,7 +190,7 @@ def _parents(go_id: str, fields: Mapping[str, list[str]]) -> Iterator[GoEdge]:
     for parent in fields.get(IS_A, ()):
         yield GoEdge(
             child_go_id=go_id,
-            parent_go_id=_target(parent),
+            parent_go_id=target(parent),
             relation=GoRelation.IS_A,
         )
     for relationship in fields.get(RELATIONSHIP, ()):
@@ -229,7 +198,7 @@ def _parents(go_id: str, fields: Mapping[str, list[str]]) -> Iterator[GoEdge]:
         if relation == PART_OF:
             yield GoEdge(
                 child_go_id=go_id,
-                parent_go_id=_target(parent),
+                parent_go_id=target(parent),
                 relation=GoRelation.PART_OF,
             )
 
@@ -239,7 +208,7 @@ def read_ontology(path: Path) -> Ontology:
     terms: dict[str, GoTerm] = {}
     parents: dict[str, tuple[GoEdge, ...]] = {}
     aliases: dict[str, str] = {}
-    for heading, fields in _stanzas(path):
+    for heading, fields in stanzas(path):
         if heading != TERM:
             continue
         go_id = fields["id"][0]

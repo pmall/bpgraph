@@ -1,7 +1,7 @@
 """The curated viruses viral proteins are grouped by.
 
 `curation/viruses.tsv` names one virus per row — `HBV`, `SARS-CoV-2`, `IAV` —
-anchored at an NCBI taxon; `curation/NAMING.md` says why each row is what it
+anchored at an NCBI taxon; `curation/viruses.md` says why each row is what it
 is. A viral protein belongs to the **most specific** row enclosing its own
 taxon, so strains and isolates roll up to their virus without being listed.
 
