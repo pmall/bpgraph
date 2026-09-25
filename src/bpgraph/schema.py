@@ -24,7 +24,7 @@ class ConstraintRow(TypedDict):
 
 UNIQUE_CONSTRAINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Protein", ("id",)),
-    ("Protein", ("accession", "start", "stop")),
+    ("Entry", ("accession",)),
     ("Taxon", ("taxon_id",)),
     ("Topic", ("name",)),
     ("GoTerm", ("go_id",)),
@@ -34,14 +34,11 @@ UNIQUE_CONSTRAINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Description", ("id",)),
     ("Peptide", ("sequence",)),
 )
-"""Both protein constraints are needed. The composite one only applies to nodes
-carrying all three properties, and catches an id that disagrees with its
-coordinates; the id one catches everything else."""
 
 EXTRA_INDEXES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Protein", ("name",)),
-    ("Protein", ("taxon_id",)),
-    ("Taxon", ("rank",)),
+    ("Entry", ("taxon_id",)),
+    ("Taxon", ("name",)),
     ("GoTerm", ("namespace",)),
     ("Peptide", ("length",)),
 )

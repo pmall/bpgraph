@@ -1,0 +1,443 @@
+taxon_id	name	full_name	family	n_proteins	n_interactions
+2697049	SARS-CoV-2	Severe acute respiratory syndrome coronavirus 2	Coronaviridae	102	13008
+64320	ZIKV	Zika virus	Flaviviridae	58	12161
+11320	IAV	Influenza A virus	Orthomyxoviridae	300	11467
+10376	EBV	Human gammaherpesvirus 4	Orthoherpesviridae	156	5487
+10359	HCMV	Human betaherpesvirus 5	Orthoherpesviridae	267	4920
+10407	HBV	Hepatitis B virus	Hepadnaviridae	63	3783
+3052230	HCV	Orthohepacivirus hominis	Hepaciviridae	108	3124
+11676	HIV-1	Human immunodeficiency virus 1	Retroviridae	171	2958
+11234	MeV	Measles morbillivirus	Paramyxoviridae	22	2228
+37296	KSHV	Human gammaherpesvirus 8	Orthoherpesviridae	124	2198
+11060	DENV-2	Dengue virus type 2	Flaviviridae	65	2039
+3052303	LCMV	Mammarenavirus choriomeningitidis	Arenaviridae	6	1998
+694009	SARS-CoV	Severe acute respiratory syndrome-related coronavirus	Coronaviridae	67	1770
+11053	DENV-1	Dengue virus type 1	Flaviviridae	19	1509
+3052462	EBOV	Orthoebolavirus zairense	Filoviridae	20	1507
+3052310	LASV	Mammarenavirus lassaense	Arenaviridae	8	1461
+10298	HSV-1	Human alphaherpesvirus 1	Orthoherpesviridae	117	1242
+39054	EV-A71	Enterovirus A71	Picornaviridae	33	1238
+2169991	JUNV	Mammarenavirus juninense	Arenaviridae	6	1134
+333760	HPV16	Human papillomavirus 16	Papillomaviridae	15	1083
+194440	PTLV1	Primate T-lymphotropic virus 1	Retroviridae	22	1078
+11250	HRSV	Human respiratory syncytial virus	Pneumoviridae	21	789
+12072	CVB3	Coxsackievirus B3	Picornaviridae	17	777
+3052225	NiV	Henipavirus nipahense	Paramyxoviridae	9	765
+333761	HPV18	Human papillomavirus 18	Papillomaviridae	11	763
+10497	ASFV	African swine fever virus	Asfarviridae	20	726
+10579	HPV8	Human papillomavirus 8	Papillomaviridae	3	673
+463676	RV-C1	Rhinovirus C	Picornaviridae	2	633
+129951	HAdV-C	Human mastadenovirus C	Adenoviridae	55	600
+10632	JCPyV	JC polyomavirus	Polyomaviridae	6	599
+3052223	HeV	Henipavirus hendraense	Paramyxoviridae	10	582
+10585	HPV31	Human papillomavirus 31	Papillomaviridae	14	571
+10600	HPV6b	Human papillomavirus type 6b	Papillomaviridae	5	551
+10580	HPV-11	Human papillomavirus 11	Papillomaviridae	14	518
+10245	VACV	Orthopoxvirus vaccinia	Poxviridae	69	513
+1821749	EMCV-1	Cardiovirus A	Picornaviridae	11	486
+11033	SFV	Semliki Forest virus	Togaviridae	7	472
+12475	HDV	Hepatitis delta virus	Kolmioviridae	10	468
+1335626	MERS	Middle East respiratory syndrome-related coronavirus	Coronaviridae	44	465
+493803	MCPyV	Merkel cell polyomavirus	Polyomaviridae	8	458
+28875	RVA	Rotavirus A	Sedoreoviridae	25	454
+1678143	HEV	Paslahepevirus balayani	Hepeviridae	20	447
+42789	EV-D68	Enterovirus D68	Picornaviridae	9	425
+11082	WNV	West Nile virus	Flaviviridae	27	401
+1511891	AAV2	Dependoparvovirus primate1	Parvoviridae	9	399
+3052731	SeV	Respirovirus muris	Paramyxoviridae	11	395
+11036	VEE	Venezuelan equine encephalitis virus	Togaviridae	6	378
+37124	CHIKV	Chikungunya virus	Togaviridae	30	366
+10586	HPV33	Human papillomavirus 33	Papillomaviridae	7	350
+333923	HPV5	Human papillomavirus 5	Papillomaviridae	5	346
+10621	HPV9	Human papillomavirus 9	Papillomaviridae	3	345
+147711	RV-A1	Rhinovirus A	Picornaviridae	4	327
+11137	HCoV-229E	Human coronavirus 229E	Coronaviridae	18	312
+689403	HBoV1	Human bocavirus 1	Parvoviridae	2	309
+1891767	SV40	Betapolyomavirus macacae	Polyomaviridae	9	307
+28344	PRRSV	Porcine reproductive and respiratory syndrome virus	Arteriviridae	14	284
+10583	HPV1a	Human papillomavirus type 1a	Papillomaviridae	4	281
+33708	MuHV-4	Murid gammaherpesvirus 4	Orthoherpesviridae	41	280
+42769	CV-A10	Coxsackievirus A10	Picornaviridae	5	277
+11084	TBEV	Tick-borne encephalitis virus	Flaviviridae	13	265
+10588	HPV39	Human papillomavirus 39	Papillomaviridae	3	255
+277944	HCoV-NL63	Human coronavirus NL63	Coronaviridae	14	247
+57667	SHIV	Simian-Human immunodeficiency virus	Retroviridae	3	229
+763552	MmuPV1	Mus musculus papillomavirus type 1	Papillomaviridae	2	227
+337052	BPV1	Deltapapillomavirus 4	Papillomaviridae	7	212
+11089	YFV	Yellow fever virus	Flaviviridae	7	196
+11723	SIV	Simian immunodeficiency virus	Retroviridae	46	189
+11072	JEV	Japanese encephalitis virus	Flaviviridae	21	171
+2748958	SFTSV	Bandavirus dabieense	Phenuiviridae	8	167
+10335	VZV	Human alphaherpesvirus 3	Orthoherpesviridae	17	165
+186539	REBOV	Reston ebolavirus	Filoviridae	6	160
+694014	ACoV	Avian coronavirus	Coronaviridae	10	148
+1980456	ANDV	Orthohantavirus andesense	Hantaviridae	6	137
+11520	FLUBV	Influenza B virus	Orthomyxoviridae	20	132
+1542134	HPV197	Human papillomavirus 197	Papillomaviridae	2	130
+694003	HCoV_OC43	Betacoronavirus 1	Coronaviridae	12	129
+333763	HPV32	Human papillomavirus 32	Papillomaviridae	3	124
+10788	CPV	Canine parvovirus	Parvoviridae	1	122
+37122	HPV6a	Human papillomavirus type 6a	Papillomaviridae	2	116
+10614	HPV3	Human papillomavirus 3	Papillomaviridae	2	111
+11909	HTLV-2	Human T-lymphotropic virus 2	Retroviridae	8	104
+290028	HCoV-HKU1	Human coronavirus HKU1	Coronaviridae	15	104
+11292	RABV	Lyssavirus rabies	Rhabdoviridae	17	102
+31552	HPV6	Human papillomavirus type 6	Papillomaviridae	5	101
+138950	PV1	Enterovirus C	Picornaviridae	12	100
+130310	HAdV-D	Human mastadenovirus D	Adenoviridae	24	99
+11070	DENV-4	Dengue virus type 4	Flaviviridae	12	97
+144353	BVDV1	Bovine viral diarrhea virus isolates and strains	Pestiviridae	2	89
+12110	FMDV	Foot-and-mouth disease virus	Picornaviridae	18	87
+11577	LACV	La Crosse virus	Peribunyaviridae	3	86
+11069	DENV-3	Dengue virus type 3	Flaviviridae	9	77
+1239565	MAstV1	Mamastrovirus 1	Astroviridae	4	75
+11786	MLV	Murine leukemia virus	Retroviridae	9	75
+59301	MAYV	Mayaro virus	Togaviridae	4	75
+3052505	MARV	Orthomarburgvirus marburgense	Filoviridae	10	72
+10366	MuBHV1	Murid betaherpesvirus 1	Orthoherpesviridae	14	72
+37959	HPV38	Human papillomavirus 38	Papillomaviridae	4	70
+11049	PRRSV-1	Lelystad virus	Arteriviridae	2	68
+10607	HPV17	Human papillomavirus 17	Papillomaviridae	2	65
+11041	RuV	Rubella virus	Matonaviridae	10	64
+10593	HPV45	Human papillomavirus 45	Papillomaviridae	3	63
+154334	CeHV-17	Macacine gammaherpesvirus 5	Orthoherpesviridae	3	62
+11709	HIV-2	Human immunodeficiency virus 2	Retroviridae	23	61
+694008	Pi-BatCoV_HKU5	Pipistrellus bat coronavirus HKU5	Coronaviridae	21	60
+211787	HPV92	Human papillomavirus 92	Papillomaviridae	2	60
+57278	HuBHV7	Human herpesvirus 7 strain JI	Orthoherpesviridae	3	58
+129875	HAdV-A	Human mastadenovirus A	Adenoviridae	8	57
+32603	HuBHV6A	Human betaherpesvirus 6A	Orthoherpesviridae	15	56
+10243	CPXV	Cowpox virus	Poxviridae	12	56
+28292	SFS	Sandfly fever Sicilian virus	Phenuiviridae	2	55
+693997	TGEV	Alphacoronavirus 1	Coronaviridae	26	51
+10618	HPV52	Human papillomavirus 52	Papillomaviridae	2	47
+333751	HPV2	Human papillomavirus type 2	Papillomaviridae	2	46
+3422298	MRV3	Orthoreovirus mammalis	Spinareoviridae	6	44
+10258	ORFV	Orf virus	Poxviridae	17	43
+694005	MHV	Murine coronavirus	Coronaviridae	16	40
+172148	AHFV	Alkhumra hemorrhagic fever virus	Flaviviridae	2	40
+2560602	MuV	Mumps orthorubulavirus	Paramyxoviridae	11	39
+487099	UUKV	Uukuniemi virus S23	Phenuiviridae	2	39
+333753	HPV57	Human papillomavirus 57	Papillomaviridae	2	38
+10310	HSV-2	Human alphaherpesvirus 2	Orthoherpesviridae	17	37
+11597	HAZV	Hazara virus (isolate JC280)	Nairoviridae	1	37
+10345	PRV	Suid alphaherpesvirus 1	Orthoherpesviridae	8	36
+108098	HAdV-B	Human mastadenovirus B	Adenoviridae	19	35
+1891730	MPyV	Alphapolyomavirus muris	Polyomaviridae	6	35
+3052676	RVFV	Phlebovirus riftense	Phenuiviridae	2	35
+10623	CRPV	Kappapapillomavirus 2	Papillomaviridae	8	34
+417296	BIV	Bovine immunodeficiency virus R29	Retroviridae	5	34
+10390	GaHV-2	Gallid alphaherpesvirus 2	Orthoherpesviridae	2	33
+28295	PEDV	Porcine epidemic diarrhea virus	Coronaviridae	7	31
+1213422	RHEV	Ferret hepatitis E virus	Hepeviridae	1	30
+11034	SINV	Sindbis virus	Togaviridae	5	29
+10273	MYXV	Myxoma virus	Poxviridae	10	28
+10609	HPV25	Human papillomavirus 25	Papillomaviridae	2	27
+69985	HPV-76	Human papillomavirus 76	Papillomaviridae	2	26
+10244	MPXV	Monkeypox virus	Poxviridae	5	25
+10587	HPV35	Human papillomavirus 35	Papillomaviridae	1	25
+2560525	HPIV-2	Human orthorubulavirus 2	Paramyxoviridae	3	24
+130309	HAdV-F	Human mastadenovirus F	Adenoviridae	11	24
+3052320	MOPV	Mammarenavirus mopeiaense	Arenaviridae	3	24
+72149	AiV-A1	Kobuvirus aichi	Picornaviridae	6	24
+12124	TMEV	Theiler's encephalomyelitis virus	Picornaviridae	2	22
+10381	SaGHV2	Saimiriine gammaherpesvirus 2	Orthoherpesviridae	10	22
+10280	McVI	Molluscum contagiosum virus subtype 1	Poxviridae	5	21
+694006	Ro-BatCoV_HKU9	Rousettus bat coronavirus HKU9	Coronaviridae	11	21
+11983	NV	Norwalk virus	Caliciviridae	14	20
+10255	VARV	Variola virus	Poxviridae	10	19
+40051	BTV	Bluetongue virus	Sedoreoviridae	10	19
+2560580	SV-5	Mammalian orthorubulavirus 5	Paramyxoviridae	4	18
+2560319	NDV	Avian paramyxovirus 1	Paramyxoviridae	7	17
+11602	HTNV	Hantaan virus 76-118	Hantaviridae	3	17
+10611	HPV30	Human papillomavirus 30	Papillomaviridae	1	16
+11665	EIAV	Equine infectious anemia virus	Retroviridae	11	16
+11276	VSV	Vesicular stomatitis virus	Rhabdoviridae	2	16
+28327	Murine rotavirus	Murine rotavirus	Sedoreoviridae	1	16
+11285	VSIV	Vesicular stomatitis Indiana virus strain San Juan	Rhabdoviridae	4	16
+37115	HPV59	Human papillomavirus 59	Papillomaviridae	1	16
+10320	BoHV-1	Bovine alphaherpesvirus 1	Orthoherpesviridae	7	16
+32604	HuBHV6B	Human betaherpesvirus 6B	Orthoherpesviridae	12	15
+12643	ECTV	Ectromelia virus	Poxviridae	10	15
+1398177	CMTV-NL	Andrias davidianus ranavirus	Iridoviridae	8	14
+10595	HPV51	Human papillomavirus 51	Papillomaviridae	3	14
+129724	HPV82	Human papillomavirus 82	Papillomaviridae	1	14
+299386	EAV	Equine arteritis virus Bucyrus	Arteriviridae	3	13
+516993	AHEV	Avian hepatitis E virus chicken/United States/Meng	Hepeviridae	1	13
+587347	HPV98	Human papillomavirus 98	Papillomaviridae	2	12
+11216	HPIV-3	Human respirovirus 3	Paramyxoviridae	5	11
+11642	Simian foamy virus	Simian foamy virus	Retroviridae	6	11
+11552	FLUCV	Influenza C virus	Orthomyxoviridae	6	11
+10326	EHV-1	Equid alphaherpesvirus 1	Orthoherpesviridae	6	11
+186540	SEBOV	Sudan ebolavirus	Filoviridae	4	11
+10596	HPV56	Human papillomavirus 56	Papillomaviridae	1	11
+3241303	SVV	Senecavirus valles	Picornaviridae	4	10
+10995	IBDV	Infectious bursal disease virus	Birnaviridae	4	10
+39457	HPV70	Human papillomavirus type 70	Papillomaviridae	1	10
+342409	WSSV	Whispovirus xiabaidian	Nimaviridae	6	10
+2169971	VMV	Visna-maedi virus	Retroviridae	5	10
+10566	Human papillomavirus	Human papillomavirus	Papillomaviridae	1	10
+12538	MOKV	Lyssavirus mokola	Rhabdoviridae	2	9
+162145	HMPV	Human metapneumovirus	Pneumoviridae	4	9
+37114	HPV55	Human papillomavirus type 55	Papillomaviridae	1	9
+10571	Bovine papillomavirus	Bovine papillomavirus	Papillomaviridae	1	9
+11273	CHPV	Chandipura virus I653514	Rhabdoviridae	1	9
+10598	HPV58	Human papillomavirus 58	Papillomaviridae	2	9
+11886	RSV	Rous sarcoma virus	Retroviridae	4	8
+3052625	CSFV	Orthopestivirus suis	Pestiviridae	5	8
+3052518	CCHFV	Orthonairovirus haemorrhagiae	Nairoviridae	4	8
+11673	FIV	Feline immunodeficiency virus	Retroviridae	7	8
+12618	CAV	Chicken anemia virus	Anelloviridae	4	8
+126796	THOV	Thogoto virus (isolate SiAr 126)	Orthomyxoviridae	3	8
+11768	FeLV	Feline leukemia virus	Retroviridae	3	8
+11901	BLV	Bovine leukemia virus	Retroviridae	2	8
+10616	HPV49	Human papillomavirus 49	Papillomaviridae	2	8
+31704	CV-A16	Coxsackievirus A16	Picornaviridae	3	8
+3052561	SV-41	Orthorubulavirus simiae	Paramyxoviridae	1	8
+10510	BAd3	Bovine adenovirus 3	Adenoviridae	4	7
+1891762	BKV	Betapolyomavirus hominis	Polyomaviridae	3	7
+928301	FPV	Fowlpox virus strain NVSL	Poxviridae	2	7
+1298633	AiV-C1	Kobuvirus cebes	Picornaviridae	2	7
+663565	Bat SARS Cov Rs806/2006	Bat SARS Cov Rs806/2006	Coronaviridae	1	7
+11085	LGT	Langat virus	Flaviviridae	4	7
+1330524	SaV-A1	Salivirus A	Picornaviridae	2	7
+12557	SEOV	Seoul virus 80-39	Hantaviridae	1	7
+82831	EqGHV2	Equid herpesvirus type 2 strain 86/87	Orthoherpesviridae	2	7
+90961	ABLV	Lyssavirus australis	Rhabdoviridae	2	7
+37119	HPV66	Human papillomavirus 66	Papillomaviridae	1	7
+54315	BVDV-2	Bovine viral diarrhea virus 2	Pestiviridae	1	7
+394239	KoRV	Koala retrovirus	Retroviridae	2	6
+44088	CNPV	Canarypox virus	Poxviridae	3	6
+176652	IIV-6	Invertebrate iridescent virus 6	Iridoviridae	5	6
+406769	PTLV3	Human T-cell leukemia virus 3 (strain Pyl43)	Retroviridae	2	6
+44028	HPV74	Human papillomavirus 74	Papillomaviridae	2	6
+10615	HPV40	Human papillomavirus 40	Papillomaviridae	1	6
+28280	HAdV-4	Human adenovirus 4	Adenoviridae	3	6
+3052729	BPIV3	Respirovirus bovis	Paramyxoviridae	3	6
+11840	GALV	Gibbon ape leukemia virus	Retroviridae	2	6
+290008	ISFV	Isfahan virus	Rhabdoviridae	1	6
+194965	AiV-B1	Kobuvirus bejaponia	Picornaviridae	1	6
+10794	MVM	Minute virus of mice	Parvoviridae	2	6
+333762	HPV26	Human papillomavirus type 26	Papillomaviridae	1	6
+565995	BDBV	Bundibugyo virus	Filoviridae	3	5
+11023	MIDV	Middelburg virus	Togaviridae	3	5
+1511084	FLUDV	Influenza D virus	Orthomyxoviridae	2	5
+374989	ONNV	O'nyong-nyong virus strain SG650	Togaviridae	3	5
+12092	HAV	Hepatovirus A	Picornaviridae	4	5
+1239574	MAstV10	Mamastrovirus 10	Astroviridae	1	5
+694007	Ty-BatCoV_HKU4	Tylonycteris bat coronavirus HKU4	Coronaviridae	3	5
+11855	MPMV	Mason-Pfizer monkey virus	Retroviridae	3	5
+11590	TOS	Toscana virus	Phenuiviridae	2	5
+138949	EV-B	Enterovirus B	Picornaviridae	4	5
+10584	HPV2a	Human papillomavirus type 2a	Papillomaviridae	1	5
+39720	WDSV	Walleye dermal sarcoma virus	Retroviridae	2	5
+11283	VSNJV	Vesicular stomatitis virus (serotype New Jersey / strain Ogden)	Rhabdoviridae	1	5
+1714621	BoDV-1	Borna disease virus 1	Bornaviridae	3	4
+1586324	PoCoV_HKU15	Porcine deltacoronavirus	Coronaviridae	3	4
+249584	WCBV	Lyssavirus caucasicus	Rhabdoviridae	1	4
+2779844	MmPV1	Macaca mulata papillomavirus 1	Papillomaviridae	1	4
+11021	EEEV-NA	Eastern equine encephalitis virus	Togaviridae	4	4
+36370	JDV	Jembrana disease virus	Retroviridae	2	4
+654925	EhV86	Emiliania huxleyi virus 86 (isolate United Kingdom)	Phycodnaviridae	3	4
+1763596	GTV	Guertu virus	Phenuiviridae	2	4
+3052311	LATV	Mammarenavirus latinum	Arenaviridae	2	4
+862909	TSPyV	Trichodysplasia spinulosa-associated polyomavirus	Polyomaviridae	3	4
+1216928	HRTV	Heartland virus	Phenuiviridae	2	4
+57482	EBLV1	European bat lyssavirus 1	Rhabdoviridae	2	4
+1221391	CedPV	Cedar virus	Paramyxoviridae	2	4
+1511892	AAV5	Dependoparvovirus mammalian1	Parvoviridae	2	4
+928296	Borna disease virus-V	Borna disease virus-V	Bornaviridae	3	4
+10493	FV3	Frog virus 3	Iridoviridae	4	4
+11241	RDV	Rinderpest morbillivirus	Paramyxoviridae	3	4
+10334	FeAHV1	Felid alphaherpesvirus 1	Orthoherpesviridae	1	4
+99000	YLDV	Tanapox virus	Poxviridae	4	4
+3052317	MACV	Mammarenavirus machupoense	Arenaviridae	3	4
+85618	AtGHV3	Ateline gammaherpesvirus 3	Orthoherpesviridae	1	4
+207343	BFoV	Bovine foamy virus	Retroviridae	1	4
+162013	TioV	Tioman virus	Paramyxoviridae	1	4
+1605972	RHVP	Cricetid gammaherpesvirus 2	Orthoherpesviridae	1	3
+10269	SPV	Sheeppox virus KS-1	Poxviridae	2	3
+11660	CAEV	Caprine arthritis encephalitis virus	Retroviridae	2	3
+11864	ALV	Avian leukosis virus	Retroviridae	2	3
+10599	HPV5b	Human papillomavirus - 5b	Papillomaviridae	3	3
+2708335	Pangolin coronavirus	Pangolin coronavirus	Coronaviridae	3	3
+292349	FCV	Feline calicivirus (strain Urbana)	Caliciviridae	2	3
+2560526	HPIV4	Human orthorubulavirus 4	Paramyxoviridae	2	3
+3052499	SNV	Orthohantavirus sinnombreense	Hantaviridae	3	3
+28873	CMPV	Camelpox virus	Poxviridae	2	3
+249583	IRKV	Lyssavirus irkut	Rhabdoviridae	1	3
+304399	DPV	Mule deerpox virus	Poxviridae	2	3
+12730	HPIV-1	Human respirovirus 1	Paramyxoviridae	2	3
+3052343	PPRV	Morbillivirus caprinae	Paramyxoviridae	2	3
+3052562	PorPV	Orthorubulavirus suis	Paramyxoviridae	2	3
+1803956	HPeV-1	Parechovirus A	Picornaviridae	3	3
+11809	MoMSV	Moloney murine sarcoma virus	Retroviridae	2	3
+12639	DHBV	Duck hepatitis B virus	Hepadnaviridae	2	3
+11029	RRV	Ross River virus	Togaviridae	2	3
+3047383	AcMNPV	Alphabaculovirus aucalifornicae	Baculoviridae	3	3
+3052314	LUJV	Mammarenavirus lujoense	Arenaviridae	2	3
+11884	Y73SV	Y73 sarcoma virus	Retroviridae	1	3
+3052299	SBAV	Mammarenavirus brazilense	Arenaviridae	2	3
+654926	EsV1	Ectocarpus siliculosus virus 1 (isolate Kaikoura)	Phycodnaviridae	3	3
+11039	WEEV	Western equine encephalitis virus	Togaviridae	2	3
+36427	RVC	Rotavirus C	Sedoreoviridae	3	3
+12721	HIV	Human immunodeficiency virus	Retroviridae	1	3
+28321	AmEPV	Betaentomopoxvirus amoorei	Poxviridae	2	3
+11319	DHOV	Dhori virus (strain Indian/1313/61)	Orthomyxoviridae	2	3
+649604	BAV	Banna virus strain JKT-6423	Sedoreoviridae	1	3
+11746	JSRV	Jaagsiekte sheep retrovirus	Retroviridae	1	3
+11020	BFV	Barmah Forest virus	Togaviridae	1	3
+3052181	MLAV	Dianlovirus menglaense	Filoviridae	2	3
+38766	LBV	Lyssavirus lagos	Rhabdoviridae	1	3
+111470	DRV	Diaporthe ambigua RNA virus 1	Ambiguiviridae	1	2
+11247	BRSV	Bovine respiratory syncytial virus ATCC51908	Pneumoviridae	2	2
+10617	HPV4	Human papillomavirus 4	Papillomaviridae	2	2
+39002	PUUV	Puumala virus sotkamo/v-2969/81	Hantaviridae	1	2
+356664	XMRV-VP42	Xenotropic MuLV-related virus VP42	Retroviridae	2	2
+332054	TnSNPV	Trichoplusia ni single nucleopolyhedrovirus	Baculoviridae	1	2
+928314	YMTV	Yaba monkey tumor virus strain VR587	Poxviridae	2	2
+31547	HPV20	Human papillomavirus 20	Papillomaviridae	2	2
+10385	BHV-4	Bovine gammaherpesvirus 4	Orthoherpesviridae	2	2
+1508710	RBHBV	Roundleaf bat hepatitis B virus	Hepadnaviridae	2	2
+2269360	Alongshan virus	Alongshan virus	Flaviviridae	1	2
+11080	SLEV	St. Louis encephalitis virus	Flaviviridae	2	2
+11156	BEV	Berne virus	Tobaniviridae	2	2
+10553	CELO	Fowl aviadenovirus 1	Adenoviridae	1	2
+10276	SWPV	Swinepox virus	Poxviridae	2	2
+226613	RRV-bv	Reptilian orthoreovirus	Spinareoviridae	1	2
+331642	N1V	Newbury agent 1	Caliciviridae	2	2
+10620	HPV7	Human papillomavirus type 7	Papillomaviridae	2	2
+348136	Human rotavirus B219	Human rotavirus B219	Sedoreoviridae	2	2
+38143	SHFV	Simian hemorrhagic fever virus	Arteriviridae	1	2
+654923	ISKNV	Infectious spleen and kidney necrosis virus (isolate Nanhai)	Iridoviridae	2	2
+2847087	GBV-B	GB virus-B	Hepaciviridae	1	2
+228578	YoMV	Youcai mosaic virus	Virgaviridae	2	2
+35612	VESV	Vesicular exanthema of swine virus	Caliciviridae	2	2
+2032731	Swine acute diarrhea syndrome coronavirus	Swine acute diarrhea syndrome coronavirus	Coronaviridae	1	2
+652954	AMPV	Avian metapneumovirus 15a	Pneumoviridae	2	2
+152219	MenV	Menangle virus	Paramyxoviridae	1	2
+10592	HPV44	Human papillomavirus 44	Papillomaviridae	1	2
+10605	HPV14	Human papillomavirus 14	Papillomaviridae	1	2
+59300	GETV	Getah virus	Togaviridae	1	2
+746830	HPyV6	Human polyomavirus 6	Polyomaviridae	1	2
+11580	SSHV	Snowshoe hare virus	Peribunyaviridae	1	2
+3052559	MapV	Orthorubulavirus mapueraense	Paramyxoviridae	1	2
+10506	PBCV-1	Paramecium bursaria Chlorella virus 1	Phycodnaviridae	2	2
+3052307	GTOV	Mammarenavirus guanaritoense	Arenaviridae	1	2
+1891729	HaPyV	Alphapolyomavirus mauratus	Polyomaviridae	1	2
+1425211	SAFV-2	Saffold virus 2	Picornaviridae	1	2
+12131	HRV-14	Rhinovirus B14	Picornaviridae	1	2
+3052302	CHAPV	Mammarenavirus chapareense	Arenaviridae	1	2
+68887	TTV	Torque teno virus	Anelloviridae	1	2
+222645	HF1	Haloferacalesvirus HF1	Hafunaviridae	1	2
+211977	ARAV	Lyssavirus aravan	Rhabdoviridae	1	2
+2045491	Swine enteric alphacoronavirus	Swine enteric alphacoronavirus	Coronaviridae	1	2
+262968	SGIV	Singapore grouper iridovirus	Iridoviridae	2	2
+120499	SalV	Salem virus	Paramyxoviridae	1	2
+648168	CTFV	Colorado tick fever virus Florio N-7180	Spinareoviridae	1	2
+10530	MAV-1	Murine adenovirus 1	Adenoviridae	1	2
+3052300	PICHV	Mammarenavirus caliense	Arenaviridae	1	2
+35244	BoHV-5	Bovine alphaherpesvirus 5	Orthoherpesviridae	1	2
+296738	MPV	Pneumonia virus of mice 15	Pneumoviridae	1	2
+31548	HPV21	Human papillomavirus 21	Papillomaviridae	1	2
+3052342	CDV	Morbillivirus canis	Paramyxoviridae	1	2
+12216	PVY	Potato virus Y	Potyviridae	1	1
+11788	Abelson murine leukemia virus	Abelson murine leukemia virus	Retroviridae	1	1
+247268	HPV93	Human papillomavirus 93	Papillomaviridae	1	1
+336960	AAstV2	Avian nephritis virus 1	Astroviridae	1	1
+10568	MmiPV1	Micromys minutus papillomavirus 1	Papillomaviridae	1	1
+29342	Clostridium botulinum D phage	Clostridium botulinum D phage		1	1
+37958	HPV37	Human papillomavirus 37	Papillomaviridae	1	1
+37120	HPV67	Human papillomavirus 67	Papillomaviridae	1	1
+10454	SeMNPV	Spodoptera exigua multiple nucleopolyhedrovirus	Baculoviridae	1	1
+45240	HPV68	Human papillomavirus 68	Papillomaviridae	1	1
+10891	Reovirus sp.	Reovirus sp.		1	1
+10602	Human papillomavirus type me180	Human papillomavirus type me180	Papillomaviridae	1	1
+247269	HPV96	Human papillomavirus 96	Papillomaviridae	1	1
+56947	CfGV	Choristoneura fumiferana granulovirus	Baculoviridae	1	1
+40540	HPV60	Human papillomavirus type 60	Papillomaviridae	1	1
+10970	Rotavirus sp.	Rotavirus sp.	Sedoreoviridae	1	1
+10684	Bacillus phage PBS2	Bacillus phage PBS2		1	1
+765055	HPV123	Human papillomavirus 123	Papillomaviridae	1	1
+11240	PDV	Phocine morbillivirus	Paramyxoviridae	1	1
+364370	AAstV1	Turkey astrovirus 1	Astroviridae	1	1
+272636	Adeno-associated virus	Adeno-associated virus	Parvoviridae	1	1
+70600	EppoNPV	Epiphyas postvittana nucleopolyhedrovirus	Baculoviridae	1	1
+2018513	Rh-BatCoV_HKU2	Porcine enteric alphacoronavirus	Coronaviridae	1	1
+1671798	HPV54	Human papillomavirus type 54	Papillomaviridae	1	1
+928304	LNYV	Lettuce necrotic yellows virus isolate 318	Rhabdoviridae	1	1
+329641	Human bocavirus	Human bocavirus	Parvoviridae	1	1
+3052503	TULV	Orthohantavirus tulaense	Hantaviridae	1	1
+80341	EHV-3	Equid alphaherpesvirus 3	Orthoherpesviridae	1	1
+419435	GfIV	Ichnoviriform fumiferanae	Polydnaviriformidae	1	1
+45455	McGHV4	Macacine gammaherpesvirus 4	Orthoherpesviridae	1	1
+1239567	MAstV3	Mamastrovirus 3	Astroviridae	1	1
+3052331	WWAV	Mammarenavirus whitewaterense	Arenaviridae	1	1
+322067	JV	J virus	Paramyxoviridae	1	1
+37955	HPV23	Human papillomavirus 23	Papillomaviridae	1	1
+3052308	IPPYV	Mammarenavirus ippyense	Arenaviridae	1	1
+332179	SAdV-1	Human adenovirus 52	Adenoviridae	1	1
+988776	AGyV2	Human gyrovirus 1	Anelloviridae	1	1
+28871	TATPV	Taterapox virus	Poxviridae	1	1
+557605	Simian virus 12 strain wt100	Simian virus 12 strain wt100	Polyomaviridae	1	1
+490134	WMHBV	Hepatitis B virus Woolly monkey/Louisville	Hepadnaviridae	1	1
+40538	HPV48	Human papillomavirus type 48	Papillomaviridae	1	1
+271108	BmNPV	Bombyx mori nucleopolyhedrovirus	Baculoviridae	1	1
+79699	Ovine respiratory syncytial virus (strain WSU 83-1578)	Ovine respiratory syncytial virus (strain WSU 83-1578)	Pneumoviridae	1	1
+1399582	TMUV	Duck Tembusu virus	Flaviviridae	1	1
+1307956	LeseNPV	Leucania separata nucleopolyhedrovirus	Baculoviridae	1	1
+652599	PMV	Panicum mosaic virus strain Kansas 109S	Tombusviridae	1	1
+1559361	TIBV	Tibrogargan virus strain CS132	Rhabdoviridae	1	1
+648237	B19V	Human parvovirus B19 strain HV	Parvoviridae	1	1
+186541	CIEBOV	Tai Forest ebolavirus	Filoviridae	1	1
+69986	HPV77	Human papillomavirus 77	Papillomaviridae	1	1
+10272	RFV	Rabbit fibroma virus (strain Kasza)	Poxviridae	1	1
+260797	HvAV-3a	Heliothis virescens ascovirus 3e	Ascoviridae	1	1
+1084715	PBoV3	Porcine bocavirus 3	Parvoviridae	1	1
+1962501	AgseNPV-A	Agrotis segetum nucleopolyhedrovirus A	Baculoviridae	1	1
+320432	ChchNPV	Chrysodeixis chalcites nucleopolyhedrovirus	Baculoviridae	1	1
+128987	GCRV	Grass carp reovirus	Spinareoviridae	1	1
+207830	MacoNPV-A	Mamestra configurata nucleopolyhedrovirus A	Baculoviridae	1	1
+3052322	OLVV	Mammarenavirus oliverosense	Arenaviridae	1	1
+1914447	APPeV	Atypical porcine pestivirus	Pestiviridae	1	1
+341053	BeiV	Beilong virus	Paramyxoviridae	1	1
+114102	FrAdV-1	Frog adenovirus 1	Adenoviridae	1	1
+35304	BUNV	Bunyamwera virus	Peribunyaviridae	1	1
+332091	B-lymphotropic polyomavirus	B-lymphotropic polyomavirus	Polyomaviridae	1	1
+29272	TVCV	Turnip vein-clearing virus	Virgaviridae	1	1
+1289473	NCPV	Nile crocodilepox virus Zimbabwe/Ume/2001	Poxviridae	1	1
+64286	USUV	Usutu virus	Flaviviridae	1	1
+36348	CeAHV9	Cercopithecine herpesvirus 9 (strain DHV)	Orthoherpesviridae	1	1
+292348	Canine calicivirus (strain 48)	Canine calicivirus (strain 48)	Caliciviridae	1	1
+10589	HPV41	Human papillomavirus type 41	Papillomaviridae	1	1
+400122	FiCV	Finch circovirus	Circoviridae	1	1
+333759	HPV10	Human papillomavirus 10	Papillomaviridae	1	1
+37956	HPV24	Human papillomavirus 24	Papillomaviridae	1	1
+35254	CrleGV	Cryptophlebia leucotreta granulovirus	Baculoviridae	1	1
+915427	HPV112	Human papillomavirus 112	Papillomaviridae	1	1
+1737344	SARS-like coronavirus BatCoV/BB9904/BGR/2008	SARS-like coronavirus BatCoV/BB9904/BGR/2008	Coronaviridae	1	1
+10703	Corynephage beta	Corynephage beta	Zimmerviridae	1	1
+909330	HPV131	Human papillomavirus 131	Papillomaviridae	1	1
+766194	DUGV	Dugbe virus (isolate ArD44313)	Nairoviridae	1	1
+138948	CVA2	Enterovirus A	Picornaviridae	1	1
+1318464	SBV	Bovine Schmallenberg virus BH80/Germany/2011	Peribunyaviridae	1	1
+2010960	BOMV	Bombali virus	Filoviridae	1	1
+354090	UR2SV	UR2 sarcoma virus	Retroviridae	1	1
+244589	SSV1	Sulfolobus spindle-shaped virus 1	Fuselloviridae	1	1
+766178	CCV	Ictalurid herpesvirus 1 (strain Auburn)	Alloherpesviridae	1	1
+1169032	WMoV	Wasabi mottle virus	Virgaviridae	1	1
+2847089	GhV	Ghana virus	Paramyxoviridae	1	1
+10561	BPV-3	Xipapillomavirus 1	Papillomaviridae	1	1
+10430	WHV	Woodchuck hepatitis virus 1	Hepadnaviridae	1	1
+47929	CeHV-8	Macacine betaherpesvirus 3	Orthoherpesviridae	1	1
+329639	CnMV	Canine minute virus	Parvoviridae	1	1
+654902	ElBHV1	Elephantid herpesvirus 1 (isolate Kiba)	Orthoherpesviridae	1	1
+1330520	EV-F1	Enterovirus F	Picornaviridae	1	1
+248496	SSV9	Sulfolobus virus Kamchatka 1	Fuselloviridae	1	1
+12065	EV-E1	Bovine enterovirus strain VG-5-27	Picornaviridae	1	1
+79700	MuBHV2	Rat cytomegalovirus strain Maastricht	Orthoherpesviridae	1	1
+10325	CeHV-1	Macacine alphaherpesvirus 1	Orthoherpesviridae	1	1
+654916	PsPV1	Phocoena spinipinnis papillomavirus (isolate Peru)	Papillomaviridae	1	1
+248062	ERVEV	Erve virus	Nairoviridae	1	1
+647332	HPBV	Human picobirnavirus strain Hy005102	Picobirnaviridae	1	1
+654904	RoMNPV	Rachiplusia ou MNPV (strain R1)	Baculoviridae	1	1

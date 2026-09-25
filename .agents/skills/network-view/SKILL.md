@@ -29,16 +29,17 @@ Query the live graph with the `query` tool of the `bpgraph` MCP server, as `docs
     {"id": "P36969", "name": "GPX4", "kind": "human",
      "description": "Phospholipid hydroperoxide glutathione peroxidase",
      "taxon_name": "Homo sapiens", "attributes": {"role": "suppressor"}},
-    {"id": "P27958:1973-2419", "name": "NS5A", "kind": "viral",
-     "description": "Genome polyprotein", "taxon_name": "Orthohepacivirus hominis"}
+    {"id": "3052230:NS5A", "name": "NS5A", "kind": "viral",
+     "description": "Genome polyprotein", "taxon_name": "HCV"}
   ],
   "interactions": [
-    {"source": "P36969", "target": "P27958:1973-2419", "n_publications": 1, "n_methods": 2}
+    {"source": "P36969", "target": "3052230:NS5A", "n_publications": 1, "n_methods": 2}
   ]
 }
 ```
 
 - `id` is the graph's protein `id`. `kind` is `human` or `viral`, taken from the protein's label.
+- `taxon_name` is the virus's `name` from `(:Viral)-[:IN_TAXON]->(:Virus)` for a viral protein (`HCV`, `SARS-CoV-2`), and `Homo sapiens` for a human one.
 - `attributes` is optional. Use it for anything else worth showing or styling by, such as the topic's `role` or the viral family. It appears when a protein is clicked, and the page can style by it.
 - An interaction connects two listed proteins, and each pair appears once. The counters come from the graph's `:Interaction`.
 - The renderer refuses a file that breaks these rules.

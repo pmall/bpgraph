@@ -7,8 +7,8 @@ Companion documents, load when relevant: [`build.md`](build.md) (how a run build
 ## Principles
 
 1. **No optional properties.** Every property listed here is always present. Free text that is unknown is `''`, never null or absent.
-2. **A single key per label**, and `MERGE`/`MATCH` always targets it. Most keys come from the data; only `:Protein` and `:Interaction` derive one (§4).
-3. **Labels carry the type, not properties.** Human vs viral, hh vs vh are labels — no `kind` property duplicates them.
+2. **A single key per label**, and every `MATCH` on a node targets it. Most keys come from the data; only `:Protein` and `:Interaction` derive one (§3).
+3. **Labels carry the type, not properties.** Human vs viral, hh vs vh, virus vs family are labels — no `kind` or `rank` property duplicates them.
 4. **Reify the n-ary facts.** An interaction observation links two proteins, a publication, a method and some peptides. Cypher edges join exactly two nodes and cannot be an endpoint themselves, so that fact is a node: `:Description`.
 5. **Two levels of interaction.** `:Interaction` is the deduplicated claim ("A binds B"); `:Description` is one observation of it, and is one row of the description table.
 6. **Sequences only on `:Peptide`.** Peptides are the deliverable; nothing else stores residues.
@@ -19,35 +19,54 @@ ______________________________________________________________________
 
 ### `:Protein` + `:Human` | `:Viral`
 
-A protein entity: a full-length human chain, or a mature viral protein excised from a polyprotein. Human or viral comes from `labels(p)`.
+What an interaction joins, and what an analysis means by a protein: `GPX4`, `NS5A` of HCV, `HBx` of HBV. Human or viral comes from `labels(p)`.
+
+A **human** protein is a gene product, one UniProt accession. A **viral** protein is a curated mature protein of a curated virus, whichever strains and accessions it was observed on: SARS-CoV-2 `nsp2` is one node, although curation saw it on pp1a, on pp1ab and on a TrEMBL copy, and HBV `HBx` is one node over twenty-one accessions. The accessions are `:Entry` nodes, and `:ON_ENTRY` says where the protein sits on each.
+
+| property      | type | notes                                                                     |
+| ------------- | ---- | ------------------------------------------------------------------------- |
+| `id`          | str  | **key**, derived (§3)                                                     |
+| `name`        | str  | curated mature-protein name (`NS5A`) / gene symbol (`GPX4`). Case matters |
+| `description` | str  | UniProt protein name, e.g. `Glutathione peroxidase 4`                     |
+| `function`    | str  | UniProt `CC FUNCTION` text, pooled over the protein's entries — see below |
+
+**Names are case-sensitive.** EBV carries `BARF1`, a secreted protein, beside `BaRF1`, the ribonucleotide reductase small subunit. Folding case would merge them.
+
+**`function` is pooled.** UniProt text is per entry, and per chain where the entry scopes it; a viral protein on several entries has several. Curation groups one chain across strains, so they should agree, and the protein takes the commonest, weighted by how many descriptions observed each entry. The build logs every protein whose entries disagree.
+
+### `:Entry`
+
+A UniProt accession, canonical — never an isoform. The strain lives here rather than on a node of its own.
 
 | property      | type | notes                                                               |
 | ------------- | ---- | ------------------------------------------------------------------- |
-| `id`          | str  | **key**, derived (§4)                                               |
-| `accession`   | str  | UniProt accession, canonical — never an isoform                     |
-| `start`       | int  | 1-based inclusive, on the accession's sequence                      |
-| `stop`        | int  | 1-based inclusive                                                   |
-| `name`        | str  | standardized mature-protein name (`NS5A`) / gene symbol (`GPX4`)    |
-| `description` | str  | UniProt protein name, e.g. `Glutathione peroxidase 4`               |
-| `function`    | str  | UniProt `CC FUNCTION` text — the chain's, where the entry scopes it |
-| `taxon_id`    | int  | NCBI taxon id                                                       |
-| `taxon_name`  | str  | NCBI scientific name                                                |
+| `accession`   | str  | **key**                                                             |
+| `taxon_id`    | int  | NCBI taxon of the entry, a strain as often as not. `9606` for human |
+| `taxon_name`  | str  | its NCBI scientific name                                            |
+| `description` | str  | UniProt protein name of the entry, e.g. `Genome polyprotein`        |
 
-Coordinates are stored for every protein — `1..length` for human, where they are redundant. That is deliberate: a composite constraint only applies to nodes carrying **all** its properties, so omitting them would leave `(accession, start, stop)` inert for half the graph.
+An entry carries human proteins or viral ones, never both. A human protein is on exactly one entry, its own accession.
 
-### `:Taxon`
+### `:Taxon` + `:Virus` | `:Family`
 
-Only viral species and their families, only where a protein links to them. Human proteins get no `:Taxon` node — they carry `taxon_id: 9606` and `taxon_name` as properties, and nothing groups them by clade.
+Only the curated viruses a viral protein belongs to, and the family above each. Human proteins get no `:Taxon` node, and strains get none either: they are `taxon_id` on `:Entry`.
 
-| property   | type | notes                                                       |
-| ---------- | ---- | ----------------------------------------------------------- |
-| `taxon_id` | int  | **key**                                                     |
-| `name`     | str  | scientific name                                             |
-| `rank`     | str  | NCBI's rank, verbatim: `species`, `family`, often `no rank` |
+`:Virus` — one row of [`curation/viruses.tsv`](../curation/viruses.tsv), which [`curation/NAMING.md`](../curation/NAMING.md) explains. A viral protein belongs to the most specific row enclosing its entry's taxon.
 
-The `:PARENT` chain is **derived** at build time from the NCBI taxonomy, which this repo keeps in SQLite (`bpgraph.taxonomy`). Each taxon links to the nearest kept ancestor — only a protein's own taxon and the family above it are kept, so a taxon links straight past whatever ranks lie between. A taxon with no family gets no edge: it stays queryable, it just falls out of family rollups. Adding a rank to keep is a one-line change, and the chain rebuilds itself.
+| property    | type | notes                                              |
+| ----------- | ---- | -------------------------------------------------- |
+| `taxon_id`  | int  | **key**, the NCBI taxon the virus is anchored at   |
+| `name`      | str  | familiar short name: `HBV`, `SARS-CoV-2`, `HPV16`  |
+| `full_name` | str  | scientific name of that taxon: `Hepatitis B virus` |
 
-`rank` is NCBI's own, so it is an open vocabulary rather than a fixed pair. Two of the three viruses checked against the real dump — HIV-1 and HSV-1 — sit at `no rank`, so constraining it would have rejected them.
+`:Family` — the NCBI family above a virus.
+
+| property   | type | notes           |
+| ---------- | ---- | --------------- |
+| `taxon_id` | int  | **key**         |
+| `name`     | str  | scientific name |
+
+The virus level is curated rather than an NCBI rank: NCBI attaches entries to strains, and its species sometimes pool viruses nobody would, *Betacoronavirus pandemicum* holding both SARS-CoV-2 and SARS-CoV. The `:PARENT` edge from a virus to its family is derived at build time from the NCBI taxonomy, which this repo keeps in SQLite (`bpgraph.taxonomy`). A virus with no family gets no edge: it stays queryable, it just falls out of family rollups.
 
 ### `:Topic`
 
@@ -77,11 +96,11 @@ A subject of study (`ferroptosis`), curated as a list of human proteins — not 
 
 ### `:Interaction` + `:HH` | `:VH`
 
-The deduplicated claim that two proteins interact. No provenance of its own — that hangs off `:Description`. The counters are the confidence signal; there is no score. `:HH` and `:VH` appear on no other label, so `MATCH (i:VH)` is unambiguous.
+The deduplicated claim that two proteins interact. Because a viral protein pools its strains, so does the claim: every description of HBx binding a human protein supports one interaction, whichever HBV accession it was observed on. No provenance of its own — that hangs off `:Description`. The counters are the confidence signal; there is no score. `:HH` and `:VH` appear on no other label, so `MATCH (i:VH)` is unambiguous.
 
 | property         | type | notes                                                         |
 | ---------------- | ---- | ------------------------------------------------------------- |
-| `id`             | str  | **key**, derived (§4)                                         |
+| `id`             | str  | **key**, derived (§3)                                         |
 | `n_descriptions` | int  | supporting descriptions                                       |
 | `n_publications` | int  | **distinct** publications                                     |
 | `n_methods`      | int  | **distinct** detection methods                                |
@@ -90,7 +109,7 @@ The deduplicated claim that two proteins interact. No provenance of its own — 
 Slot ordering is fixed, carries no biological direction, and exists only to make the id deterministic:
 
 - **`:VH`** — side `a` is the **human** protein, side `b` the viral one.
-- **`:HH`** — side `a` is whichever of the two ids sorts first alphabetically, side `b` the other. Human ids are bare accessions (§4), so this is accession order.
+- **`:HH`** — side `a` is whichever of the two ids sorts first alphabetically, side `b` the other. Human ids are bare accessions (§3), so this is accession order.
 
 Human-first generalizes: add a `:BH` later and queries entering from the human side still need not know the type.
 
@@ -98,7 +117,7 @@ Human-first generalizes: add a `:BH` later and queries entering from the human s
 
 ### `:Description`
 
-One row of the description table: one protein pair, one publication, one method, its peptides. Everything about it is its edges. Its type is its interaction's — `(d)-[:SUPPORTS]->(:VH)`.
+One row of the description table: one protein pair, one publication, one method, its peptides, and the entry each partner was observed on. Everything about it is its edges. Its type is its interaction's — `(d)-[:SUPPORTS]->(:VH)`.
 
 | property | type | notes                                                  |
 | -------- | ---- | ------------------------------------------------------ |
@@ -106,7 +125,7 @@ One row of the description table: one protein pair, one publication, one method,
 
 ### `:Peptide`
 
-A short subsequence reported sufficient for an interaction — the drug-discovery precursor, and the only place residues are stored. One node per unique sequence: where in its source protein it sits is not stored, so the same sequence seen in two viruses collapses onto one node.
+A short subsequence reported sufficient for an interaction — the drug-discovery precursor, and the only place residues are stored. One node per unique sequence: where in its source protein it sits is not stored, so the same sequence seen in two viruses collapses onto one node. Source and target are proteins, not entries.
 
 | property   | type | notes   |
 | ---------- | ---- | ------- |
@@ -137,16 +156,26 @@ ______________________________________________________________________
 | pattern                                         | properties                                  | meaning                                     |
 | ----------------------------------------------- | ------------------------------------------- | ------------------------------------------- |
 | `(:Interaction)-[:INVOLVES]->(:Protein)`        | `side: 'a'\|'b'`                            | the two partners                            |
+| `(:Protein)-[:ON_ENTRY]->(:Entry)`              | viral: `start`, `stop`; human: none         | an accession the protein was observed on    |
 | `(:Description)-[:SUPPORTS]->(:Interaction)`    | —                                           | observation → claim                         |
+| `(:Description)-[:OBSERVED_ON]->(:Entry)`       | `side: 'a'\|'b'`                            | the accession each side was observed on     |
 | `(:Description)-[:REPORTED_IN]->(:Publication)` | —                                           |                                             |
 | `(:Description)-[:DETECTED_BY]->(:Method)`      | —                                           |                                             |
 | `(:Description)-[:REPORTS]->(:Peptide)`         | `source_side: 'a'\|'b'`                     | the peptide, and which partner it came from |
-| `(:Protein)-[:IN_TAXON]->(:Taxon)`              | —                                           | viral only, to the `species` node           |
-| `(:Taxon)-[:PARENT]->(:Taxon)`                  | —                                           | species → family                            |
-| `(:Protein)-[:INVOLVED_IN]->(:Topic)`           | per topic, see below                        | human only, from the curated list           |
-| `(:Protein)-[:ANNOTATED_WITH]->(:GoTerm)`       | `evidence_code`, `assigned_by`, `qualifier` | human only, from UniProt/GOA                |
+| `(:Viral)-[:IN_TAXON]->(:Virus)`                | —                                           | the curated virus                           |
+| `(:Virus)-[:PARENT]->(:Family)`                 | —                                           | virus → family                              |
+| `(:Human)-[:INVOLVED_IN]->(:Topic)`             | per topic, see below                        | from the curated list                       |
+| `(:Human)-[:ANNOTATED_WITH]->(:GoTerm)`         | `evidence_code`, `assigned_by`, `qualifier` | from UniProt/GOA                            |
 | `(:GoTerm)-[:IS_A]->(:GoTerm)`                  | —                                           | GO ontology                                 |
 | `(:GoTerm)-[:PART_OF]->(:GoTerm)`               | —                                           | GO ontology                                 |
+
+### `:ON_ENTRY` properties
+
+The properties depend on the protein's label, as `:INVOLVED_IN`'s depend on the topic. A **viral** edge carries `start` and `stop`, 1-based inclusive on the entry's sequence: where the mature protein was excised. A viral protein has one edge per entry and span it was observed at, so pp1a and pp1ab each carry an edge to one `nsp2`. A **human** edge carries nothing: a human protein is the whole chain of its one entry.
+
+### `:OBSERVED_ON`
+
+Pooling proteins across strains loses which accession an observation used, from the interaction. The description keeps it: one `:OBSERVED_ON` per side, tagged like `:INVOLVES`, so `(d)-[:OBSERVED_ON {side: 'b'}]->(e)` is the entry the viral partner was seen on. That entry is always one the side's protein is `:ON_ENTRY`. A homodimer has two edges to the one entry.
 
 ### Peptide direction
 
@@ -172,32 +201,31 @@ ______________________________________________________________________
 
 Every label has one key property, and it is what `MERGE` and `MATCH` target. Most come straight from the data:
 
-| label          | key        |                                       |
-| -------------- | ---------- | ------------------------------------- |
-| `:Peptide`     | `sequence` | from the data                         |
-| `:Publication` | `pmid`     |                                       |
-| `:Method`      | `psimi_id` |                                       |
-| `:GoTerm`      | `go_id`    |                                       |
-| `:Taxon`       | `taxon_id` |                                       |
-| `:Topic`       | `name`     |                                       |
-| `:Description` | `id`       | the relational database's `stable_id` |
-| `:Protein`     | `id`       | **derived** — see below               |
-| `:Interaction` | `id`       | **derived**                           |
+| label          | key         |                                       |
+| -------------- | ----------- | ------------------------------------- |
+| `:Entry`       | `accession` | from the data                         |
+| `:Peptide`     | `sequence`  |                                       |
+| `:Publication` | `pmid`      |                                       |
+| `:Method`      | `psimi_id`  |                                       |
+| `:GoTerm`      | `go_id`     |                                       |
+| `:Taxon`       | `taxon_id`  |                                       |
+| `:Topic`       | `name`      |                                       |
+| `:Description` | `id`        | the relational database's `stable_id` |
+| `:Protein`     | `id`        | **derived** — see below               |
+| `:Interaction` | `id`        | **derived**                           |
 
 Only two are derived, because only two are identified by several values at once and composite keys are painful to reference from another node. Both live in `src/bpgraph/ids.py`, the only place these rules are encoded:
 
 ```
-protein_id(accession, start, stop, kind)
-    -> accession                       when human
-    -> f"{accession}:{start}-{stop}"   when viral
-    e.g.  "Q53FA7"  /  "P27958:1973-2419"
+human_protein_id(accession)       -> accession                   "P36969"
+viral_protein_id(taxon_id, name)  -> f"{taxon_id}:{name}"        "10407:HBx"
+    taxon_id is the curated virus's, not the entry's
 
-interaction_id(id_a, id_b)
-    -> f"{id_a}|{id_b}"                a, b in the slot order of §1
-    e.g.  "Q53FA7|P27958:1973-2419"
+interaction_id(id_a, id_b)        -> f"{id_a}|{id_b}"            "P36969|10407:HBx"
+    a, b in the slot order of §1
 ```
 
-A human id is a bare accession, so a UniProt release revising a sequence updates `stop` in place and leaves every interaction referencing it untouched. It also encodes the invariant *one node per human accession*, which the `id` constraint enforces.
+Coordinates and accessions are not part of a viral id: they are annotations on `:ON_ENTRY`.
 
 ______________________________________________________________________
 
@@ -207,11 +235,11 @@ Verified against `falkordb/falkordb-server:latest` (graph module 4.20.6). A uniq
 
 ```cypher
 CREATE INDEX FOR (p:Protein)     ON (p.id);
-CREATE INDEX FOR (p:Protein)     ON (p.accession, p.start, p.stop);
 CREATE INDEX FOR (p:Protein)     ON (p.name);
-CREATE INDEX FOR (p:Protein)     ON (p.taxon_id);
+CREATE INDEX FOR (e:Entry)       ON (e.accession);
+CREATE INDEX FOR (e:Entry)       ON (e.taxon_id);
 CREATE INDEX FOR (t:Taxon)       ON (t.taxon_id);
-CREATE INDEX FOR (t:Taxon)       ON (t.rank);
+CREATE INDEX FOR (t:Taxon)       ON (t.name);
 CREATE INDEX FOR (t:Topic)       ON (t.name);
 CREATE INDEX FOR (g:GoTerm)      ON (g.go_id);
 CREATE INDEX FOR (g:GoTerm)      ON (g.namespace);
@@ -227,7 +255,7 @@ CALL db.idx.fulltext.createNodeIndex('Publication', 'title', 'abstract');
 
 ```
 GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE Protein     PROPERTIES 1 id
-GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE Protein     PROPERTIES 3 accession start stop
+GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE Entry       PROPERTIES 1 accession
 GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE Taxon       PROPERTIES 1 taxon_id
 GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE Topic       PROPERTIES 1 name
 GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE GoTerm      PROPERTIES 1 go_id

@@ -17,7 +17,7 @@ from bpgraph.enums import (
     ProteinKind,
     Side,
 )
-from bpgraph.ids import interaction_id, protein_id
+from bpgraph.ids import interaction_id
 
 ACCESSION = r"^[A-Z0-9]+$"
 
@@ -29,18 +29,49 @@ class Record(BaseModel):
 
 
 class ProteinRef(Record):
-    """A protein's natural key, and the id derived from it.
+    """A protein's id, and whether it is human or viral.
 
     Everything that points at a protein — a topic, a description, a GO
     annotation — takes one of these. A full `Protein` is itself a `ProteinRef`
     and is accepted wherever one is declared, so a loader holding proteins can
-    pass them straight through without converting.
+    pass them straight through without converting. The id is built by
+    `bpgraph.ids` and by nothing else.
     """
 
+    id: str = Field(min_length=1)
+    kind: ProteinKind
+
+
+class Protein(ProteinRef):
+    """What an interaction joins: a human gene product, or a curated viral
+    protein — `HBx` of HBV — whichever strains and accessions it was seen on."""
+
+    name: str = Field(min_length=1)
+    description: str = ""
+    function: str = ""
+
+
+class Entry(Record):
+    """A UniProt accession, and the strain it belongs to."""
+
+    accession: str = Field(pattern=ACCESSION, min_length=6)
+    taxon_id: int = Field(ge=1)
+    taxon_name: str = Field(min_length=1)
+    description: str = ""
+
+
+class Location(Record):
+    """An `:ON_ENTRY` edge: where one protein sits on one entry.
+
+    A human protein is the whole chain of its one entry, so the writer drops
+    the coordinates there; they are kept here because the function text is
+    fetched by span either way.
+    """
+
+    protein: ProteinRef
     accession: str = Field(pattern=ACCESSION, min_length=6)
     start: int = Field(ge=1)
     stop: int = Field(ge=1)
-    kind: ProteinKind
 
     @model_validator(mode="after")
     def _ordered_coordinates(self) -> Self:
@@ -49,38 +80,27 @@ class ProteinRef(Record):
         return self
 
     @property
-    def id(self) -> str:
-        return protein_id(self.accession, self.start, self.stop, self.kind)
+    def length(self) -> int:
+        return self.stop - self.start + 1
 
 
-class Protein(ProteinRef):
-    """A full-length human chain, or a mature viral protein on a polyprotein.
-
-    Coordinates are stored for both — `1..length` for human, where they are
-    redundant — so the composite unique constraint applies to every node.
-    """
-
-    name: str = Field(min_length=1)
-    taxon_id: int = Field(ge=1)
-    taxon_name: str = Field(min_length=1)
-    description: str = ""
-    function: str = ""
-
-
-class Taxon(Record):
-    """A taxon the graph groups by: a viral protein's own, or a family above it.
-
-    `rank` is NCBI's, verbatim — an open vocabulary, since a viral protein may
-    point at a species, a strain or a `no rank` node.
-    """
+class Virus(Record):
+    """A curated virus, from `curation/viruses.tsv`: `HBV`, `SARS-CoV-2`."""
 
     taxon_id: int = Field(ge=1)
     name: str = Field(min_length=1)
-    rank: str = Field(min_length=1)
+    full_name: str = Field(min_length=1)
+
+
+class Family(Record):
+    """The NCBI family above a curated virus, by its scientific name."""
+
+    taxon_id: int = Field(ge=1)
+    name: str = Field(min_length=1)
 
 
 class TaxonLink(Record):
-    """A `:PARENT` edge. Derived from the nested-set bounds, never exported."""
+    """A `:PARENT` edge, virus to family. Derived from the taxonomy."""
 
     child_taxon_id: int = Field(ge=1)
     parent_taxon_id: int = Field(ge=1)
@@ -90,6 +110,13 @@ class TaxonLink(Record):
         if self.child_taxon_id == self.parent_taxon_id:
             raise ValueError(f"taxon {self.child_taxon_id} is its own parent")
         return self
+
+
+class Membership(Record):
+    """An `:IN_TAXON` edge: a viral protein and the curated virus it is of."""
+
+    protein: ProteinRef
+    taxon_id: int = Field(ge=1)
 
 
 class Topic(Record):
@@ -139,6 +166,13 @@ class ReportedPeptide(Record):
     source: ProteinRef
 
 
+class Partner(Record):
+    """One side of a description: the protein, and the entry it was seen on."""
+
+    protein: ProteinRef
+    accession: str = Field(pattern=ACCESSION, min_length=6)
+
+
 class Description(Record):
     """One row of the description table: one pair, one paper, one method.
 
@@ -151,22 +185,20 @@ class Description(Record):
     """
 
     stable_id: str = Field(min_length=1)
-    protein_1: ProteinRef
-    protein_2: ProteinRef
+    partner_1: Partner
+    partner_2: Partner
     pmid: str = Field(pattern=r"^\d+$")
     psimi_id: str = Field(pattern=r"^MI:\d{4}$")
     peptides: tuple[ReportedPeptide, ...] = ()
 
     @model_validator(mode="after")
     def _coherent_pair(self) -> Self:
-        if (
-            self.protein_1.kind is ProteinKind.VIRAL
-            and self.protein_2.kind is ProteinKind.VIRAL
-        ):
+        first, second = self.partner_1.protein, self.partner_2.protein
+        if first.kind is ProteinKind.VIRAL and second.kind is ProteinKind.VIRAL:
             raise ValueError(
                 f"{self.stable_id}: virus-virus interactions are not modelled"
             )
-        partners = {self.protein_1.id, self.protein_2.id}
+        partners = {first.id, second.id}
         for reported in self.peptides:
             if reported.source.id not in partners:
                 raise ValueError(
@@ -176,23 +208,25 @@ class Description(Record):
         return self
 
     @property
-    def partners(self) -> tuple[ProteinRef, ProteinRef]:
+    def partners(self) -> tuple[Partner, Partner]:
         """The two partners in slot order: side `a` first."""
-        first, second = self.protein_1, self.protein_2
-        if first.kind is second.kind:
-            return (first, second) if first.id <= second.id else (second, first)
-        return (first, second) if first.kind is ProteinKind.HUMAN else (second, first)
+        first, second = self.partner_1, self.partner_2
+        if first.protein.kind is second.protein.kind:
+            ordered = first.protein.id <= second.protein.id
+            return (first, second) if ordered else (second, first)
+        human_first = first.protein.kind is ProteinKind.HUMAN
+        return (first, second) if human_first else (second, first)
 
     @property
     def interaction_kind(self) -> InteractionKind:
-        if self.protein_1.kind is self.protein_2.kind:
+        if self.partner_1.protein.kind is self.partner_2.protein.kind:
             return InteractionKind.HH
         return InteractionKind.VH
 
     @property
     def interaction_id(self) -> str:
         side_a, side_b = self.partners
-        return interaction_id(side_a.id, side_b.id)
+        return interaction_id(side_a.protein.id, side_b.protein.id)
 
     def source_side(self, reported: ReportedPeptide) -> Side:
         """Which slot a reported peptide was derived from.
@@ -202,7 +236,7 @@ class Description(Record):
         distinction the property exists to make does not arise.
         """
         side_a, _ = self.partners
-        return Side.A if reported.source.id == side_a.id else Side.B
+        return Side.A if reported.source.id == side_a.protein.id else Side.B
 
 
 class GoTerm(Record):
@@ -232,12 +266,16 @@ class Export(Record):
     """One full snapshot of the relational database — everything a run writes.
 
     A loader's whole job is to produce one of these. Stages may be empty: a run
-    that skips UniProt simply leaves the GO collections at their defaults.
+    that skips the GO fetch simply leaves the GO collections at their defaults.
     """
 
     proteins: tuple[Protein, ...] = ()
-    taxa: tuple[Taxon, ...] = ()
+    entries: tuple[Entry, ...] = ()
+    locations: tuple[Location, ...] = ()
+    viruses: tuple[Virus, ...] = ()
+    families: tuple[Family, ...] = ()
     taxon_links: tuple[TaxonLink, ...] = ()
+    memberships: tuple[Membership, ...] = ()
     topics: tuple[Topic, ...] = ()
     involvements: tuple[Involvement, ...] = ()
     publications: tuple[Publication, ...] = ()

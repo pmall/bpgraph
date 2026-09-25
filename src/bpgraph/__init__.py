@@ -16,6 +16,14 @@ def main() -> None:
         print(f"{config.live_graph}: not built yet")
         return
     graph = db.select_graph(config.live_graph)
-    for label in ("Protein", "Interaction", "Description", "Peptide", "Publication"):
+    labels = (
+        "Protein",
+        "Entry",
+        "Interaction",
+        "Description",
+        "Peptide",
+        "Publication",
+    )
+    for label in labels:
         result = graph.ro_query(f"MATCH (n:{label}) RETURN count(n)").result_set
         print(f"{label:<12} {result[0][0]:>9,}")

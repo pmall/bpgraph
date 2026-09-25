@@ -1,4 +1,4 @@
-"""Batched writers. The only code in bpgraph that emits Cypher."""
+"""Batched writers. Every write statement in bpgraph lives here."""
 
 from bpgraph.api.annotations import write_go_annotations, write_go_edges, write_go_terms
 from bpgraph.api.interactions import (
@@ -6,29 +6,39 @@ from bpgraph.api.interactions import (
     write_descriptions,
     write_interactions,
     write_methods,
+    write_observations,
     write_peptides,
     write_publications,
     write_reported_peptides,
 )
-from bpgraph.api.proteins import write_proteins
-from bpgraph.api.taxonomy import link_proteins_to_taxa, write_taxa, write_taxon_links
+from bpgraph.api.proteins import write_entries, write_locations, write_proteins
+from bpgraph.api.taxonomy import (
+    write_families,
+    write_memberships,
+    write_taxon_links,
+    write_viruses,
+)
 from bpgraph.api.topics import write_involvements, write_topics
 
 __all__ = [
-    "link_proteins_to_taxa",
     "update_interaction_counters",
     "write_descriptions",
+    "write_entries",
+    "write_families",
     "write_go_annotations",
     "write_go_edges",
     "write_go_terms",
     "write_involvements",
     "write_interactions",
+    "write_locations",
+    "write_memberships",
     "write_methods",
+    "write_observations",
     "write_peptides",
     "write_proteins",
     "write_publications",
     "write_reported_peptides",
-    "write_taxa",
     "write_taxon_links",
     "write_topics",
+    "write_viruses",
 ]

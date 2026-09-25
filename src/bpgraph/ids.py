@@ -5,19 +5,20 @@ once; every other label keys on a value that comes straight from the data. See
 docs/schema.md section 3.
 """
 
-from bpgraph.enums import ProteinKind
+
+def human_protein_id(accession: str) -> str:
+    """A human protein is its UniProt accession: one chain, one entry."""
+    return accession
 
 
-def protein_id(accession: str, start: int, stop: int, kind: ProteinKind) -> str:
-    """Bare accession for human proteins, accession plus span for viral ones.
+def viral_protein_id(taxon_id: int, name: str) -> str:
+    """A viral protein is its curated virus and its curated name — `10407:HBx`.
 
-    Human ids stay free of coordinates so that a UniProt release revising a
-    sequence updates `stop` in place and leaves every interaction referencing
-    the protein untouched.
+    Neither the accession nor the coordinates take part: the same mature
+    protein carried by several strains, or by pp1a and pp1ab alike, is one
+    protein, and where it sits on each entry is an `:ON_ENTRY` annotation.
     """
-    if kind is ProteinKind.HUMAN:
-        return accession
-    return f"{accession}:{start}-{stop}"
+    return f"{taxon_id}:{name}"
 
 
 def interaction_id(id_a: str, id_b: str) -> str:

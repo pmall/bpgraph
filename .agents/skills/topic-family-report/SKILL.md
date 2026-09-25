@@ -34,7 +34,7 @@ Draw on all of it. A report that uses only the interaction list is incomplete.
 - **HH interactions** among the topic's proteins and around the targets.
 - **UniProt** protein names and function text, for human and viral proteins alike.
 - **GO annotations**, on human proteins only, with the full ancestor closure and evidence codes.
-- **NCBI taxonomy**, which rolls viral species up to their family.
+- **Curated viruses** (`HBV`, `SARS-CoV-2`) and their NCBI family, and the UniProt entries (accessions, with their strain) each viral protein was observed on.
 - **The web**, to fill gaps: mechanisms an abstract leaves out, later papers, reviews, the family's biology.
 
 ## Considerations
@@ -43,10 +43,10 @@ Each of these is a decision to make for this family, not a fixed rule. State wha
 
 **Evidence**
 
-- Apply the threshold per interaction, meaning one viral protein with one human protein. Never sum evidence across species or viral proteins to push a pair over the bar.
+- Apply the threshold per interaction, meaning one viral protein with one human protein. A viral protein already pools its strains and accessions, so the counters are per curated protein; never sum evidence across viruses or viral proteins to push a pair over the bar.
 - Evidence below the threshold can matter. For example, a small family may have nothing golden, or a single-evidence interaction may complete a pattern the golden ones suggest. Include it if it helps, in its own clearly marked tier, and never mix it into the golden counts.
 - Two methods from a single high-throughput screen are weaker than two independent studies. Look at the publications and methods behind the counts.
-- The same human target hit by several species of the family suggests the interaction is conserved and functional. The same target hit by several unrelated viral proteins suggests convergence.
+- The same human target hit by several viruses of the family suggests the interaction is conserved and functional. The same target hit by several unrelated viral proteins suggests convergence.
 
 **Bias and background**
 
@@ -57,10 +57,10 @@ Each of these is a decision to make for this family, not a fixed rule. State wha
 
 **Graph structure**
 
-- A viral protein here is a mature chain. Several can share one polyprotein accession, so count and name viral proteins by their mature-protein name.
+- A viral protein here is a curated mature protein of one virus, `NS5A` of HCV, pooled over every strain and accession it was observed on. Count and name viral proteins by virus and name. Its entries, through `:ON_ENTRY`, matter only when strains differ in what they do.
 - Viral proteins carry no GO annotations. Their function comes from UniProt text and the literature.
 - GO: drop annotations whose qualifier is `NOT`, and weigh `IEA` (electronic, unreviewed) below reviewed evidence. `regulation of X` does not sit under `X` in the ontology. Search for it by name when it matters.
-- Species with no family in the taxonomy fall out of the family rollup. If a known member of the family is missing, check for that and mention it.
+- Viruses with no family in the taxonomy fall out of the family rollup. If a known member of the family is missing, check for that and mention it.
 - In HH, a homodimer is an interaction with itself. Exclude it when listing partners.
 
 **Network context**
@@ -81,8 +81,8 @@ Each of these is a decision to make for this family, not a fixed rule. State wha
 Every report has these sections, in this order. A section can be one line when it has nothing notable. Add family-specific sections after section 7, or subsections anywhere. Use tables only where they carry a comparison. If a full listing is still useful, such as every target with its evidence, put it in an appendix after section 9.
 
 1. **Summary.** A few sentences: how the family engages the topic, its likely net effect, and the strongest finding.
-2. **Scope and evidence basis.** The graph version or date if known, the family and the species present, the threshold, the tiers included, the backgrounds chosen, and any gap in the data (missing species, sparse literature).
-3. **Coverage.** A table of the topic proteins targeted, with the viral protein, species, topic property and evidence (publications, methods) for each one. Then a reading of it: convergence, conservation across species, notable absences.
+2. **Scope and evidence basis.** The graph version or date if known, the family and the viruses present, the threshold, the tiers included, the backgrounds chosen, and any gap in the data (missing viruses, sparse literature).
+3. **Coverage.** A table of the topic proteins targeted, with the viral protein, virus, topic property and evidence (publications, methods) for each one. Then a reading of it: convergence, conservation across viruses, notable absences.
 4. **Enrichment.** By the topic's properties (e.g. role), then by function (GO, UniProt function). Give the results that matter, each with its counts, background and test, and group the non-significant ones in a single line.
 5. **Network context.** The targets' place in the topic's HH subnetwork, indirect reach, and candidate topic proteins.
 6. **Mechanisms.** One entry per interaction, or group of interactions, that decides the net effect or supports a hypothesis: what the viral protein does to its target, and what that means for the topic. Name the remaining targets in one line.
