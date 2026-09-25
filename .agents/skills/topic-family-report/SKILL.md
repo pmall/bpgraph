@@ -20,7 +20,7 @@ Do not read or look for other reports, for any family, even ones sitting in the 
 - **Evidence threshold.** The default is the **golden dataset**: an interaction backed by at least 2 distinct publications **or** at least 2 distinct detection methods.
 - **Destination:** wherever the user asks. Ask if they haven't said.
 
-Query the live graph with `uv run bpgraph-query`, as `docs/queries.md` describes, and nothing else. The schema is in `docs/schema.md`.
+Query the live graph with the `query` tool of the `bpgraph` MCP server, as `docs/queries.md` describes, and nothing else. The schema is in `docs/schema.md`.
 
 ## The information available
 

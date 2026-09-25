@@ -1,9 +1,9 @@
-"""Query the live graph, read-only: the entry point for exploring it.
+"""Query the live graph, read-only: what the MCP server and `bpgraph-query` run.
 
-`bpgraph-query` runs one Cypher statement against `bpgraph` with
-`GRAPH.RO_QUERY`, so the server refuses anything that writes. Each row prints
-as one JSON object keyed by the returned columns. A node prints as its
-properties plus `_labels`, an edge as its properties plus `_type`.
+A statement goes to `bpgraph` with `GRAPH.RO_QUERY`, so the server refuses
+anything that writes. Each row is a JSON object keyed by the returned columns.
+A node becomes its properties plus `_labels`, an edge its properties plus
+`_type`.
 """
 
 import argparse
@@ -11,12 +11,14 @@ import json
 import sys
 
 from falkordb import Edge, Node, Path
+from falkordb.graph import Graph
 from redis.exceptions import ResponseError
 
 from bpgraph.client import connect
 from bpgraph.config import Config
 
 type Value = None | bool | int | float | str | list[Value] | dict[str, Value]
+type Row = dict[str, Value]
 
 
 def _properties(properties: dict[str, object]) -> dict[str, Value]:
@@ -46,6 +48,22 @@ def plain(value: object) -> Value:
             return str(value)
 
 
+def rows(graph: Graph, cypher: str, params: dict[str, object]) -> list[Row]:
+    """Run one read-only statement. A statement that writes, or does not
+    parse, raises `redis.exceptions.ResponseError`."""
+    result = graph.ro_query(cypher, params)
+    columns = [str(c[1]) for c in result.header]
+    return [
+        dict(zip(columns, (plain(v) for v in row), strict=True))
+        for row in result.result_set
+    ]
+
+
+def live_graph() -> Graph:
+    config = Config.from_env()
+    return connect(config).select_graph(config.live_graph)
+
+
 def main() -> None:
     """`bpgraph-query [--params JSON] [CYPHER]`, the statement read from stdin
     when it is not given."""
@@ -62,12 +80,9 @@ def main() -> None:
     cypher: str = args.cypher if args.cypher is not None else sys.stdin.read()
     params: dict[str, object] = json.loads(args.params)
 
-    config = Config.from_env()
-    graph = connect(config).select_graph(config.live_graph)
     try:
-        result = graph.ro_query(cypher, params)
+        result = rows(live_graph(), cypher, params)
     except ResponseError as error:
         sys.exit(f"bpgraph-query: {error}")
-    columns = [str(c[1]) for c in result.header]
-    for row in result.result_set:
-        print(json.dumps(dict(zip(columns, (plain(v) for v in row), strict=True))))
+    for row in result:
+        print(json.dumps(row))

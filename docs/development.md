@@ -11,7 +11,8 @@ data/           one directory per run: export/ as the database wrote it,
 src/bpgraph/
   config.py     env-driven connection settings
   client.py     thin FalkorDB wrapper: parameterized query/write
-  query.py      bpgraph-query: read-only Cypher on the live graph
+  query.py      read-only Cypher on the live graph, and bpgraph-query
+  server.py     the MCP server, bpgraph-mcp: tools over query.py
   ids.py        the two derived ids — nothing else may build one
   run.py        where a run directory keeps each file
   enums.py      closed vocabularies shared by models, ids and writers
@@ -43,6 +44,10 @@ docker exec bpgraph-falkordb-server-1 redis-cli MODULE LIST
 docker exec bpgraph-falkordb-server-1 redis-cli GRAPH.QUERY _probe "CALL dbms.procedures() YIELD name RETURN name"
 docker exec bpgraph-falkordb-server-1 redis-cli GRAPH.DELETE _probe
 ```
+
+## The MCP server
+
+It runs in Docker, built from this repository, so a change to `src/` reaches it only once rebuilt: `docker compose up -d --build bpgraph-mcp`. Run `uv run bpgraph-mcp` to serve from the working tree instead, after stopping the container. Every tool it offers is read-only.
 
 ## Writing code
 

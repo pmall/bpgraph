@@ -8,7 +8,8 @@ This repository holds:
 
 - **the graph server** — FalkorDB and its browser UI, run with Docker Compose;
 - **the ingestion** — a Python package that turns an export of the curation database into a fresh, validated graph;
-- **the analyses** — a read-only query entry point, and skills in `.agents/skills` that pair an analysis's instructions with a script.
+- **the MCP server** — read-only tools through which agents explore the graph;
+- **the analyses** — skills in `.agents/skills` that pair an analysis's instructions with scripts.
 
 Curation itself happens in a separate relational database. The graph is never edited in place: each export is built into a staging graph, checked, and swapped in whole.
 
@@ -26,6 +27,7 @@ uv sync
 | ------------------ | ---- | ------------------------------------------------------- |
 | `falkordb-server`  | 6379 | the graph; builds write here over RESP                  |
 | `falkordb-browser` | 3000 | UI; log in with host `falkordb-server`, not `localhost` |
+| `bpgraph-mcp`      | 8080 | MCP at `http://localhost:8080/mcp`, read-only           |
 
 ## Building a graph
 
@@ -45,7 +47,7 @@ uv run bpgraph-audit   # check the live graph against the schema
 
 ## Querying
 
-The live graph is the only source of truth; `data/` holds build inputs. Query it read-only, one JSON object per row. [`docs/queries.md`](docs/queries.md) has the rules, canonical queries and a worked example.
+The live graph is the only source of truth; `data/` holds build inputs. Agents query it through the MCP server, whose `query` tool runs read-only Cypher; `.mcp.json` registers it for Claude Code. The same query runs from a terminal. [`docs/queries.md`](docs/queries.md) has the rules, canonical queries and a worked example.
 
 ```sh
 uv run bpgraph-query "MATCH (t:Topic) RETURN t.name"
