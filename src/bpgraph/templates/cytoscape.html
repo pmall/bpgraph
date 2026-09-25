@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{title}}</title>
+<script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/layout-base@2.0.1/layout-base.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/cose-base@2.2.0/cose-base.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/cytoscape-fcose@2.2.0/cytoscape-fcose.js"></script>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1f2328; --muted: #656d76; --line: #d0d7de;
+    --human: #2f6fdb; --human-only: #9aa3ad; --viral: #d6332f; --edge: #8c959f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0d1117; --fg: #e6edf3; --muted: #8d96a0; --line: #30363d;
+            --human: #5b94f0; --human-only: #6e7681; --viral: #f0605c; --edge: #6e7681; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+               font: 14px/1.4 system-ui, sans-serif; }
+  body { display: grid; grid-template-rows: auto 1fr; }
+  header { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between;
+           padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  button { flex: none; padding: 5px 10px; font: inherit; color: var(--fg); background: var(--bg);
+           border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  h1 { margin: 0; font-size: 17px; }
+  header p { margin: 4px 0 0; color: var(--muted); }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 6px; color: var(--muted); }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+         margin-right: 5px; vertical-align: -1px; }
+  main { position: relative; min-height: 0; }
+  #cy { position: absolute; inset: 0; }
+  #info { position: absolute; top: 12px; right: 12px; width: min(320px, calc(100% - 24px));
+          max-height: calc(100% - 24px); overflow: auto; padding: 10px 12px;
+          background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+  #info:empty { display: none; }
+  #info h2 { margin: 0 0 6px; font-size: 15px; }
+  #info dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; }
+  #info dt { color: var(--muted); }
+  #info dd { margin: 0; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1 id="title"></h1>
+    <p id="description"></p>
+    <div class="legend" id="legend"></div>
+  </div>
+  <button id="save" type="button">Save PNG</button>
+</header>
+<main>
+  <div id="cy"></div>
+  <div id="info"></div>
+</main>
+<script type="application/json" id="network">{{network}}</script>
+
+<!--
+  ADJUSTMENTS — the only part of this page meant to be edited by hand.
+  style:  Cytoscape stylesheet entries, applied after the defaults, so they win.
+          Every protein field and attribute is node data: node[id = 'P36969'],
+          node[name = 'GPX4'], node[role = 'driver'], node[kind = 'viral'].
+          Default classes: .viral, .human, .human-only (no viral partner).
+  layout: options merged over the default fcose layout.
+  legend: [label, CSS color] pairs replacing the default legend; [] keeps it.
+-->
+<script>
+  const adjust = {
+    style: [],
+    layout: {},
+    legend: [],
+  };
+</script>
+
+<script>
+  const network = JSON.parse(document.getElementById("network").textContent);
+  const css = getComputedStyle(document.documentElement);
+  const color = (name) => css.getPropertyValue(name).trim();
+
+  document.getElementById("title").textContent = network.title;
+  document.getElementById("description").textContent = network.description;
+
+  const legend = adjust.legend.length ? adjust.legend : [
+    ["viral", color("--viral")],
+    ["human, viral partner", color("--human")],
+    ["human, human partners only", color("--human-only")],
+  ];
+  const legendEl = document.getElementById("legend");
+  for (const [label, fill] of legend) {
+    const item = document.createElement("span");
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    dot.style.background = fill;
+    item.append(dot, label);
+    legendEl.append(item);
+  }
+  const counts = document.createElement("span");
+  counts.textContent =
+    `${network.proteins.length} proteins · ${network.interactions.length} interactions`;
+  legendEl.append(counts);
+
+  const kind = new Map(network.proteins.map((p) => [p.id, p.kind]));
+  const hasViralPartner = new Set();
+  for (const i of network.interactions) {
+    if (kind.get(i.target) === "viral") hasViralPartner.add(i.source);
+    if (kind.get(i.source) === "viral") hasViralPartner.add(i.target);
+  }
+  const classOf = (p) =>
+    p.kind === "viral" ? "viral" : hasViralPartner.has(p.id) ? "human" : "human-only";
+
+  const cy = cytoscape({
+    container: document.getElementById("cy"),
+    elements: [
+      ...network.proteins.map((p) => ({
+        group: "nodes",
+        data: { ...p.attributes, ...p, attributes: undefined },
+        classes: classOf(p),
+      })),
+      ...network.interactions.map((i) => ({
+        group: "edges",
+        data: { id: `${i.source}|${i.target}`, ...i },
+      })),
+    ],
+    style: [
+      { selector: "node", style: {
+          shape: "ellipse", width: 22, height: 22, label: "data(name)",
+          "font-size": 9, color: color("--fg"), "text-valign": "bottom",
+          "text-margin-y": 3, "border-width": 0 } },
+      { selector: ".viral", style: { "background-color": color("--viral") } },
+      { selector: ".human", style: { "background-color": color("--human") } },
+      { selector: ".human-only", style: { "background-color": color("--human-only") } },
+      { selector: "edge", style: {
+          "curve-style": "haystack", "line-color": color("--edge"), opacity: 0.7,
+          width: "mapData(n_publications, 1, 10, 1, 6)" } },
+      { selector: ":selected", style: { "border-width": 3, "border-color": color("--fg"),
+          "line-color": color("--fg"), opacity: 1 } },
+      ...adjust.style,
+    ],
+    layout: { name: "fcose", animate: false, quality: "proof", randomize: true,
+              nodeRepulsion: 8000, idealEdgeLength: 60, ...adjust.layout },
+    wheelSensitivity: 0.3,
+  });
+
+  const info = document.getElementById("info");
+  const show = (heading, rows) => {
+    info.replaceChildren();
+    const h = document.createElement("h2");
+    h.textContent = heading;
+    const dl = document.createElement("dl");
+    for (const [key, value] of rows) {
+      const dt = document.createElement("dt");
+      const dd = document.createElement("dd");
+      dt.textContent = key;
+      dd.textContent = String(value);
+      dl.append(dt, dd);
+    }
+    info.append(h, dl);
+  };
+  const name = (id) => cy.getElementById(id).data("name");
+  const proteins = new Map(network.proteins.map((p) => [p.id, p]));
+
+  cy.on("tap", "node", (e) => {
+    const p = proteins.get(e.target.id());
+    show(p.name, [
+      ["id", p.id], ["protein", p.description], ["taxon", p.taxon_name],
+      ["partners", e.target.degree(false)],
+      ...Object.entries(p.attributes),
+    ]);
+  });
+  cy.on("tap", "edge", (e) => {
+    const i = e.target.data();
+    show(`${name(i.source)} – ${name(i.target)}`, [
+      ["publications", i.n_publications], ["methods", i.n_methods],
+    ]);
+  });
+  cy.on("tap", (e) => { if (e.target === cy) info.replaceChildren(); });
+
+  // The network as it stands — dragged positions included — at 3x for print.
+  document.getElementById("save").addEventListener("click", () => {
+    const blob = cy.png({ output: "blob", full: true, scale: 3, bg: color("--bg") });
+    const page = location.pathname.split("/").pop() || "network";
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = page.replace(/(\.cytoscape)?\.html$/, "") + ".png";
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  });
+</script>
+</body>
+</html>
