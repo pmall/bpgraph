@@ -6,16 +6,16 @@ How to explore the graph: answering questions, and the analysis skills. See [`sc
 
 Query the live graph `bpgraph` on the FalkorDB server, and nothing else. It is the only source of truth. **Do not read `data/`** to answer a question: it holds the raw sources of a build, some of which never reach the graph, and they would contradict it. If the graph lacks something, say so rather than looking elsewhere.
 
-`bpgraph-query` runs one read-only statement and prints each row as a JSON object. The server refuses writes.
+Explore through the `bpgraph` MCP server, at `http://localhost:8080/mcp` and registered in `.mcp.json`. Its `query` tool runs one read-only Cypher statement, with values passed as `$name` placeholders in `params`, and returns one object per row. The database refuses writes.
+
+A node comes back as its properties plus `_labels`, an edge as its properties plus `_type`. Return the properties you need rather than whole nodes: a protein's `function` and a publication's `abstract` are long. The text is where the value is, though. Read it once you have narrowed down to the proteins and publications that matter.
+
+The same query runs from a terminal, one JSON object per row, and scripts call `bpgraph.query.rows`:
 
 ```sh
 uv run bpgraph-query "MATCH (t:Topic) RETURN t.name"
 uv run bpgraph-query --params '{"topic": "ferroptosis"}' < query.cypher
 ```
-
-A node prints as its properties plus `_labels`, an edge as its properties plus `_type`. Return the properties you need rather than whole nodes: a protein's `function` and a publication's `abstract` are long. The text is where the value is, though. Read it once you have narrowed down to the proteins and publications that matter.
-
-Scripts use `bpgraph.client.connect` and `graph.ro_query`.
 
 ## Rules
 

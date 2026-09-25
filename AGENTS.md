@@ -14,6 +14,7 @@ The live graph `bpgraph` on the FalkorDB server is the only source of truth abou
 | ------------------ | ---- | ------------------------------------------------------- |
 | `falkordb-server`  | 6379 | the graph                                               |
 | `falkordb-browser` | 3000 | UI. Log in with host `falkordb-server`, not `localhost` |
+| `bpgraph-mcp`      | 8080 | MCP at `/mcp`: how agents query the graph, read-only    |
 
 `bpgraph` is the live graph key, and `bpgraph_staging` is where a build writes. **Never write to `bpgraph` outside a build swap.** Experiment in a throwaway graph named `_probe` and delete it afterwards. Connection settings come from `.env`, which is gitignored. `.env.example` documents the variables.
 
