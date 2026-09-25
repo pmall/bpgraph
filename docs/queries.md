@@ -1,6 +1,32 @@
-# bpgraph — canonical queries
+# bpgraph — querying
 
-The queries this schema is optimized for. Keep them working. See [`schema.md`](schema.md) for the model.
+How to explore the graph: answering questions, and the analysis skills. See [`schema.md`](schema.md) for the model.
+
+## Reaching the graph
+
+Query the live graph `bpgraph` on the FalkorDB server, and nothing else. It is the only source of truth. **Do not read `data/`** to answer a question: it holds the raw sources of a build, some of which never reach the graph, and they would contradict it. If the graph lacks something, say so rather than looking elsewhere.
+
+`bpgraph-query` runs one read-only statement and prints each row as a JSON object. The server refuses writes.
+
+```sh
+uv run bpgraph-query "MATCH (t:Topic) RETURN t.name"
+uv run bpgraph-query --params '{"topic": "ferroptosis"}' < query.cypher
+```
+
+A node prints as its properties plus `_labels`, an edge as its properties plus `_type`. Return the properties you need rather than whole nodes: a protein's `function` and a publication's `abstract` are long. The text is where the value is, though. Read it once you have narrowed down to the proteins and publications that matter.
+
+Scripts use `bpgraph.client.connect` and `graph.ro_query`.
+
+## Rules
+
+- **Sides.** In a `:VH` interaction side `a` is the human protein and side `b` the viral one. In `:HH` the order means nothing. To list a protein's partners, go `(p)<-[:INVOLVES]-(i)-[:INVOLVES]->(q) WHERE q <> p`. A homodimer is an `:HH` whose two `:INVOLVES` reach the same protein, and that filter drops it.
+- **Peptide direction.** The peptide came from the partner whose `INVOLVES.side` equals `REPORTS.source_side`, and binds the other one. Without that comparison, source and target are mixed up.
+- **Viral families.** `(:Viral)-[:IN_TAXON]->(:Taxon)-[:PARENT]->(f:Taxon {rank: 'family'})`. A species with no family has no `:PARENT`. Human proteins have no `:Taxon` node.
+- **GO.** Only human proteins are annotated, each on the most specific term that fits: roll up with `-[:ANNOTATED_WITH]->(:GoTerm)-[:IS_A|PART_OF*0..]->(t)`. A `qualifier` starting with `NOT|` negates the annotation, so always exclude it. `evidence_code = 'IEA'` is electronic and unreviewed, about a third of them. `regulation of X` is not below `X`: match by name to include it. Term names are not indexed, but `toLower(g.name) CONTAINS 'ferroptosis'` is fast.
+- **Publications** have a full-text index on `title` and `abstract`: `CALL db.idx.fulltext.queryNodes('Publication', 'hepatitis') YIELD node`.
+- **Evidence.** The counters on `:Interaction` are the confidence signal; there is no score.
+
+______________________________________________________________________
 
 ## Worked example
 
