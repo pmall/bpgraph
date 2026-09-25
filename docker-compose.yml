@@ -25,5 +25,21 @@ services:
     depends_on:
       - falkordb-server
 
+  # MCP server, built from this repository. Published so MCP clients reach
+  # http://localhost:8080/mcp. Reaches the database over the compose network.
+  # Its only tool runs read-only queries: builds write on 6379, never here.
+  bpgraph-mcp:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      FALKORDB_HOST: falkordb-server
+      FALKORDB_PORT: 6379
+      FALKORDB_PASSWORD: ${FALKORDB_PASSWORD:-}
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8080
+    depends_on:
+      - falkordb-server
+
 volumes:
   falkordb_data:
