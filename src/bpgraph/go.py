@@ -1,37 +1,33 @@
-"""The Gene Ontology, cut to what an export's human proteins are annotated with.
+"""The Gene Ontology, and a host's experimental GO annotations.
 
-The relational database holds no GO at all, so it is built here from two public
-dumps and written into the run directory beside the function text —
-`data/2026-09-09/go_terms.tsv` and its two companions, beside `export/` rather
-than in it because the files are this repo's and not the relational
-database's. The loader reads them back from there; this module never touches
-the graph, and those files are the only thing between the two.
+Two dumps: the ontology, shared by every silo and fetched to the top of the run
+directory, and the host's GOA annotations, fetched into its silo. This module
+cuts the second to what the graph takes, `go_annotations.tsv`; the build reads
+the ontology itself, and keeps the terms those annotations reach.
 
-**Human proteins only.** GOA does annotate viral proteins — there is a whole
-branch of terms about what a virus does to its host — but it annotates a whole
-accession, while a viral protein here is one mature chain excised from a
-polyprotein and nothing in GOA says which chain a term belongs to. The
-function text gets away with it because UniProt scopes a FUNCTION comment to a
-chain by naming its molecule; there is no equivalent here, so attributing a
-term to NS5A rather than to the polyprotein around it would be a guess.
-
-Two dumps, fetched into the run directory the way the taxonomy is, so a run
-reads releases at least as recent as its export:
+**Experimental evidence only**, each citing a PubMed id: `EXP`, `IDA`, `IPI`,
+`IMP`, `IGI`, `IEP` and their high-throughput counterparts. An experiment is
+what gives an annotation a publication, and a publication is what an agent can
+read. Electronic and inferred annotations add no publication, and restate what
+other annotations say. A GOA row citing several pmids is one annotation per
+pmid, as an interaction observation is one description per publication.
 
 - **`go-basic.obo`** is the ontology. It is the release filtered to the
   relations annotations propagate over and guaranteed acyclic, which is exactly
   the traversal the schema promises. Of the relations it keeps, only `is_a` and
   `part_of` are modelled: the three `regulates` relations propagate nothing,
   since a protein involved in `regulation of X` is not involved in `X`.
-- **`goa_human.gaf.gz`** is every GO annotation on the human reference
-  proteome, with the evidence code, the qualifier and the assigning database
-  the export format asks for. One snapshot rather than a paged request per
-  protein, and everything outside the export is dropped on the way past.
+- **`goa.gaf.gz`** is every GO annotation on the host's reference proteome,
+  with the evidence code, the qualifier, the assigning database and the
+  references. Everything not on a Swiss-Prot entry of the host is dropped on
+  the way past.
 
-An annotation is made to the most specific term that fits, so the file carries
-the **full ancestor closure** above every annotated term as well. Without it,
-rolling an annotation up to a coarse process would stop at whatever terms
-happened to be annotated directly.
+**Host proteins only.** GOA does annotate viral proteins, but it annotates a
+whole accession, while a viral protein here is one mature chain excised from a
+polyprotein and nothing in GOA says which chain a term belongs to.
+
+An annotation is made to the most specific term that fits, so the build loads
+the **full ancestor closure** above every annotated term as well.
 """
 
 import gzip
@@ -44,16 +40,26 @@ from pathlib import Path
 from shutil import copyfileobj
 from urllib.request import Request, urlopen
 
-from bpgraph.enums import GoNamespace, GoRelation, ProteinKind
+from bpgraph.enums import GoNamespace, GoRelation
 from bpgraph.models import GoEdge, GoTerm
 from bpgraph.obo import TERM, stanzas, target
-from bpgraph.run import Run
+from bpgraph.run import HUMAN, HostPaths, Run
 from bpgraph.sources import record_source
+from bpgraph.swissprot import iter_accessions
 
 logger = logging.getLogger(__name__)
 
 ONTOLOGY_URL = "https://purl.obolibrary.org/obo/go/go-basic.obo"
-ANNOTATIONS_URL = "https://ftp.ebi.ac.uk/pub/databases/GO/goa/HUMAN/goa_human.gaf.gz"
+ANNOTATIONS_URL = "https://ftp.ebi.ac.uk/pub/databases/GO/goa/{0}/goa_{1}.gaf.gz"
+GOA_SPECIES = {HUMAN: ("HUMAN", "human")}
+"""GOA's directory and file name for each host."""
+
+EXPERIMENTAL = frozenset(
+    {"EXP", "IDA", "IPI", "IMP", "IGI", "IEP", "HTP", "HDA", "HMP", "HGI", "HEP"}
+)
+"""GO's experimental evidence codes, high-throughput ones included."""
+
+PMID = "PMID:"
 
 USER_AGENT = "bpgraph"
 """The CDN in front of the ontology answers `403` to urllib's own agent."""
@@ -68,9 +74,14 @@ TRUE = "true"
 GAF_COMMENT = "!"
 GAF_COLUMNS = 17
 
-TERM_COLUMNS = ("go_id", "name", "namespace", "obsolete")
-EDGE_COLUMNS = ("child_go_id", "parent_go_id", "relation")
-ANNOTATION_COLUMNS = ("accession", "go_id", "evidence_code", "assigned_by", "qualifier")
+ANNOTATION_COLUMNS = (
+    "accession",
+    "go_id",
+    "qualifier",
+    "evidence_code",
+    "assigned_by",
+    "pmid",
+)
 
 UNKNOWN_REPORTED = 5
 """How many unrecognized terms a warning names before it gives up."""
@@ -81,31 +92,33 @@ class _Field(IntEnum):
 
     The file has seventeen and names none of them: it carries no header, so
     position is the whole contract. What is dropped is the gene symbol and
-    product name — the export has its own — the taxon, which is human
-    throughout, and the reference and date behind each annotation.
+    product name — Swiss-Prot has its own — the taxon, which is the host's
+    throughout, and the date.
     """
 
     ACCESSION = 1
     QUALIFIER = 3
     GO_ID = 4
+    REFERENCE = 5
     EVIDENCE_CODE = 6
     ASSIGNED_BY = 14
 
 
 @dataclass(frozen=True, slots=True, order=True)
 class Annotation:
-    """One GOA row, reduced to what docs/export.md asks of it.
+    """One GOA row and one pmid it cites, reduced to what the graph keeps.
 
-    Several rows routinely differ only in the publication they cite, which the
-    export format does not record, so what is left of them is one annotation —
-    hence the ordering, which is what lets a set of these come out stable.
+    Rows differing only in what the graph does not keep — the date, the
+    `with` column, an extension — are one annotation; hence the ordering,
+    which is what lets a set of these come out stable.
     """
 
     accession: str
     go_id: str
+    qualifier: str
     evidence_code: str
     assigned_by: str
-    qualifier: str
+    pmid: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,49 +240,56 @@ def read_ontology(path: Path) -> Ontology:
 
 def read_annotations(
     path: Path, accessions: Iterable[str], ontology: Ontology
-) -> list[Annotation]:
-    """The GOA rows about these proteins, one per distinct annotation.
+) -> tuple[list[Annotation], Counter[str]]:
+    """The experimental, PubMed-cited GOA rows about these proteins, one per
+    distinct annotation and pmid, and how many rows were dropped and why.
 
-    The dump is the whole human reference proteome, so everything the export
-    does not name is dropped on the way past — as is an annotation to a term
-    GO has since deleted outright, which would otherwise point at a node the
-    ontology can no longer build.
+    An annotation to a term GO has since deleted outright is dropped too: it
+    would point at a node the ontology can no longer build.
     """
     wanted = set(accessions)
     annotations: set[Annotation] = set()
+    dropped: Counter[str] = Counter()
     unknown: Counter[str] = Counter()
-    malformed = 0
     with gzip.open(path, mode="rt", encoding="utf-8") as handle:
         for line in handle:
             if line.startswith(GAF_COMMENT):
                 continue
             fields = line.rstrip("\n").split("\t")
             if len(fields) != GAF_COLUMNS:
-                malformed += 1
+                dropped["malformed"] += 1
                 continue
             accession = fields[_Field.ACCESSION]
             if accession not in wanted:
+                dropped["not swiss-prot of the host"] += 1
+                continue
+            if fields[_Field.EVIDENCE_CODE] not in EXPERIMENTAL:
+                dropped["not experimental"] += 1
+                continue
+            pmids = [
+                reference.removeprefix(PMID)
+                for reference in fields[_Field.REFERENCE].split("|")
+                if reference.startswith(PMID) and reference[len(PMID) :].isdigit()
+            ]
+            if not pmids:
+                dropped["no pubmed id"] += 1
                 continue
             go_id = ontology.canonical(fields[_Field.GO_ID])
             if go_id is None:
                 unknown[fields[_Field.GO_ID]] += 1
+                dropped["term not in the ontology"] += 1
                 continue
-            annotations.add(
+            annotations.update(
                 Annotation(
                     accession=accession,
                     go_id=go_id,
+                    qualifier=_clean(fields[_Field.QUALIFIER]),
                     evidence_code=fields[_Field.EVIDENCE_CODE],
                     assigned_by=_clean(fields[_Field.ASSIGNED_BY]),
-                    qualifier=_clean(fields[_Field.QUALIFIER]),
+                    pmid=pmid,
                 )
+                for pmid in pmids
             )
-    if malformed:
-        logger.warning(
-            "go: %d lines of %s do not have %d columns and were skipped",
-            malformed,
-            path.name,
-            GAF_COLUMNS,
-        )
     if unknown:
         logger.warning(
             "go: %d annotations name %d terms the ontology does not have (%s): "
@@ -278,7 +298,7 @@ def read_annotations(
             len(unknown),
             ", ".join(sorted(unknown)[:UNKNOWN_REPORTED]),
         )
-    return sorted(annotations)
+    return sorted(annotations), dropped
 
 
 def _write(path: Path, columns: Sequence[str], rows: Iterable[Sequence[str]]) -> int:
@@ -292,93 +312,75 @@ def _write(path: Path, columns: Sequence[str], rows: Iterable[Sequence[str]]) ->
     return written
 
 
-@dataclass(frozen=True, slots=True)
-class Counts:
-    """What one run of the fetcher wrote."""
+def read_annotations_file(path: Path) -> list[Annotation]:
+    """`go_annotations.tsv`, as written by `write_annotations`."""
+    with path.open(encoding="utf-8") as handle:
+        header = next(handle).rstrip("\n").split("\t")
+        if tuple(header) != ANNOTATION_COLUMNS:
+            raise ValueError(
+                f"{path.name}: columns are {header}, not {ANNOTATION_COLUMNS}"
+            )
+        return [
+            Annotation(*line.rstrip("\n").split("\t"))
+            for line in handle
+            if line.strip()
+        ]
 
-    terms: int
-    edges: int
-    annotations: int
-    proteins: int
-    """Proteins with at least one annotation, out of those asked for."""
+
+def fetch_ontology(run: Run) -> Path:
+    """Download the ontology into a run directory, unless it is there already."""
+    if not run.ontology.exists():
+        logger.info("go: fetching %s", ONTOLOGY_URL)
+        release = _release(download(ONTOLOGY_URL, run.ontology))
+        record_source(run.sources, "go", ONTOLOGY_URL, release)
+    return run.ontology
 
 
-def write_go(accessions: Iterable[str], run: Run) -> Counts:
-    """Cut the GO these proteins reach out of the two dumps and write the trio.
+def write_annotations(
+    host: HostPaths, ontology: Ontology, sources: Path
+) -> tuple[int, int, Counter[str]]:
+    """Cut the host's experimental annotations out of its GOA dump and write
+    them. Returns the annotations written, the proteins they cover, and the
+    rows dropped per reason.
 
     A run directory is new with every export, so the first fetch into it takes
     the current release, and every fetch after it reuses that one.
-
-    Everything is in hand before a file is opened, so a dump that gives out
-    part way leaves whatever was there already rather than three files that
-    disagree with each other.
     """
-    paths = run.go
-    for dataset, url, path in (
-        ("go", ONTOLOGY_URL, run.ontology),
-        ("goa", ANNOTATIONS_URL, run.annotations),
-    ):
-        if not path.exists():
-            logger.info("go: fetching %s", url)
-            record_source(run.sources, dataset, url, _release(download(url, path)))
-    parsed = read_ontology(run.ontology)
-    found = read_annotations(run.annotations, accessions, parsed)
-    terms, edges = parsed.closure({annotation.go_id for annotation in found})
-    return Counts(
-        terms=_write(
-            paths.terms,
-            TERM_COLUMNS,
-            (
-                (
-                    term.go_id,
-                    term.name,
-                    term.namespace.value,
-                    str(term.obsolete).lower(),
-                )
-                for term in terms
-            ),
-        ),
-        edges=_write(
-            paths.edges,
-            EDGE_COLUMNS,
-            ((e.child_go_id, e.parent_go_id, e.relation.value) for e in edges),
-        ),
-        annotations=_write(
-            paths.annotations,
-            ANNOTATION_COLUMNS,
-            (
-                (a.accession, a.go_id, a.evidence_code, a.assigned_by, a.qualifier)
-                for a in found
-            ),
-        ),
-        proteins=len({annotation.accession for annotation in found}),
+    if not host.gaf.exists():
+        url = ANNOTATIONS_URL.format(*GOA_SPECIES[host.taxon_id])
+        logger.info("go: fetching %s", url)
+        release = _release(download(url, host.gaf))
+        record_source(sources, f"{host.taxon_id} goa", url, release)
+    found, dropped = read_annotations(
+        host.gaf, iter_accessions(host.swissprot), ontology
     )
+    written = _write(
+        host.go_annotations,
+        ANNOTATION_COLUMNS,
+        (
+            (a.accession, a.go_id, a.qualifier, a.evidence_code, a.assigned_by, a.pmid)
+            for a in found
+        ),
+    )
+    return written, len({annotation.accession for annotation in found}), dropped
 
 
 def main() -> None:
-    """Fetch the GO one run directory's human proteins reach.
+    """Fetch GO and one host's experimental annotations.
 
-    `uv run bpgraph-go data/2026-09-09` reads that run's export to learn which
-    human proteins it names, cuts the ontology down to what they are annotated
-    with and writes `go_terms.tsv`, `go_edges.tsv` and `go_annotations.tsv`
-    beside it. Rebuilding is what puts them in the graph.
+    `uv run bpgraph-go data/2026-09-09` fetches `go-basic.obo` into the run
+    directory and GOA into `hosts/9606/`, and writes
+    `hosts/9606/go_annotations.tsv`. Rebuilding is what puts them in the graph.
     """
     import sys
-
-    from bpgraph.loaders import TsvExport
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     if len(sys.argv) != 2:
         sys.exit("usage: bpgraph-go <run directory>")
-    loader = TsvExport.open(Path(sys.argv[1]))
-    export = loader.load()
-    humans = {
-        protein.id for protein in export.proteins if protein.kind is ProteinKind.HUMAN
-    }
-    counts = write_go(sorted(humans), loader.run)
-    paths = loader.run.go
-    print(
-        f"{paths.terms}: {counts.terms} terms, {counts.edges} edges\n"
-        f"{paths.annotations}: {counts.annotations} annotations on "
-        f"{counts.proteins} of {len(humans)} human proteins"
-    )
+    run = Run(Path(sys.argv[1]))
+    host = run.host(HUMAN)
+    ontology = read_ontology(fetch_ontology(run))
+    written, proteins, dropped = write_annotations(host, ontology, run.sources)
+    for reason, count in dropped.most_common():
+        print(f"dropped {count}: {reason}")
+    print(f"{host.go_annotations}: {written} annotations on {proteins} proteins")

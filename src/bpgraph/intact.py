@@ -1,14 +1,15 @@
-"""IntAct's human interactions, filtered to what the HH network is built on.
+"""IntAct's interactions of one host, filtered to what its network is built on.
 
-IntAct publishes every interaction with a human partner as one MITAB 2.7 file
-in a zip of over a gigabyte. It is streamed rather than downloaded: the zip is
-inflated as it arrives and each row is filtered on the way past, so only
-`intact.tsv` lands in the run directory.
+IntAct publishes every interaction with a partner of a species as one MITAB 2.7
+file — for human, a zip of over a gigabyte. It is streamed rather than
+downloaded: the zip is inflated as it arrives and each row is filtered on the
+way past, so only
+`intact.tsv` lands in the host's silo.
 
 A row is kept when:
 
-- both partners are UniProt entries of Swiss-Prot human, once an isoform or a
-  chain is mapped to its entry;
+- both partners are Swiss-Prot entries of the host, once an isoform or a chain
+  is mapped to its entry;
 - it cites a PubMed id;
 - its detection method is experimental — not under `MI:0364` (inferred by
   curator) nor `MI:0063` (interaction prediction).
@@ -34,13 +35,17 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 
 from bpgraph.psimi import Ontology, read_ontology
-from bpgraph.run import Run
+from bpgraph.run import HUMAN, HostPaths, Run
 from bpgraph.sources import record_source
 from bpgraph.swissprot import canonical, iter_accessions
 
 logger = logging.getLogger(__name__)
 
-URL = "https://ftp.ebi.ac.uk/pub/databases/intact/current/psimitab/species/human.zip"
+SPECIES_URL = (
+    "https://ftp.ebi.ac.uk/pub/databases/intact/current/psimitab/species/{}.zip"
+)
+SPECIES = {HUMAN: "human"}
+"""IntAct's name for each host's file."""
 RELEASES_URL = "https://ftp.ebi.ac.uk/pub/databases/intact/"
 """`current` names no release; the dated directory beside it does."""
 
@@ -144,7 +149,7 @@ def _values(cell: str, prefix: str) -> list[str]:
 
 
 def filter_rows(
-    lines: Iterable[str], humans: frozenset[str], ontology: Ontology
+    lines: Iterable[str], proteins: frozenset[str], ontology: Ontology
 ) -> tuple[list[Row], Counter[str]]:
     """The rows kept, and why the others were dropped."""
     dropped: Counter[str] = Counter()
@@ -161,8 +166,8 @@ def filter_rows(
             dropped["negative"] += 1
             continue
         a, b = _accession(fields[_Field.ID_A]), _accession(fields[_Field.ID_B])
-        if a is None or b is None or a not in humans or b not in humans:
-            dropped["not swiss-prot human"] += 1
+        if a is None or b is None or a not in proteins or b not in proteins:
+            dropped["not swiss-prot of the host"] += 1
             continue
         pmids = [p for p in _values(fields[_Field.PUBLICATIONS], PUBMED) if p.isdigit()]
         if not pmids:
@@ -201,21 +206,24 @@ def _release() -> str:
         return max(RELEASE.findall(response.read().decode("utf-8")), default="")
 
 
-def write_intact(run: Run) -> tuple[int, Counter[str]]:
-    """Stream, filter and write `intact.tsv`. Returns the rows written and the
-    count dropped per reason."""
-    humans = frozenset(iter_accessions(run.swissprot))
-    ontology = read_ontology(run.psimi)
+def write_intact(
+    host: HostPaths, psimi: Path, sources: Path
+) -> tuple[int, Counter[str]]:
+    """Stream, filter and write one host's `intact.tsv`. Returns the rows
+    written and the count dropped per reason."""
+    proteins = frozenset(iter_accessions(host.swissprot))
+    ontology = read_ontology(psimi)
     release = _release()
-    logger.info("intact: streaming %s", URL)
-    rows, dropped = filter_rows(_lines(URL), humans, ontology)
-    with run.intact.open("w", encoding="utf-8", newline="\n") as handle:
+    url = SPECIES_URL.format(SPECIES[host.taxon_id])
+    logger.info("intact: streaming %s", url)
+    rows, dropped = filter_rows(_lines(url), proteins, ontology)
+    with host.intact.open("w", encoding="utf-8", newline="\n") as handle:
         handle.write("\t".join(COLUMNS) + "\n")
         for row in rows:
             handle.write(
                 f"{row.intact_id}\t{row.accession1}\t{row.accession2}\t{row.pmid}\t{row.psimi_id}\n"
             )
-    record_source(run.sources, "intact", URL, release)
+    record_source(sources, f"{host.taxon_id} intact", url, release)
     return len(rows), dropped
 
 
@@ -223,7 +231,7 @@ def main() -> None:
     """Filter IntAct into one run directory.
 
     `uv run bpgraph-intact data/2026-09-09` needs `psi-mi.obo` and
-    `swissprot_human.tsv` there first, and writes `intact.tsv`.
+    `hosts/9606/swissprot.tsv` there first, and writes `hosts/9606/intact.tsv`.
     """
     import sys
 
@@ -231,7 +239,8 @@ def main() -> None:
     if len(sys.argv) != 2:
         sys.exit("usage: bpgraph-intact <run directory>")
     run = Run(Path(sys.argv[1]))
-    written, dropped = write_intact(run)
+    host = run.host(HUMAN)
+    written, dropped = write_intact(host, run.psimi, run.sources)
     for reason, count in dropped.most_common():
         print(f"dropped {count}: {reason}")
-    print(f"{run.intact}: {written} rows")
+    print(f"{host.intact}: {written} rows")

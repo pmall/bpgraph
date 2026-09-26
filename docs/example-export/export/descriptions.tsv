@@ -1,5 +1,0 @@
-stable_id	type	pmid	psimi_id	method	accession1	start1	stop1	name1	description1	ncbi_taxon_id1	accession2	start2	stop2	name2	description2	ncbi_taxon_id2
-D-00417	vh	12345678	MI:0018	two hybrid	P36969	1	197	GPX4	Phospholipid hydroperoxide glutathione peroxidase	9606	P27958	1973	2419	NS5A	Genome polyprotein	11103
-D-00418	vh	12345678	MI:0006	anti bait coip	P36969	1	197	GPX4	Phospholipid hydroperoxide glutathione peroxidase	9606	P27958	1973	2419	NS5A	Genome polyprotein	11103
-D-00901	hh	22222222	MI:0006	anti bait coip	P36969	1	197	GPX4	Phospholipid hydroperoxide glutathione peroxidase	9606	O60488	1	711	ACSL4	Long-chain-fatty-acid--CoA ligase 4	9606
-D-00902	hh	22222222	MI:0018	two hybrid	O60488	1	711	ACSL4	Long-chain-fatty-acid--CoA ligase 4	9606	O60488	1	711	ACSL4	Long-chain-fatty-acid--CoA ligase 4	9606

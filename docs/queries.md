@@ -23,30 +23,26 @@ uv run bpgraph-query --params '{"topic": "ferroptosis"}' < query.cypher
 - **Peptide direction.** The peptide came from the partner whose `INVOLVES.side` equals `REPORTS.source_side`, and binds the other one. Without that comparison, source and target are mixed up.
 - **Viral proteins** are curated: `NS5A` of HCV is one `:Protein`, pooled over every strain and accession it was observed on, so its interactions and counters are pooled too. Name one by virus and name: `(p:Viral {name: 'HBx'})-[:IN_TAXON]->(:Virus {name: 'HBV'})`, or by id, `10407:HBx`. Names are case-sensitive.
 - **Viruses and families.** `(:Viral)-[:IN_TAXON]->(v:Virus)-[:PARENT]->(f:Family)`. `v.name` is the familiar name (`HBV`, `SARS-CoV-2`), `v.full_name` the scientific one. A virus with no family has no `:PARENT`. Human proteins have no `:Taxon` node.
-- **Accessions and strains** are `:Entry` nodes. `(p)-[:ON_ENTRY]->(e:Entry)` lists what a protein was observed on, with `start`/`stop` on the edge for viral proteins; `e.taxon_name` is the strain. `(d:Description)-[:OBSERVED_ON {side}]->(e)` is the entry one observation used. Go through entries only when a question is about strains or sequences.
-- **GO.** Only human proteins are annotated, each on the most specific term that fits: roll up with `-[:ANNOTATED_WITH]->(:GoTerm)-[:IS_A|PART_OF*0..]->(t)`. A `qualifier` starting with `NOT|` negates the annotation, so always exclude it. `evidence_code = 'IEA'` is electronic and unreviewed, about a third of them. `regulation of X` is not below `X`: match by name to include it. Term names are not indexed, but `toLower(g.name) CONTAINS 'ferroptosis'` is fast.
-- **Publications** have a full-text index on `title` and `abstract`: `CALL db.idx.fulltext.queryNodes('Publication', 'hepatitis') YIELD node`.
-- **Evidence.** The counters on `:Interaction` are the confidence signal; there is no score.
+- **Human proteins** are every Swiss-Prot human entry, about 20,000, including those no interaction names.
+- **Strains, accessions and sequences** are not in the graph. They are in the sequence vaults (`schema.md` §5), for verifying one protein, not for reasoning over many.
+- **Where a description comes from.** `d.intact_id <> ''` is IntAct's; `size(d.stable_ids) > 0` is our curation; both means IntAct and we recorded it independently. VH descriptions are always ours.
+- **GO.** Only human proteins are annotated, and only on experimental evidence. Each annotation is a node tied to its protein, its term and the publication showing it: roll up with `(h)<-[:ANNOTATES]-(a:Annotation)-[:OF_TERM]->(:GoTerm)-[:IS_A|PART_OF*0..]->(t)`, and read the experiment with `(a)-[:REPORTED_IN]->(b:Publication)`. A `qualifier` starting with `NOT|` negates the annotation, so always exclude it. `regulation of X` is not below `X`: match by name to include it. Term names are not indexed, but `toLower(g.name) CONTAINS 'ferroptosis'` is fast.
+- **Publications** back descriptions, annotations and function text alike: `(b)<-[:REPORTED_IN]-(d:Description)`, `(b)<-[:REPORTED_IN]-(a:Annotation)`, `(b)<-[:FUNCTION_CITES]-(p:Protein)`. They have a full-text index on `title` and `abstract`: `CALL db.idx.fulltext.queryNodes('Publication', 'hepatitis') YIELD node`.
+- **Evidence.** The counters on `:Interaction` are the confidence signal; there is no score. `n_methods` counts method **classes** (`m.class`), so two flavours of co-IP count once.
 
 ______________________________________________________________________
 
 ## Worked example
 
-*HCV NS5A (observed on P27958, 1973–2419) binds human GPX4 (P36969), reported in PMID 12345678 by two-hybrid and by anti-bait coIP, with the peptide `PSLKATC` from NS5A sufficient for the interaction.*
-
-This is exactly the graph [`docs/example-export/`](example-export) builds, so every value below can be loaded and queried rather than taken on trust. `function` is empty because it is fetched per run rather than exported — see [`export.md`](export.md).
+*HCV NS5A (observed on P27958, 1973–2419) binds human GPX4 (P36969), reported in PMID 12345678 by two-hybrid and by anti-bait coIP, with the peptide `PSLKATC` from NS5A sufficient for the interaction.* The values are illustrative.
 
 ```
 (:Protein:Human {id:"P36969", name:"GPX4",
                  description:"Phospholipid hydroperoxide glutathione peroxidase",
-                 function:""})
-    -[:ON_ENTRY]-> (:Entry {accession:"P36969", taxon_id:9606,
-                            taxon_name:"Homo sapiens", description:"Phospholipid…"})
+                 function:"Essential antioxidant peroxidase…"})
+    -[:FUNCTION_CITES]-> (:Publication {pmid:"24439385", …})
 (:Protein:Viral {id:"3052230:NS5A", name:"NS5A",
-                 description:"Genome polyprotein", function:""})
-    -[:ON_ENTRY {start:1973, stop:2419}]-> (:Entry {accession:"P27958",
-                            taxon_id:3052230, taxon_name:"Orthohepacivirus hominis",
-                            description:"Genome polyprotein"})
+                 description:"Genome polyprotein", function:"…"})
     -[:IN_TAXON]-> (:Taxon:Virus {taxon_id:3052230, name:"HCV",
                                   full_name:"Orthohepacivirus hominis"})
     -[:PARENT]->   (:Taxon:Family {taxon_id:3700683, name:"Hepaciviridae"})
@@ -56,20 +52,25 @@ This is exactly the graph [`docs/example-export/`](example-export) builds, so ev
     -[:INVOLVES {side:"a"}]-> (P36969)              <- human is always side a
     -[:INVOLVES {side:"b"}]-> (3052230:NS5A)
 
-(:Description {id:"D-00417"})                       <- stable_id from the source
+(:Description {id:"D-00417", intact_id:"", stable_ids:["D-00417"]})
     -[:SUPPORTS]->     (:Interaction:VH {id:"P36969|3052230:NS5A"})
-    -[:OBSERVED_ON {side:"a"}]-> (:Entry {accession:"P36969"})
-    -[:OBSERVED_ON {side:"b"}]-> (:Entry {accession:"P27958"})
     -[:REPORTED_IN]->  (:Publication {pmid:"12345678", …})
-    -[:DETECTED_BY]->  (:Method {psimi_id:"MI:0018", name:"two hybrid"})
+    -[:DETECTED_BY]->  (:Method {psimi_id:"MI:0018", name:"two hybrid",
+                                class:"two hybrid"})
     -[:REPORTS {source_side:"b"}]-> (:Peptide {sequence:"PSLKATC", length:7})
+
+(:Annotation {id:"P36969|GO:0097707|24439385|IMP|UniProt|involved_in",
+              qualifier:"involved_in", evidence_code:"IMP", assigned_by:"UniProt"})
+    -[:ANNOTATES]->   (P36969)
+    -[:OF_TERM]->     (:GoTerm {go_id:"GO:0097707", name:"ferroptosis"})
+    -[:REPORTED_IN]-> (:Publication {pmid:"24439385", …})
 ```
 
-`source_side: "b"` is what makes the peptide directed: side `b` is NS5A, so the peptide is *from* NS5A and *binds* GPX4. `D-00418` is the same pair by a second method, so it adds one `:Description`, bumps `n_descriptions` and `n_methods`, and reuses everything else. Had it observed NS5A on another HCV accession, it would still support the same interaction, and only its `:OBSERVED_ON` would differ.
+`source_side: "b"` is what makes the peptide directed: side `b` is NS5A, so the peptide is *from* NS5A and *binds* GPX4. `D-00418` is the same pair by a second method, so it adds one `:Description`, bumps `n_descriptions` and `n_methods`, and reuses everything else. Had it observed NS5A on another HCV accession, it would still support the same interaction; which accession it used is in the viral vault.
 
-The same export also reports `PSLKATC` from GPX4 against ACSL4 (`D-00901`), and that reuses the one `:Peptide` node — on an `:HH` interaction whose side `a` is `O60488`, because two human ids order alphabetically. The pairing stays exact even so, because each description names its own source side.
+Publication 24439385 backs both GPX4's function text and its ferroptosis annotation: one node, reached from both.
 
-The taxon shows something else: the export says `11103`, the graph says `3052230`. NCBI retired the former, and the loader follows the merge before placing the entry under its curated virus.
+The taxon shows something else: the export says `11103`, the graph says `3052230`. NCBI retired the former, and the loader follows the merge before placing the protein under its curated virus.
 
 ______________________________________________________________________
 
@@ -170,14 +171,26 @@ RETURN i.id, collect(p.name) AS partners
 ```cypher
 MATCH (v:Viral)-[:IN_TAXON]->(:Virus)-[:PARENT]->(:Family {name: $family})
 MATCH (v)<-[:INVOLVES]-(:VH)-[:INVOLVES]->(h:Human)
-MATCH (h)-[r:ANNOTATED_WITH]->(:GoTerm)-[:IS_A|PART_OF*0..]->
+MATCH (h)<-[:ANNOTATES]-(a:Annotation)-[:OF_TERM]->(:GoTerm)-[:IS_A|PART_OF*0..]->
       (g:GoTerm {namespace: 'biological_process'})
-WHERE NOT r.qualifier STARTS WITH 'NOT'
+WHERE NOT a.qualifier STARTS WITH 'NOT'
 RETURN g.name, count(DISTINCT h) AS n_proteins
 ORDER BY n_proteins DESC LIMIT 40
 ```
 
 `*0..` is what makes this a rollup: zero hops keeps the terms the proteins are annotated with, and every hop above them is an ancestor the build loaded for exactly this. **Filter the qualifier.** GOA states what a protein is *not* involved in as an ordinary annotation with `NOT` in front of its qualifier, so counting it would put the protein in the one process it is known to stay out of.
+
+## Everything one publication showed
+
+A paper may report interactions, back annotations and support function text at once:
+
+```cypher
+MATCH (b:Publication {pmid: $pmid})
+RETURN b.title,
+       [(b)<-[:REPORTED_IN]-(:Description)-[:SUPPORTS]->(i:Interaction) | i.id] AS interactions,
+       [(b)<-[:REPORTED_IN]-(a:Annotation)-[:OF_TERM]->(g:GoTerm) | g.name] AS terms,
+       [(b)<-[:FUNCTION_CITES]-(p:Protein) | p.name] AS functions
+```
 
 Swap `namespace` to ask the same question along another axis: `molecular_function` for the activities a family engages, `cellular_component` for the compartments it reaches.
 
@@ -194,15 +207,11 @@ RETURN n.name, max(i.n_publications) AS best_support,
 ORDER BY n_topic_neighbours DESC, best_support DESC
 ```
 
-## Which strains and accessions back a claim
-
-A viral protein pools its strains. To see which entries an interaction's observations actually used:
+## How much of an HH claim is ours, how much IntAct's
 
 ```cypher
-MATCH (i:Interaction {id: $interaction_id})<-[:SUPPORTS]-(d:Description)
-MATCH (d)-[:OBSERVED_ON {side: 'b'}]->(e:Entry)
-MATCH (d)-[:REPORTED_IN]->(b:Publication)
-RETURN e.accession, e.taxon_name AS strain,
-       count(DISTINCT d) AS descriptions, collect(DISTINCT b.pmid) AS pmids
-ORDER BY descriptions DESC
+MATCH (i:HH {id: $interaction_id})<-[:SUPPORTS]-(d:Description)
+RETURN sum(CASE WHEN d.intact_id <> '' AND size(d.stable_ids) = 0 THEN 1 ELSE 0 END) AS intact_only,
+       sum(CASE WHEN d.intact_id = '' THEN 1 ELSE 0 END) AS ours_only,
+       sum(CASE WHEN d.intact_id <> '' AND size(d.stable_ids) > 0 THEN 1 ELSE 0 END) AS both
 ```
