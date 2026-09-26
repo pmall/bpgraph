@@ -3,9 +3,9 @@
 from bpgraph.build import BuildReport, build
 from bpgraph.client import GraphWriter, connect
 from bpgraph.config import Config
-from bpgraph.models import Export
+from bpgraph.models import Snapshot
 
-__all__ = ["BuildReport", "Config", "Export", "GraphWriter", "build", "connect"]
+__all__ = ["BuildReport", "Config", "GraphWriter", "Snapshot", "build", "connect"]
 
 
 def main() -> None:
@@ -18,9 +18,9 @@ def main() -> None:
     graph = db.select_graph(config.live_graph)
     labels = (
         "Protein",
-        "Entry",
         "Interaction",
         "Description",
+        "Annotation",
         "Peptide",
         "Publication",
     )

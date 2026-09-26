@@ -5,9 +5,10 @@ Conventions for changing the code, whether the build or a skill's script.
 ## Layout
 
 ```
-data/           one directory per run: export/ as the database wrote it,
-                the taxonomy, function text and GO fetched for it, and
-                topics/ resolved against it. Gitignored
+data/           one directory per run: export/ as the database wrote it, what
+                every silo shares (taxonomy, ontologies), one directory per
+                silo (hosts/9606/, viral/), topics/, and the vaults the build
+                writes. Gitignored
 curation/       viruses.tsv, the curated viruses; viruses.md, why;
                 methods.tsv, the method classes; methods.md, why
 src/bpgraph/
@@ -16,22 +17,30 @@ src/bpgraph/
   query.py      read-only Cypher on the live graph, and bpgraph-query
   server.py     the MCP server, bpgraph-mcp: tools over query.py
   ids.py        the derived ids — nothing else may build one
-  run.py        where a run directory keeps each file
+  run.py        where a run directory keeps each file, silo by silo
   sources.py    which release of each dataset a run was fetched from
   enums.py      closed vocabularies shared by models, ids and writers
   models.py     Pydantic models mirroring docs/schema.md
   dedupe.py     collapse repeated records, and reject ones that disagree
   taxonomy.py   the NCBI dump in SQLite, bpgraph-taxonomy; families
   viruses.py    curation/viruses.tsv, and placing a taxon under its virus
-  uniprot.py    fetches the function text into a run directory
-  go.py         cuts GO down to what an export reaches, likewise
+  psimi.py      the PSI-MI ontology, bpgraph-psimi
+  methods.py    curation/methods.tsv on PSI-MI, bpgraph-methods
+  obo.py        the OBO format GO and PSI-MI share
+  swissprot.py  a host's Swiss-Prot and sequences, bpgraph-swissprot
+  intact.py     a host's IntAct, filtered, bpgraph-intact
+  go.py         GO, and a host's experimental annotations, bpgraph-go
+  uniprot.py    the viral silo's function text and sequences, bpgraph-functions
+  pubmed.py     each silo's publication metadata, bpgraph-pubmed
+  vault.py      the sequence vaults: writing them, reading one protein
   schema.py     index and constraint DDL, and the validation gate
-  build.py      run a full build: stages, validation gate, swap
+  build.py      run a full build: stages, validation gate, swap, vaults
   audit.py      check a built graph against docs/schema.md
   network.py    draw a network: network.json in, a standard page out
   templates/    the network renderers, one HTML file each
   api/          batched writers, one module per area
-  loaders/      tsv.py: the export parser -> Pydantic models
+  loaders/      a run's files -> Pydantic models: export.py, one loader per
+                silo (host.py, viral.py), run.py joins them; tsv.py parses
 .agents/skills/ the analysis skills; .claude/skills links to them
 ```
 

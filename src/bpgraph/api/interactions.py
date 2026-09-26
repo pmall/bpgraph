@@ -9,20 +9,17 @@ from collections.abc import Iterable
 
 from bpgraph.client import GraphWriter, Row
 from bpgraph.dedupe import dedupe
-from bpgraph.enums import InteractionKind, Side
+from bpgraph.enums import InteractionKind
 from bpgraph.models import Description, Method, Publication
 
 DESCRIPTION = """MATCH (interaction:Interaction {id: r.interaction_id})
 MATCH (publication:Publication {pmid: r.pmid})
 MATCH (method:Method {psimi_id: r.psimi_id})
-CREATE (description:Description {id: r.id})
+CREATE (description:Description {id: r.id, intact_id: r.intact_id,
+                                 stable_ids: r.stable_ids})
 CREATE (description)-[:SUPPORTS]->(interaction)
 CREATE (description)-[:REPORTED_IN]->(publication)
 CREATE (description)-[:DETECTED_BY]->(method)"""
-
-OBSERVED_ON = """MATCH (description:Description {id: r.description_id})
-MATCH (entry:Entry {accession: r.accession})
-CREATE (description)-[:OBSERVED_ON {side: r.side}]->(entry)"""
 
 REPORTS = """MATCH (description:Description {id: r.description_id})
 MATCH (peptide:Peptide {sequence: r.sequence})
@@ -35,7 +32,7 @@ OPTIONAL MATCH (d)-[:REPORTS]->(peptide:Peptide)
 WITH interaction,
      count(DISTINCT d) AS n_descriptions,
      count(DISTINCT publication) AS n_publications,
-     count(DISTINCT method) AS n_methods,
+     count(DISTINCT method.class) AS n_methods,
      count(DISTINCT peptide) AS n_peptides
 SET interaction.n_descriptions = n_descriptions,
     interaction.n_publications = n_publications,
@@ -54,7 +51,7 @@ def _interaction_statement(label: str) -> str:
 
 def _claim_row(identity: str, description: Description) -> Row:
     side_a, side_b = description.partners
-    return {"id": identity, "side_a": side_a.protein.id, "side_b": side_b.protein.id}
+    return {"id": identity, "side_a": side_a.id, "side_b": side_b.id}
 
 
 def write_publications(writer: GraphWriter, publications: Iterable[Publication]) -> int:
@@ -74,7 +71,7 @@ def write_publications(writer: GraphWriter, publications: Iterable[Publication])
 
 def write_methods(writer: GraphWriter, methods: Iterable[Method]) -> int:
     rows: list[Row] = [
-        {"psimi_id": method.psimi_id, "name": method.name}
+        {"psimi_id": method.psimi_id, "name": method.name, "class": method.method_class}
         for method in dedupe(methods, key=lambda m: m.psimi_id)
     ]
     return writer.create("Method", rows)
@@ -117,29 +114,16 @@ def write_interactions(writer: GraphWriter, descriptions: Iterable[Description])
 def write_descriptions(writer: GraphWriter, descriptions: Iterable[Description]) -> int:
     rows: list[Row] = [
         {
-            "id": description.stable_id,
+            "id": description.id,
+            "intact_id": description.intact_id,
+            "stable_ids": list(description.stable_ids),
             "interaction_id": description.interaction_id,
             "pmid": description.pmid,
             "psimi_id": description.psimi_id,
         }
-        for description in dedupe(descriptions, key=lambda d: d.stable_id)
+        for description in dedupe(descriptions, key=lambda d: d.id)
     ]
     return writer.write(DESCRIPTION, rows)
-
-
-def write_observations(writer: GraphWriter, descriptions: Iterable[Description]) -> int:
-    """Which entry each side was observed on. Pooling proteins across strains
-    is what loses it from the interaction, so it is kept here, per description."""
-    rows: list[Row] = [
-        {
-            "description_id": description.stable_id,
-            "accession": partner.accession,
-            "side": side.value,
-        }
-        for description in descriptions
-        for side, partner in zip(Side, description.partners, strict=True)
-    ]
-    return writer.write(OBSERVED_ON, rows)
 
 
 def write_reported_peptides(
@@ -149,7 +133,7 @@ def write_reported_peptides(
     rather than on the peptide: the direction is a fact about one observation."""
     rows: list[Row] = [
         {
-            "description_id": description.stable_id,
+            "description_id": description.id,
             "sequence": reported.peptide.sequence,
             "source_side": description.source_side(reported).value,
         }
@@ -160,6 +144,7 @@ def write_reported_peptides(
 
 
 def update_interaction_counters(writer: GraphWriter) -> None:
-    """The confidence signal: distinct publications and methods behind a claim,
-    and whether any peptide came out of it. One pass, nothing incremental."""
+    """The confidence signal: distinct publications and method classes behind
+    a claim, and whether any peptide came out of it. One pass, nothing
+    incremental."""
     writer.run(INTERACTION_COUNTERS)

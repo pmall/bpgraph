@@ -1,13 +1,12 @@
-"""UniProt `CC FUNCTION` text, fetched for the proteins an export names.
+"""UniProt `CC FUNCTION` text and sequences, fetched for the viral silo.
 
-The relational database does not hold it, so it is fetched here and written
-into the run directory — `data/2026-09-09/functions.tsv`, beside `export/`
-rather than in it because the file is this repo's and not the relational
-database's. The loader reads it back from there; this module never touches the
-graph, and that file is the only thing between the two. It is also the cache:
-a fetch runs once per export, and every build after it reads what is there.
+The relational database holds neither, so they are fetched here and written
+into the viral silo — `data/2026-09-09/viral/functions.tsv` and `entries.tsv`.
+The loader reads them back from there; this module never touches the graph.
+It is also the cache: a fetch runs once per export, and every build after it
+reads what is there. Host proteins get theirs from `bpgraph.swissprot`.
 
-An entry is one accession, but a protein may be one chain of it: a viral
+An entry is one accession, but a viral protein is one chain of it: a
 polyprotein carries a mature protein per chain, and UniProt scopes a FUNCTION
 comment to a chain by naming its molecule. Matching the two goes by coordinates
 rather than by name, because curation and UniProt disagree about the exact
@@ -21,6 +20,8 @@ export names no other part of that accession. A polyprotein cut into four
 mature proteins by an entry UniProt never split into chains has nothing to say
 about any one of them, and all four keep an empty `function` rather than
 sharing one text between them.
+
+A text's `pmids` are the PubMed ids UniProt cites as its evidence.
 """
 
 import json
@@ -35,19 +36,22 @@ from typing import NotRequired, TypedDict, cast
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
-from bpgraph.models import Location
+from bpgraph.run import ViralPaths
 from bpgraph.sources import record_source
 
 logger = logging.getLogger(__name__)
 
 ACCESSIONS_URL = "https://rest.uniprot.org/uniprotkb/accessions"
-FIELDS = ("accession", "cc_function", "ft_chain")
+FIELDS = ("accession", "cc_function", "ft_chain", "sequence")
 BATCH_SIZE = 100
 """The most accessions the endpoint takes in one request."""
 
 FUNCTION = "FUNCTION"
 CHAIN = "Chain"
-COLUMNS = ("type", "accession", "start", "stop", "function")
+PUBMED = "PubMed"
+PMID_SEPARATOR = ";"
+COLUMNS = ("accession", "start", "stop", "function", "pmids")
+ENTRY_COLUMNS = ("accession", "sequence")
 
 MIN_OVERLAP = 0.8
 """How much a span and a chain must agree before the chain's text is the
@@ -59,6 +63,19 @@ ATTEMPTS = 4
 BACKOFF = 3.0
 RETRIABLE = frozenset({429, 500, 502, 503, 504})
 """Rate limiting and the gateway's bad days. Everything else is our bug."""
+
+type Site = tuple[str, int, int]
+"""Where a viral protein was observed: accession, start, stop."""
+
+
+class _Evidence(TypedDict):
+    source: NotRequired[str]
+    id: NotRequired[str]
+
+
+class Text(TypedDict):
+    value: str
+    evidences: NotRequired[list[_Evidence]]
 
 
 class _Position(TypedDict):
@@ -76,20 +93,21 @@ class _Feature(TypedDict):
     description: NotRequired[str]
 
 
-class _Text(TypedDict):
-    value: str
-
-
 class _Comment(TypedDict):
     commentType: str
     molecule: NotRequired[str]
-    texts: NotRequired[list[_Text]]
+    texts: NotRequired[list[Text]]
+
+
+class _Sequence(TypedDict):
+    value: str
 
 
 class _Record(TypedDict):
     primaryAccession: str
     comments: NotRequired[list[_Comment]]
     features: NotRequired[list[_Feature]]
+    sequence: _Sequence
 
 
 class _Response(TypedDict):
@@ -103,6 +121,33 @@ class _Batch:
     """UniProt's release, from the response's `X-UniProt-Release` header."""
 
 
+def clean(text: str) -> str:
+    """One line of text: a TSV cell holds no tab and no newline."""
+    return " ".join(text.split())
+
+
+def cited(texts: Iterable[Text]) -> list[str]:
+    """The PubMed ids a comment's texts cite, in order, once each."""
+    pmids = (
+        evidence.get("id", "")
+        for text in texts
+        for evidence in text.get("evidences", [])
+        if evidence.get("source") == PUBMED
+    )
+    return list(dict.fromkeys(p for p in pmids if p.isdigit()))
+
+
+@dataclass(frozen=True, slots=True)
+class Function:
+    """A text, and the publications UniProt cites for it."""
+
+    text: str
+    pmids: tuple[str, ...]
+
+
+NO_FUNCTION = Function("", ())
+
+
 @dataclass(frozen=True, slots=True)
 class Chain:
     """A FUNCTION comment UniProt scopes to one mature chain of an entry."""
@@ -110,7 +155,7 @@ class Chain:
     name: str
     start: int
     stop: int
-    function: str
+    function: Function
 
     def agreement(self, start: int, stop: int) -> float:
         """How much a span and this chain agree: shared residues over the
@@ -128,7 +173,8 @@ class Chain:
 
 @dataclass(frozen=True, slots=True)
 class Entry:
-    """One UniProt entry, reduced to the function text it carries.
+    """One UniProt entry, reduced to its sequence and the function text it
+    carries.
 
     `function` is what the entry says about itself, and `chains` what it says
     about one mature chain at a time. A comment scoped to a molecule UniProt
@@ -138,10 +184,11 @@ class Entry:
     """
 
     accession: str
-    function: str
+    sequence: str
+    function: Function
     chains: tuple[Chain, ...]
 
-    def function_for(self, start: int, stop: int, whole_entry: bool) -> str:
+    def function_for(self, start: int, stop: int, whole_entry: bool) -> Function:
         """What this entry says about one span of itself, and nothing wider.
 
         A span that is one of the chains takes that chain's text. A span that
@@ -160,18 +207,13 @@ class Entry:
         )
         if closest is not None and closest.agreement(start, stop) >= MIN_OVERLAP:
             return closest.function
-        if self.function and whole_entry:
+        if self.function.text and whole_entry:
             return self.function
-        return " ".join(
-            f"[{chain.name}]: {chain.function}"
-            for chain in self.chains
-            if chain.agreement(start, stop) > 0
+        covered = [c for c in self.chains if c.agreement(start, stop) > 0]
+        return Function(
+            text=" ".join(f"[{c.name}]: {c.function.text}" for c in covered),
+            pmids=tuple(dict.fromkeys(p for c in covered for p in c.function.pmids)),
         )
-
-
-def _clean(text: str) -> str:
-    """One line of text: the export holds no tab and no newline of its own."""
-    return " ".join(text.split())
 
 
 def _spans(record: _Record, molecule: str) -> list[tuple[int, int]]:
@@ -190,24 +232,34 @@ def _spans(record: _Record, molecule: str) -> list[tuple[int, int]]:
 def _entry(record: _Record) -> Entry:
     """One entry out of one response record."""
     entry_level: list[str] = []
+    entry_pmids: list[str] = []
     chains: list[Chain] = []
     for comment in record.get("comments", []):
         if comment["commentType"] != FUNCTION:
             continue
-        text = _clean(" ".join(t["value"] for t in comment.get("texts", [])))
+        texts = comment.get("texts", [])
+        text = clean(" ".join(t["value"] for t in texts))
         if not text:
             continue
+        pmids = cited(texts)
         molecule = comment.get("molecule", "")
         spans = _spans(record, molecule) if molecule else []
         if not spans:
             entry_level.append(f"[{molecule}]: {text}" if molecule else text)
+            entry_pmids.extend(pmids)
         chains.extend(
-            Chain(name=molecule, start=start, stop=stop, function=text)
+            Chain(
+                name=molecule,
+                start=start,
+                stop=stop,
+                function=Function(text, tuple(pmids)),
+            )
             for start, stop in spans
         )
     return Entry(
         accession=record["primaryAccession"],
-        function=" ".join(entry_level),
+        sequence=record["sequence"]["value"],
+        function=Function(" ".join(entry_level), tuple(dict.fromkeys(entry_pmids))),
         chains=tuple(chains),
     )
 
@@ -245,8 +297,7 @@ def fetch(accessions: Iterable[str]) -> tuple[dict[str, Entry], str]:
 
     An accession it has retired comes back with nothing at all — deleted, or
     merged into another accession, and either way there is no text here to
-    attach to it. Those proteins keep an empty `function`, exactly like the
-    ones UniProt describes but says nothing about. Returns the release too.
+    attach to it and no sequence for the vault. Returns the release too.
     """
     wanted = sorted(set(accessions))
     entries: dict[str, Entry] = {}
@@ -265,74 +316,73 @@ def fetch(accessions: Iterable[str]) -> tuple[dict[str, Entry], str]:
 
 
 def _rows(
-    locations: Sequence[Location], entries: dict[str, Entry]
+    sites: Sequence[Site], entries: dict[str, Entry]
 ) -> Iterator[tuple[str, ...]]:
     """The file's rows: one per entry and span UniProt has something to say
-    about.
-
-    A human accession is always one span, so the count below only ever narrows
-    what a viral polyprotein is allowed to claim.
-    """
-    spans = {(loc.accession, loc.start, loc.stop): loc for loc in locations}
-    parts = Counter(accession for accession, _, _ in spans)
-    for location in spans.values():
-        entry = entries.get(location.accession)
+    about. An accession named at one span only is the protein as a whole."""
+    parts = Counter(accession for accession, _, _ in sites)
+    for accession, start, stop in sites:
+        entry = entries.get(accession)
         function = (
-            entry.function_for(
-                location.start, location.stop, parts[location.accession] == 1
-            )
+            entry.function_for(start, stop, parts[accession] == 1)
             if entry
-            else ""
+            else NO_FUNCTION
         )
-        if function:
+        if function.text:
             yield (
-                location.protein.kind.value,
-                location.accession,
-                str(location.start),
-                str(location.stop),
-                function,
+                accession,
+                str(start),
+                str(stop),
+                function.text,
+                PMID_SEPARATOR.join(function.pmids),
             )
 
 
-def write_functions(locations: Iterable[Location], path: Path) -> tuple[int, str]:
-    """Fetch the text for every entry and span and write it. Returns the rows
-    written and the UniProt release they came from.
+def write_viral(sites: Iterable[Site], viral: ViralPaths) -> tuple[int, int, str]:
+    """Fetch the text for every viral entry and span, and every viral entry's
+    sequence, and write both. Returns the function rows and entries written,
+    and the UniProt release they came from.
 
-    A span UniProt says nothing about — or nothing attributable to it — gets no
-    row. The loader then pools the spans of each protein into its one
-    `function`, and a protein with none keeps it empty, which is what the
-    schema means by unknown free text.
-
-    Every entry is in hand before the file is opened, so a fetch that gives out
+    Every entry is in hand before a file is opened, so a fetch that gives out
     part way leaves whatever was there already rather than half of it.
     """
-    wanted = tuple(locations)
-    entries, release = fetch(location.accession for location in wanted)
+    wanted = tuple(sorted(set(sites)))
+    entries, release = fetch(accession for accession, _, _ in wanted)
     rows = tuple(_rows(wanted, entries))
-    with path.open("w", encoding="utf-8", newline="\n") as handle:
+    viral.directory.mkdir(parents=True, exist_ok=True)
+    with viral.functions.open("w", encoding="utf-8", newline="\n") as handle:
         handle.write("\t".join(COLUMNS) + "\n")
         for row in rows:
             handle.write("\t".join(row) + "\n")
-    return len(rows), release
+    with viral.entries.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write("\t".join(ENTRY_COLUMNS) + "\n")
+        for accession in sorted(entries):
+            handle.write(f"{accession}\t{entries[accession].sequence}\n")
+    return len(rows), len(entries), release
 
 
 def main() -> None:
-    """Fetch the function text for one run directory's proteins.
+    """Fetch the viral silo's function text and sequences.
 
     `uv run bpgraph-functions data/2026-09-09` reads that run's export to learn
-    which proteins it names, fetches their function text and writes
-    `functions.tsv` beside it. Rebuilding is what puts the text in the graph.
+    which viral entries and spans it names, and writes `viral/functions.tsv`
+    and `viral/entries.tsv`. Rebuilding is what puts them in the graph and the
+    vault.
     """
     import sys
 
-    from bpgraph.loaders import TsvExport
+    from bpgraph.loaders.export import viral_sites
+    from bpgraph.run import Run
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     if len(sys.argv) != 2:
         sys.exit("usage: bpgraph-functions <run directory>")
-    loader = TsvExport.open(Path(sys.argv[1]))
-    path = loader.run.functions
-    export = loader.load()
-    written, release = write_functions(export.locations, path)
-    record_source(loader.run.sources, "uniprot", ACCESSIONS_URL, release)
-    print(f"{path}: {written} of {len(export.locations)} spans have function text")
+    run = Run(Path(sys.argv[1]))
+    sites = viral_sites(run.export)
+    written, entries, release = write_viral(sites, run.viral)
+    record_source(run.sources, "viral uniprot", ACCESSIONS_URL, release)
+    accessions = len({accession for accession, _, _ in sites})
+    print(
+        f"{run.viral.functions}: {written} of {len(sites)} spans have function text\n"
+        f"{run.viral.entries}: {entries} of {accessions} entries have a sequence"
+    )

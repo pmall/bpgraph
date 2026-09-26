@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Self
 
 from bpgraph.psimi import Ontology, read_ontology
-from bpgraph.run import Run
+from bpgraph.run import HUMAN, Run
 
 logger = logging.getLogger(__name__)
 
@@ -155,7 +155,7 @@ def main() -> None:
     counts: dict[str, Counter[str]] = {"export": Counter(), "intact": Counter()}
     for source, path in (
         ("export", run.export / "descriptions.tsv"),
-        ("intact", run.intact),
+        ("intact", run.host(HUMAN).intact),
     ):
         with path.open(encoding="utf-8", newline="") as handle:
             reader = csv.DictReader(handle, delimiter="\t", quoting=csv.QUOTE_NONE)

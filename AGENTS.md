@@ -1,6 +1,6 @@
 # bpgraph — agent guide
 
-A FalkorDB knowledge graph of protein–protein interactions, human–human and virus–human, rich in text: every interaction is backed by the publications that report it, titles and abstracts included, and proteins carry their UniProt function text and GO annotations. A viral protein is a curated one, `HBx` of HBV, pooled over the strains and accessions it was observed on. Scripts do the deterministic work. The agent is the explorer: it reads that connected text and makes the connections a person would need years of reading to make.
+A FalkorDB knowledge graph of protein–protein interactions, human–human and virus–human, rich in text: every interaction is backed by the publications that report it, titles and abstracts included, and proteins carry their UniProt function text and experimental GO annotations, each tied to its publications. A viral protein is a curated one, `HBx` of HBV, pooled over the strains and accessions it was observed on. Scripts do the deterministic work. The agent is the explorer: it reads that connected text and makes the connections a person would need years of reading to make.
 
 This repository both builds the graph and queries it.
 
@@ -18,7 +18,7 @@ The live graph `bpgraph` on the FalkorDB server is the only source of truth abou
 
 `bpgraph` is the live graph key, and `bpgraph_staging` is where a build writes. **Never write to `bpgraph` outside a build swap.** Experiment in a throwaway graph named `_probe` and delete it afterwards. Connection settings come from `.env`, which is gitignored. `.env.example` documents the variables.
 
-[`docs/schema.md`](docs/schema.md) is the schema contract. FalkorDB is schemaless, so that document is the only thing keeping the graph coherent.
+[`docs/schema.md`](docs/schema.md) is the schema contract. FalkorDB is schemaless, so that document is the only thing keeping the graph coherent. [`docs/roadmap.md`](docs/roadmap.md) is where it is going: build today's work so it scales to many host species.
 
 ## Read according to the task
 
