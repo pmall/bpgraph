@@ -30,11 +30,11 @@ Draw on all of it. A report that uses only the interaction list is incomplete.
 - **VH interactions** between the family's viral proteins and human proteins, with counters for distinct publications, methods, descriptions and peptides.
 - **Descriptions.** Each one is a single observation: one pair, one publication, one detection method, and sometimes peptides with their direction.
 - **Publications**, with title, abstract, journal, year and authors. Abstracts are the main source for *what* an interaction does.
-- **Methods**, as PSI-MI detection methods.
-- **HH interactions** among the topic's proteins and around the targets.
+- **Methods**, as PSI-MI detection methods, each with its curated `class`. `n_methods` counts classes: two flavours of co-IP are one.
+- **HH interactions** among the topic's proteins and around the targets: IntAct's and our own curation's, each description saying which (`intact_id`, `stable_ids`).
 - **UniProt** protein names and function text, for human and viral proteins alike.
-- **GO annotations**, on human proteins only, with the full ancestor closure and evidence codes.
-- **Curated viruses** (`HBV`, `SARS-CoV-2`) and their NCBI family, and the UniProt entries (accessions, with their strain) each viral protein was observed on.
+- **GO annotations**, on human proteins only, experimental only, each with the publication that showed it, and the full ancestor closure.
+- **Curated viruses** (`HBV`, `SARS-CoV-2`) and their NCBI family.
 - **The web**, to fill gaps: mechanisms an abstract leaves out, later papers, reviews, the family's biology.
 
 ## Considerations
@@ -57,9 +57,9 @@ Each of these is a decision to make for this family, not a fixed rule. State wha
 
 **Graph structure**
 
-- A viral protein here is a curated mature protein of one virus, `NS5A` of HCV, pooled over every strain and accession it was observed on. Count and name viral proteins by virus and name. Its entries, through `:ON_ENTRY`, matter only when strains differ in what they do.
+- A viral protein here is a curated mature protein of one virus, `NS5A` of HCV, pooled over every strain and accession it was observed on. Count and name viral proteins by virus and name. Strains and sequences are not in the graph.
 - Viral proteins carry no GO annotations. Their function comes from UniProt text and the literature.
-- GO: drop annotations whose qualifier is `NOT`, and weigh `IEA` (electronic, unreviewed) below reviewed evidence. `regulation of X` does not sit under `X` in the ontology. Search for it by name when it matters.
+- GO: drop annotations whose qualifier is `NOT`. Every annotation is experimental and has its publication, so an annotation's abstract can be read like an interaction's; high-throughput codes (`HTP`, `HDA`, `HMP`, `HGI`, `HEP`) weigh less than a focused experiment. `regulation of X` does not sit under `X` in the ontology. Search for it by name when it matters.
 - Viruses with no family in the taxonomy fall out of the family rollup. If a known member of the family is missing, check for that and mention it.
 - In HH, a homodimer is an interaction with itself. Exclude it when listing partners.
 

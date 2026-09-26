@@ -7,6 +7,7 @@ MI:2170	bimolecular luminiscence complementation	protein complementation assay
 MI:2219	gaussia luciferase protein tag	protein complementation assay
 MI:1215	bifc tag	protein complementation assay
 MI:0004	affinity chromatography technology	affinity purification
+MI:0225	chromatin immunoprecipitation array	affinity purification
 MI:0400	affinity technology	affinity purification
 MI:0946	miniaturized immunoprecipitation	affinity purification
 MI:0943	detection by mass spectrometry	affinity purification

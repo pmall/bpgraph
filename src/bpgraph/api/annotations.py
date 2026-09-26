@@ -1,4 +1,5 @@
-"""Writing `:GoTerm` nodes, the GO ontology edges, and protein annotations."""
+"""Writing `:GoTerm` nodes, the GO ontology edges, and the `:Annotation` nodes
+that tie a protein to a term and the publication showing it."""
 
 from collections.abc import Iterable
 
@@ -7,10 +8,15 @@ from bpgraph.dedupe import dedupe
 from bpgraph.enums import GoRelation
 from bpgraph.models import GoAnnotation, GoEdge, GoTerm
 
-ANNOTATED_WITH = """MATCH (protein:Protein {id: r.protein_id})
+ANNOTATION = """MATCH (protein:Protein {id: r.protein_id})
 MATCH (term:GoTerm {go_id: r.go_id})
-CREATE (protein)-[:ANNOTATED_WITH {evidence_code: r.evidence_code,
- assigned_by: r.assigned_by, qualifier: r.qualifier}]->(term)"""
+MATCH (publication:Publication {pmid: r.pmid})
+CREATE (annotation:Annotation {id: r.id, qualifier: r.qualifier,
+                               evidence_code: r.evidence_code,
+                               assigned_by: r.assigned_by})
+CREATE (annotation)-[:ANNOTATES]->(protein)
+CREATE (annotation)-[:OF_TERM]->(term)
+CREATE (annotation)-[:REPORTED_IN]->(publication)"""
 
 
 def _edge_statement(relation: GoRelation) -> str:
@@ -53,36 +59,26 @@ def write_go_edges(writer: GraphWriter, edges: Iterable[GoEdge]) -> int:
     )
 
 
-def _identity(annotation: GoAnnotation) -> tuple[str, str, str, str, str]:
-    """Everything an annotation is, which is everything that distinguishes two.
-
-    The qualifier is part of it because `NOT` inverts an annotation: a key that
-    left it out would collapse a protein's `involved_in` and `NOT|involved_in`
-    rows onto whichever came first. The assigning database is part of it
-    because GOA states the same term for the same protein from several sources,
-    and picking one of them arbitrarily would be picking the provenance.
-    """
-    return (
-        annotation.protein.id,
-        annotation.go_id,
-        annotation.qualifier,
-        annotation.evidence_code,
-        annotation.assigned_by,
-    )
-
-
 def write_go_annotations(
     writer: GraphWriter, annotations: Iterable[GoAnnotation]
 ) -> int:
-    """One edge per distinct annotation. See `_identity` for what distinct means."""
+    """One node per distinct annotation and publication.
+
+    The qualifier is part of what makes two annotations distinct, because
+    `NOT` inverts one; so is the assigning database, because GOA states the
+    same term for the same protein from several sources, and picking one of
+    them would be picking the provenance.
+    """
     rows: list[Row] = [
         {
+            "id": annotation.id,
             "protein_id": annotation.protein.id,
             "go_id": annotation.go_id,
+            "pmid": annotation.pmid,
+            "qualifier": annotation.qualifier,
             "evidence_code": annotation.evidence_code,
             "assigned_by": annotation.assigned_by,
-            "qualifier": annotation.qualifier,
         }
-        for annotation in dedupe(annotations, key=_identity)
+        for annotation in dedupe(annotations, key=lambda a: a.id)
     ]
-    return writer.write(ANNOTATED_WITH, rows)
+    return writer.write(ANNOTATION, rows)

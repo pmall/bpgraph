@@ -25,6 +25,7 @@ bpgraph-taxonomy = "bpgraph.taxonomy:main"
 bpgraph-build = "bpgraph.build:main"
 bpgraph-mcp = "bpgraph.server:main"
 bpgraph-psimi = "bpgraph.psimi:main"
+bpgraph-pubmed = "bpgraph.pubmed:main"
 bpgraph-query = "bpgraph.query:main"
 bpgraph-swissprot = "bpgraph.swissprot:main"
 

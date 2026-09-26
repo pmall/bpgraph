@@ -18,11 +18,13 @@ from bpgraph.query import Row, live_graph, rows
 INSTRUCTIONS = """\
 bpgraph is a FalkorDB knowledge graph of protein-protein interactions, \
 human-human and virus-human. Every interaction is backed by the publications \
-that report it, with their titles and abstracts; proteins carry UniProt \
-function text and GO annotations; a viral protein is a curated one, such as \
-HBx of HBV, pooled over the strains and UniProt entries it was observed on, \
-and links to its curated virus and that virus's family; topics are curated \
-lists of human proteins, such as ferroptosis. \
+that report it, with their titles and abstracts; every human protein of \
+Swiss-Prot is there, with its UniProt function text and experimental GO \
+annotations, and each annotation and function text links to the publications \
+behind it; a viral protein is a curated one, such as HBx of HBV, pooled over \
+the strains it was observed on, and links to its curated virus and that \
+virus's family; topics are curated lists of human proteins, such as \
+ferroptosis. \
 Query it in Cypher, read-only. The counters on an Interaction are its \
 evidence, and the text is where the insight is: read abstracts and function \
 text once a question is narrowed down.\

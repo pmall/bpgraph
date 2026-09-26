@@ -1,27 +1,20 @@
-"""Writing `:Protein` and `:Entry` nodes, and `:ON_ENTRY` between them."""
+"""Writing `:Protein` nodes, and the publications behind their function text."""
 
 from collections.abc import Iterable
 
 from bpgraph.client import GraphWriter, Row
 from bpgraph.dedupe import dedupe
 from bpgraph.enums import ProteinKind
-from bpgraph.models import Entry, Location, Protein
+from bpgraph.models import FunctionCitation, Protein
 
 NODE_LABELS: dict[ProteinKind, str] = {
     ProteinKind.HUMAN: "Protein:Human",
     ProteinKind.VIRAL: "Protein:Viral",
 }
 
-ON_ENTRY: dict[ProteinKind, str] = {
-    ProteinKind.HUMAN: """MATCH (protein:Protein {id: r.protein_id})
-MATCH (entry:Entry {accession: r.accession})
-CREATE (protein)-[:ON_ENTRY]->(entry)""",
-    ProteinKind.VIRAL: """MATCH (protein:Protein {id: r.protein_id})
-MATCH (entry:Entry {accession: r.accession})
-CREATE (protein)-[:ON_ENTRY {start: r.start, stop: r.stop}]->(entry)""",
-}
-"""A human protein is the whole chain of its one entry, so its edge carries no
-coordinates; a viral protein's says where on the entry it was excised."""
+FUNCTION_CITES = """MATCH (protein:Protein {id: r.protein_id})
+MATCH (publication:Publication {pmid: r.pmid})
+CREATE (protein)-[:FUNCTION_CITES]->(publication)"""
 
 
 def _row(protein: Protein) -> Row:
@@ -42,37 +35,11 @@ def write_proteins(writer: GraphWriter, proteins: Iterable[Protein]) -> int:
     )
 
 
-def write_entries(writer: GraphWriter, entries: Iterable[Entry]) -> int:
+def write_function_citations(
+    writer: GraphWriter, citations: Iterable[FunctionCitation]
+) -> int:
     rows: list[Row] = [
-        {
-            "accession": entry.accession,
-            "taxon_id": entry.taxon_id,
-            "taxon_name": entry.taxon_name,
-            "description": entry.description,
-        }
-        for entry in dedupe(entries, key=lambda entry: entry.accession)
+        {"protein_id": citation.protein.id, "pmid": citation.pmid}
+        for citation in dedupe(citations, key=lambda c: (c.protein.id, c.pmid))
     ]
-    return writer.create("Entry", rows)
-
-
-def write_locations(writer: GraphWriter, locations: Iterable[Location]) -> int:
-    unique = dedupe(
-        locations,
-        key=lambda loc: (loc.protein.id, loc.accession, loc.start, loc.stop),
-    )
-    return sum(
-        writer.write(
-            statement,
-            [
-                {
-                    "protein_id": loc.protein.id,
-                    "accession": loc.accession,
-                    "start": loc.start,
-                    "stop": loc.stop,
-                }
-                for loc in unique
-                if loc.protein.kind is kind
-            ],
-        )
-        for kind, statement in ON_ENTRY.items()
-    )
+    return writer.write(FUNCTION_CITES, rows)

@@ -24,7 +24,6 @@ class ConstraintRow(TypedDict):
 
 UNIQUE_CONSTRAINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Protein", ("id",)),
-    ("Entry", ("accession",)),
     ("Taxon", ("taxon_id",)),
     ("Topic", ("name",)),
     ("GoTerm", ("go_id",)),
@@ -32,12 +31,13 @@ UNIQUE_CONSTRAINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Method", ("psimi_id",)),
     ("Interaction", ("id",)),
     ("Description", ("id",)),
+    ("Annotation", ("id",)),
     ("Peptide", ("sequence",)),
 )
 
 EXTRA_INDEXES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Protein", ("name",)),
-    ("Entry", ("taxon_id",)),
+    ("Description", ("intact_id",)),
     ("Taxon", ("name",)),
     ("GoTerm", ("namespace",)),
     ("Peptide", ("length",)),
@@ -85,7 +85,7 @@ def validate_constraints(graph: Graph, timeout: float = 60.0) -> list[Constraint
     """Wait for every constraint to settle, then insist all are operational.
 
     Raises `ConstraintsNotSatisfied` naming the ones that failed, so the caller
-    can drop the staging graph rather than publish a corrupt export.
+    can drop the staging graph rather than publish a corrupt snapshot.
     """
     deadline = time.monotonic() + timeout
     report = _constraints(graph)
@@ -100,7 +100,7 @@ def validate_constraints(graph: Graph, timeout: float = 60.0) -> list[Constraint
     failed = [row for row in report if row["status"] != OPERATIONAL]
     if failed:
         named = ", ".join(f"{row['label']}{row['properties']}" for row in failed)
-        raise ConstraintsNotSatisfied(f"duplicate keys in the export: {named}")
+        raise ConstraintsNotSatisfied(f"duplicate keys in the snapshot: {named}")
     if len(report) != len(UNIQUE_CONSTRAINTS):
         raise ConstraintsNotSatisfied(
             f"expected {len(UNIQUE_CONSTRAINTS)} constraints, found {len(report)}"
