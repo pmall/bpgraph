@@ -24,4 +24,6 @@ A term takes the class of the most specific row enclosing it in PSI-MI. A term u
 
 ## Dropped
 
+The IntAct subset excludes, like inferred and predicted methods, the class **unspecified**: it says nothing about the technique.
+
 A description coded `MI:0000 molecular interaction`, the root of PSI-MI, is dropped: the export uses it as a placeholder on one row, and it says nothing about the method. A row for it would enclose every term and turn the gate off.

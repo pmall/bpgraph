@@ -15,10 +15,10 @@ import logging
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from shutil import copyfileobj
 from typing import TypedDict, cast
 from urllib.request import Request, urlopen
 
-from bpgraph.go import download
 from bpgraph.obo import TERM, stanzas, target
 from bpgraph.run import Run
 from bpgraph.sources import record_source
@@ -126,7 +126,9 @@ def fetch(run: Run) -> Path:
     if not run.psimi.exists():
         logger.info("psi-mi: fetching %s", URL)
         release = _release()
-        download(URL, run.psimi)
+        request = Request(URL, headers={"User-Agent": "bpgraph"})
+        with urlopen(request) as response, run.psimi.open("wb") as handle:
+            copyfileobj(response, handle)
         record_source(run.sources, "psi-mi", URL, release)
     return run.psimi
 

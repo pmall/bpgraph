@@ -15,7 +15,7 @@ Do not read or look for other reports, for any family, even ones sitting in the 
 
 ## Inputs
 
-- **Topic**, e.g. `ferroptosis`.
+- **Topic**, e.g. `ferroptosis`: its list of human proteins as Swiss-Prot accessions, with whatever it records on each, such as a role. The user provides it; ask if they haven't. The graph holds no topics: pass the accessions to queries as `$accessions`, and join the list's other columns, such as the role, to the results yourself.
 - **Viral family**, e.g. `Flaviviridae`.
 - **Evidence threshold.** The default is the **golden dataset**: an interaction backed by at least 2 distinct publications **or** at least 2 distinct detection methods.
 - **Destination:** wherever the user asks. Ask if they haven't said.
@@ -26,11 +26,11 @@ Query the live graph with the `query` tool of the `bpgraph` MCP server, as `docs
 
 Draw on all of it. A report that uses only the interaction list is incomplete.
 
-- **The topic.** Its human proteins, and the properties the topic records on each protein's link to it. For ferroptosis this is `role`: `driver`, `suppressor` or `both`. Other topics record other properties. Use them, whatever they are.
+- **The topic.** Its human proteins, and what the list records on each. For ferroptosis this is `role`: `driver`, `suppressor` or `both`. Other topics record other properties. Use them, whatever they are.
 - **VH interactions** between the family's viral proteins and human proteins, with counters for distinct publications, methods, descriptions and peptides.
 - **Descriptions.** Each one is a single observation: one pair, one publication, one detection method, and sometimes peptides with their direction.
 - **Publications**, with title, abstract, journal, year and authors. Abstracts are the main source for *what* an interaction does.
-- **Methods**, as PSI-MI detection methods, each with its curated `class`. `n_methods` counts classes: two flavours of co-IP are one.
+- **Methods**, the PSI-MI detection method of each description (`method_name`), with its curated `method_class`. `n_methods` counts classes: two flavours of co-IP are one.
 - **HH interactions** among the topic's proteins and around the targets: IntAct's and our own curation's, each description saying which (`intact_id`, `stable_ids`).
 - **UniProt** protein names and function text, for human and viral proteins alike.
 - **GO annotations**, on human proteins only, experimental only, each with the publication that showed it, and the full ancestor closure.
@@ -58,7 +58,7 @@ Each of these is a decision to make for this family, not a fixed rule. State wha
 **Graph structure**
 
 - A viral protein here is a curated mature protein of one virus, `NS5A` of HCV, pooled over every strain and accession it was observed on. Count and name viral proteins by virus and name. Strains and sequences are not in the graph.
-- Viral proteins carry no GO annotations. Their function comes from UniProt text and the literature.
+- Viral proteins carry no GO annotations. Their function comes from UniProt text and the literature. The UniProt text is from reviewed entries only, so it is empty for a protein none of whose entries is reviewed; a protein whose entries word it differently holds each text, as separate paragraphs.
 - GO: drop annotations whose qualifier is `NOT`. Every annotation is experimental and has its publication, so an annotation's abstract can be read like an interaction's; high-throughput codes (`HTP`, `HDA`, `HMP`, `HGI`, `HEP`) weigh less than a focused experiment. `regulation of X` does not sit under `X` in the ontology. Search for it by name when it matters.
 - Viruses with no family in the taxonomy fall out of the family rollup. If a known member of the family is missing, check for that and mention it.
 - In HH, a homodimer is an interaction with itself. Exclude it when listing partners.

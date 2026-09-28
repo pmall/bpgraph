@@ -3,16 +3,16 @@
 IntAct publishes every interaction with a partner of a species as one MITAB 2.7
 file — for human, a zip of over a gigabyte. It is streamed rather than
 downloaded: the zip is inflated as it arrives and each row is filtered on the
-way past, so only
-`intact.tsv` lands in the host's silo.
+way past, so only `intact.tsv` lands in the host's silo.
 
 A row is kept when:
 
 - both partners are Swiss-Prot entries of the host, once an isoform or a chain
   is mapped to its entry;
 - it cites a PubMed id;
-- its detection method is experimental — not under `MI:0364` (inferred by
-  curator) nor `MI:0063` (interaction prediction).
+- its detection method is experimental and says something about the technique:
+  not under `MI:0364` (inferred by curator) nor `MI:0063` (interaction
+  prediction), and not of the curated class `unspecified`.
 
 Every interaction type is kept, association and colocalization included: what
 makes a row evidence here is the experiment behind it. The types kept are
@@ -26,18 +26,22 @@ read; the `Negative` column is checked anyway.
 import logging
 import re
 import struct
+import tempfile
 import zlib
 from collections import Counter
 from collections.abc import Iterable, Iterator
-from dataclasses import dataclass
 from enum import IntEnum
+from functools import cache
 from pathlib import Path
 from urllib.request import Request, urlopen
 
+from bpgraph import files
+from bpgraph.loaders.tsv import rows
+from bpgraph.methods import UNSPECIFIED, MethodClasses
 from bpgraph.psimi import Ontology, read_ontology
 from bpgraph.run import HUMAN, HostPaths, Run
 from bpgraph.sources import record_source
-from bpgraph.swissprot import canonical, iter_accessions
+from bpgraph.swissprot import canonical
 
 logger = logging.getLogger(__name__)
 
@@ -75,15 +79,6 @@ class _Field(IntEnum):
     TYPE = 11
     INTERACTION_IDS = 13
     NEGATIVE = 35
-
-
-@dataclass(frozen=True, slots=True, order=True)
-class Row:
-    intact_id: str
-    accession1: str
-    accession2: str
-    pmid: int
-    psimi_id: str
 
 
 def _inflate(chunks: Iterable[bytes]) -> Iterator[bytes]:
@@ -148,13 +143,17 @@ def _values(cell: str, prefix: str) -> list[str]:
     ]
 
 
-def filter_rows(
-    lines: Iterable[str], proteins: frozenset[str], ontology: Ontology
-) -> tuple[list[Row], Counter[str]]:
-    """The rows kept, and why the others were dropped."""
-    dropped: Counter[str] = Counter()
+def _candidates(
+    lines: Iterable[str],
+    ontology: Ontology,
+    classes: MethodClasses,
+    dropped: Counter[str],
+) -> Iterator[list[str]]:
+    """The rows that pass every test a row can pass alone, keyed by their first
+    partner: `[accession1, accession2, intact_id, pmid, psimi_id]`. Whether
+    both partners are Swiss-Prot entries is for the merges that follow."""
     types: Counter[str] = Counter()
-    kept: set[Row] = set()
+    class_of = cache(classes.class_of)
     for line in lines:
         if line.startswith("#") or not line:
             continue
@@ -166,8 +165,8 @@ def filter_rows(
             dropped["negative"] += 1
             continue
         a, b = _accession(fields[_Field.ID_A]), _accession(fields[_Field.ID_B])
-        if a is None or b is None or a not in proteins or b not in proteins:
-            dropped["not swiss-prot of the host"] += 1
+        if a is None or b is None:
+            dropped["not uniprot"] += 1
             continue
         pmids = [p for p in _values(fields[_Field.PUBLICATIONS], PUBMED) if p.isdigit()]
         if not pmids:
@@ -187,16 +186,30 @@ def filter_rows(
         if ontology.under(method, NOT_EXPERIMENTAL):
             dropped["not experimental"] += 1
             continue
+        if class_of(method) == UNSPECIFIED:
+            dropped["method says nothing about the technique"] += 1
+            continue
         ids = _values(fields[_Field.INTERACTION_IDS], INTACT)
         if len(ids) != 1:
             dropped["not one intact id"] += 1
             continue
         first, second = sorted((a, b))
-        kept.add(Row(ids[0], first, second, int(pmids[0]), method))
         types[fields[_Field.TYPE]] += 1
+        yield [first, second, ids[0], pmids[0], method]
     for kind, count in types.most_common():
-        logger.info("intact: kept %d rows of type %s", count, kind)
-    return sorted(kept), dropped
+        logger.info("intact: %d rows of type %s", count, kind)
+
+
+def _on_swissprot(
+    path: Path, proteins: Path, dropped: Counter[str]
+) -> Iterator[list[str]]:
+    """The rows of a file keyed by an accession whose accession is a Swiss-Prot
+    entry, with that accession rotated to the end: the next key comes first."""
+    for _, found, entry in files.cogroup(files.read(path), files.read(proteins), 1):
+        if entry:
+            yield from (row[1:] + row[:1] for row in found)
+        else:
+            dropped["not swiss-prot of the host"] += len(found)
 
 
 def _release() -> str:
@@ -211,20 +224,36 @@ def write_intact(
 ) -> tuple[int, Counter[str]]:
     """Stream, filter and write one host's `intact.tsv`. Returns the rows
     written and the count dropped per reason."""
-    proteins = frozenset(iter_accessions(host.swissprot))
     ontology = read_ontology(psimi)
+    classes = MethodClasses.load(ontology)
     release = _release()
     url = SPECIES_URL.format(SPECIES[host.taxon_id])
     logger.info("intact: streaming %s", url)
-    rows, dropped = filter_rows(_lines(url), proteins, ontology)
-    with host.intact.open("w", encoding="utf-8", newline="\n") as handle:
-        handle.write("\t".join(COLUMNS) + "\n")
-        for row in rows:
-            handle.write(
-                f"{row.intact_id}\t{row.accession1}\t{row.accession2}\t{row.pmid}\t{row.psimi_id}\n"
-            )
+    dropped: Counter[str] = Counter()
+    with tempfile.TemporaryDirectory(dir=host.directory) as directory:
+        scratch = Path(directory)
+        proteins = files.sorted_file(
+            scratch / "proteins", ([r["accession"]] for _, r in rows(host.swissprot))
+        )
+        first = files.sorted_file(
+            scratch / "first", _candidates(_lines(url), ontology, classes, dropped)
+        )
+        second = files.sorted_file(
+            scratch / "second", _on_swissprot(first, proteins, dropped)
+        )
+        both = files.sorted_file(
+            scratch / "both",
+            (
+                [intact_id, a, b, pmid, method]
+                for intact_id, pmid, method, a, b in _on_swissprot(
+                    second, proteins, dropped
+                )
+            ),
+            unique=True,
+        )
+        written = files.write_table(host.intact, COLUMNS, files.read(both))
     record_source(sources, f"{host.taxon_id} intact", url, release)
-    return len(rows), dropped
+    return written, dropped
 
 
 def main() -> None:

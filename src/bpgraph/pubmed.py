@@ -11,23 +11,28 @@ from `einfo`. A pmid PubMed does not return is written with its pmid alone —
 empty text, year `0` — and logged, so the graph still says what cited it.
 
 The file is also the cache: a pmid already in it is not fetched again, so a
-rerun after a new source only fetches what is new. Without `NCBI_API_KEY`,
+rerun after a new source only fetches what is new, and a pmid nothing cites
+any more is dropped from it. Without `NCBI_API_KEY`,
 NCBI allows three requests a second; with it, ten.
 """
 
-import csv
 import logging
 import os
 import re
+import tempfile
 import time
 import xml.etree.ElementTree as ET
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
+from itertools import batched
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from bpgraph import files
+from bpgraph.enums import InteractionKind
+from bpgraph.run import HUMAN, HostPaths, Run
 from bpgraph.sources import record_source
 
 logger = logging.getLogger(__name__)
@@ -160,20 +165,18 @@ def _post(url: str, fields: dict[str, str]) -> bytes:
             attempt += 1
 
 
-def fetch(pmids: Iterable[str]) -> Iterator[Article]:
-    """The articles PubMed returns for these pmids, batch by batch."""
-    wanted = sorted(set(pmids), key=int)
+def fetch(pmids: Iterable[str]) -> Iterator[tuple[list[str], list[Article]]]:
+    """Each batch of pmids, with the articles PubMed returns for it."""
     pause = 0.12 if _key() else 0.4
-    for start in range(0, len(wanted), BATCH_SIZE):
-        batch = wanted[start : start + BATCH_SIZE]
+    done = 0
+    for batch in batched(pmids, BATCH_SIZE, strict=False):
         root = ET.fromstring(
             _post(EFETCH_URL, {"db": "pubmed", "id": ",".join(batch), "retmode": "xml"})
         )
-        for element in root:
-            article = _article(element)
-            if article is not None and article.pmid:
-                yield article
-        logger.info("pubmed: %d/%d pmids", start + len(batch), len(wanted))
+        articles = [a for a in map(_article, root) if a is not None and a.pmid]
+        done += len(batch)
+        logger.info("pubmed: %d pmids fetched", done)
+        yield list(batch), articles
         time.sleep(pause)
 
 
@@ -183,63 +186,97 @@ def release() -> str:
     return _text(root.find("DbInfo/DbBuild"))
 
 
-def read_publications(path: Path) -> dict[str, Article]:
-    """A silo's file, keyed by pmid. Nothing if it is not fetched yet."""
-    if not path.exists():
-        return {}
-    with path.open(encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle, delimiter="\t", quoting=csv.QUOTE_NONE)
-        return {
-            row["pmid"]: Article(
-                pmid=row["pmid"],
-                title=row["title"],
-                year=int(row["year"]),
-                journal=row["journal"],
-                authors=tuple(
-                    a.strip() for a in row["authors"].split(";") if a.strip()
-                ),
-                abstract=row["abstract"],
-            )
-            for row in reader
-        }
+def _fields(article: Article) -> list[str]:
+    return [
+        " ".join(field.split())
+        for field in (
+            article.pmid,
+            article.title,
+            str(article.year),
+            article.journal,
+            AUTHOR_SEPARATOR.join(article.authors),
+            article.abstract,
+        )
+    ]
 
 
 def write_publications(
     pmids: Iterable[str], path: Path, sources: Path, dataset: str
-) -> tuple[int, int, list[str]]:
-    """Fetch what the file lacks and rewrite it with exactly these pmids.
-    Returns the pmids written, how many were fetched, and those PubMed did not
-    return."""
-    wanted = set(pmids)
-    known = read_publications(path)
-    missing = wanted - set(known)
-    fetched: dict[str, Article] = {}
-    if missing:
-        fetched = {article.pmid: article for article in fetch(missing)}
-        record_source(sources, dataset, EFETCH_URL, release())
-    articles = {**known, **fetched}
-    absent = sorted(missing - set(fetched), key=int)
+) -> tuple[int, int, int]:
+    """Rewrite a silo's file with exactly these pmids, fetching only those it
+    lacks. Returns the pmids written, how many were fetched, and how many
+    PubMed did not return.
+
+    The pmids wanted and the file already there are sorted on disk and read
+    side by side: a pmid in both keeps its row, one only wanted is fetched.
+    """
+    from bpgraph.loaders.tsv import rows
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fetched = absent = 0
+    with tempfile.TemporaryDirectory(dir=path.parent) as directory:
+        scratch = Path(directory)
+        wanted = files.sorted_file(
+            scratch / "wanted", ([p] for p in pmids), unique=True
+        )
+        known = files.sorted_file(
+            scratch / "known",
+            ([row[c] for c in COLUMNS] for _, row in rows(path))
+            if path.exists()
+            else (),
+        )
+        out, missing = scratch / "out", scratch / "missing"
+        with out.open("w", encoding="utf-8", newline="\n") as handle:
+            with missing.open("w", encoding="utf-8", newline="\n") as lacking:
+                for (pmid,), want, have in files.cogroup(
+                    files.read(wanted), files.read(known), 1
+                ):
+                    if want and have:
+                        handle.write("\t".join(have[0]) + "\n")
+                    elif want:
+                        lacking.write(pmid + "\n")
+            if missing.stat().st_size:
+                for batch, articles in fetch(r[0] for r in files.read(missing)):
+                    returned = {article.pmid for article in articles}
+                    for article in articles:
+                        handle.write("\t".join(_fields(article)) + "\n")
+                    for pmid in batch:
+                        if pmid not in returned:
+                            empty = Article(pmid, "", UNKNOWN_YEAR, "", (), "")
+                            handle.write("\t".join(_fields(empty)) + "\n")
+                            absent += 1
+                    fetched += len(articles)
+                record_source(sources, dataset, EFETCH_URL, release())
+        written = files.write_table(path, COLUMNS, files.read(files.sort(out)))
     if absent:
         logger.warning(
-            "pubmed: %d pmids not returned, kept with their pmid alone: %s",
-            len(absent),
-            ", ".join(absent[:20]),
+            "pubmed: %d pmids not returned, kept with their pmid alone", absent
         )
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="\n") as handle:
-        handle.write("\t".join(COLUMNS) + "\n")
-        for pmid in sorted(wanted, key=int):
-            article = articles.get(pmid) or Article(pmid, "", UNKNOWN_YEAR, "", (), "")
-            fields = (
-                article.pmid,
-                article.title,
-                str(article.year),
-                article.journal,
-                AUTHOR_SEPARATOR.join(article.authors),
-                article.abstract,
-            )
-            handle.write("\t".join(" ".join(f.split()) for f in fields) + "\n")
-    return len(wanted), len(fetched), absent
+    return written, fetched, absent
+
+
+def host_pmids(run: Run, host: HostPaths) -> Iterator[str]:
+    """Every pmid a host's silo cites: IntAct, our curated rows of its
+    interactome, its GO annotations and its function text."""
+    from bpgraph.loaders.export import export_pmids
+    from bpgraph.loaders.tsv import listed, rows
+
+    yield from (row["pmid"] for _, row in rows(host.intact))
+    yield from export_pmids(run.export, InteractionKind.HH)
+    yield from (row["pmid"] for _, row in rows(host.go_annotations))
+    for cursor, row in rows(host.swissprot):
+        yield from listed(cursor, row, "pmids")
+
+
+def viral_pmids(run: Run) -> Iterator[str]:
+    """Every pmid the viral silo cites: our VH rows, and the function text of
+    the viral proteins."""
+    from bpgraph.loaders.export import export_pmids
+    from bpgraph.loaders.tsv import listed, rows
+
+    yield from export_pmids(run.export, InteractionKind.VH)
+    for cursor, row in rows(run.viral.functions):
+        yield from listed(cursor, row, "pmids")
 
 
 def main() -> None:
@@ -251,10 +288,6 @@ def main() -> None:
     """
     import sys
 
-    from bpgraph.loaders.host import host_pmids
-    from bpgraph.loaders.viral import viral_pmids
-    from bpgraph.run import HUMAN, Run
-
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     if len(sys.argv) != 2:
         sys.exit("usage: bpgraph-pubmed <run directory>")
@@ -265,4 +298,4 @@ def main() -> None:
         ("viral pubmed", run.viral.publications, viral_pmids(run)),
     ):
         written, fetched, absent = write_publications(pmids, path, run.sources, dataset)
-        print(f"{path}: {written} pmids, {fetched} fetched, {len(absent)} absent")
+        print(f"{path}: {written} pmids, {fetched} fetched, {absent} absent")

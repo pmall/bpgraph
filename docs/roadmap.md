@@ -29,7 +29,7 @@ Our curated virus–host interactions. A viral protein is a probe into a host in
 
 ### Tier 3 — special metadata
 
-What we curate by hand and hand over as-is: **peptides** reported sufficient for an interaction, and **topics**, curated lists of host proteins such as ferroptosis.
+What we curate by hand and hand over as-is: **peptides** reported sufficient for an interaction. Topics, curated lists of host proteins such as ferroptosis, are not in the graph: queries take them as parameters.
 
 ## Principles that follow
 
@@ -53,7 +53,7 @@ Queries written now go through `bpgraph.query` so they can move behind that API 
 | ---- | ------------------------------------------------------------------------- | ------ |
 | 1    | Human host: IntAct + our HH, experimental GO, Swiss-Prot, PubMed          | done   |
 | 2    | Viral probes: our VH, viral UniProt text, PubMed, as their own silo       | done   |
-| 3    | Peptides and topics                                                       | done   |
+| 3    | Peptides                                                                  | done   |
 | 4    | Sequence vault in SQLite: host sequences, viral entries and mature spans  | done   |
 | 5    | Drop `:Entry` from the graph                                              | done   |
 | 6    | Full-text vault, keyed by pmid                                            | later  |
@@ -66,5 +66,4 @@ Steps 1–5 are one build, described in [`build.md`](build.md); they replaced a 
 
 Known gaps in what is done:
 
-- About one viral entry in six has no sequence in the vault: UniProt no longer returns it. The export will carry the curated viral sequences, which the vault will take instead of fetching them.
 - Only human is a host. `:Human`, `:HH` and the `9606` of the run layout are the places a second host touches (step 8).

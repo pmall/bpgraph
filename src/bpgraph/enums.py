@@ -1,4 +1,4 @@
-"""Closed vocabularies shared by the models, the ids and the writers."""
+"""Closed vocabularies shared by the loaders, the ids and the writers."""
 
 from enum import StrEnum
 

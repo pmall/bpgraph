@@ -11,12 +11,11 @@ quietly put a protein under a name nobody chose.
 
 import csv
 import logging
-from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Self
 
-from bpgraph.models import Virus
 from bpgraph.taxonomy import Taxonomy
 
 logger = logging.getLogger(__name__)
@@ -27,6 +26,15 @@ COLUMNS = ("taxon_id", "name", "full_name")
 
 class UncuratedTaxa(ValueError):
     """Viral taxa no curated virus encloses. Add rows to `viruses.tsv`."""
+
+
+@dataclass(frozen=True, slots=True)
+class Virus:
+    """A curated virus: `HBV`, `SARS-CoV-2`."""
+
+    taxon_id: int
+    name: str
+    full_name: str
 
 
 def read_viruses(path: Path = CURATED) -> list[Virus]:
@@ -51,12 +59,10 @@ def read_viruses(path: Path = CURATED) -> list[Virus]:
 
 @dataclass(frozen=True, slots=True)
 class CuratedViruses:
-    """The list, placed on the taxonomy so a taxon finds its virus by interval."""
+    """The list, placed on the taxonomy."""
 
     taxonomy: Taxonomy
     viruses: Mapping[int, Virus]
-    bounds: tuple[tuple[int, int, int], ...]
-    """`(lft, rgt, taxon_id)` per virus, the nested-set interval of its taxon."""
 
     @classmethod
     def load(cls, taxonomy: Taxonomy, path: Path = CURATED) -> Self:
@@ -71,30 +77,18 @@ class CuratedViruses:
                     current,
                     path.name,
                 )
-                virus = virus.model_copy(update={"taxon_id": current})
+                virus = replace(virus, taxon_id=current)
             viruses[current] = virus
-        bounds = tuple((*taxonomy.interval(taxon_id), taxon_id) for taxon_id in viruses)
-        return cls(taxonomy=taxonomy, viruses=viruses, bounds=bounds)
+        return cls(taxonomy=taxonomy, viruses=viruses)
 
     def enclosing(self, taxon_id: int) -> Virus | None:
-        """The most specific curated virus enclosing a taxon, if any does."""
-        lft, rgt = self.taxonomy.interval(taxon_id)
-        best: tuple[int, int] | None = None
-        for left, right, virus_id in self.bounds:
-            if left <= lft and rgt <= right and (best is None or left > best[0]):
-                best = (left, virus_id)
-        return None if best is None else self.viruses[best[1]]
-
-    def require(self, taxon_ids: Iterable[int]) -> None:
-        """Fail naming every taxon no curated virus encloses."""
-        missing = sorted(
-            {taxon_id for taxon_id in taxon_ids if self.enclosing(taxon_id) is None}
+        """The most specific curated virus enclosing a taxon, if any does: the
+        first one met walking up from it."""
+        return next(
+            (
+                self.viruses[taxon.taxon_id]
+                for taxon in self.taxonomy.lineage(taxon_id)
+                if taxon.taxon_id in self.viruses
+            ),
+            None,
         )
-        if missing:
-            named = ", ".join(
-                f"{taxon_id} {self.taxonomy.name(taxon_id)!r}" for taxon_id in missing
-            )
-            raise UncuratedTaxa(
-                f"{len(missing)} viral taxa have no curated virus in "
-                f"{CURATED.name}: {named}"
-            )

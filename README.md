@@ -39,12 +39,12 @@ uv run bpgraph-psimi data/2026-09-09        # PSI-MI
 uv run bpgraph-swissprot data/2026-09-09    # Swiss-Prot human and sequences
 uv run bpgraph-intact data/2026-09-09       # IntAct human
 uv run bpgraph-go data/2026-09-09           # GO and experimental annotations
-uv run bpgraph-functions data/2026-09-09    # viral UniProt text and sequences
+uv run bpgraph-functions data/2026-09-09    # viral UniProt text and protein names
 uv run bpgraph-pubmed data/2026-09-09       # PubMed metadata, per silo
 uv run bpgraph-build data/2026-09-09        # build and publish the graph, write the vaults
 ```
 
-The build loads every silo into Pydantic models, writes them to `bpgraph_staging`, adds the unique constraints as a validation gate, and renames the result to the live graph `bpgraph`. A malformed export, a viral taxon with no curated virus or a method with no class fails before anything is written. See [`docs/build.md`](docs/build.md) for the full sequence and [`docs/export.md`](docs/export.md) for the export format.
+The build streams every silo through files sorted on disk, never holding one in memory, writes the result to `bpgraph_staging` in batches, adds the unique constraints as a validation gate, and renames the result to the live graph `bpgraph`. A malformed export, a viral taxon with no curated virus or a method with no class fails before anything is written. See [`docs/build.md`](docs/build.md) for the full sequence and [`docs/export.md`](docs/export.md) for the export format.
 
 ```sh
 uv run bpgraph         # what the live graph holds
@@ -56,7 +56,7 @@ uv run bpgraph-audit   # check the live graph against the schema
 The live graph is the only source of truth; `data/` holds build inputs. Agents query it through the MCP server, whose `query` tool runs read-only Cypher; `.mcp.json` registers it for Claude Code. The same query runs from a terminal. [`docs/queries.md`](docs/queries.md) has the rules, canonical queries and a worked example.
 
 ```sh
-uv run bpgraph-query "MATCH (t:Topic) RETURN t.name"
+uv run bpgraph-query "MATCH (v:Virus) RETURN v.name"
 ```
 
 To draw a subnetwork, gather it into a `network.json` and render it; no database connection is needed. The `network-view` skill in `.agents/skills` describes the file:
