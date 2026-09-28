@@ -1,7 +1,8 @@
 """A thin wrapper over the FalkorDB client: batched, parameterized writes."""
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from itertools import batched, chain
 
 from falkordb import FalkorDB
 from falkordb.graph import Graph
@@ -11,6 +12,11 @@ from bpgraph.config import Config
 type Row = Mapping[str, object]
 
 BATCH_SIZE = 1000
+
+
+class UnmatchedRows(RuntimeError):
+    """A write found nothing to attach some of its rows to. The preparation
+    guarantees every endpoint exists, so this is a bug, never data."""
 
 
 def connect(config: Config) -> FalkorDB:
@@ -34,11 +40,7 @@ class GraphWriter:
     graph: Graph
     batch_size: int = BATCH_SIZE
 
-    def run(self, cypher: str) -> None:
-        """One statement, no rows — a derivation over what is already there."""
-        self.graph.query(cypher)
-
-    def create(self, label: str, rows: Sequence[Row]) -> int:
+    def create(self, label: str, rows: Iterable[Row]) -> int:
         """One node per row, its properties taken from the row's own keys.
 
         `label` may name several, colon-separated (`Protein:Human`). Writing
@@ -46,20 +48,31 @@ class GraphWriter:
         free to drift; deriving it from the first row is what keeps a node's
         properties and the record they came from the same thing.
         """
-        if not rows:
+        stream = iter(rows)
+        first = next(stream, None)
+        if first is None:
             return 0
-        return self.write(_create(label, rows[0]), rows)
+        return self.write(_create(label, first), chain([first], stream))
 
-    def write(self, statement: str, rows: Sequence[Row]) -> int:
-        """Run `UNWIND $rows AS r <statement>` over rows, in batches.
+    def write(self, statement: str, rows: Iterable[Row]) -> int:
+        """Run `UNWIND $rows AS r <statement>` over rows, a batch at a time.
+        Returns the rows written.
 
-        Values always travel as parameters. Only labels are ever interpolated
-        into a statement, because Cypher cannot parameterize them.
+        Every row must match what its statement looks up: a batch whose rows
+        do not all come through raises `UnmatchedRows` rather than writing
+        less than it was given. Values always travel as parameters. Only
+        labels are ever interpolated into a statement, because Cypher cannot
+        parameterize them.
         """
-        if not rows:
-            return 0
-        cypher = f"UNWIND $rows AS r\n{statement}"
-        for start in range(0, len(rows), self.batch_size):
-            batch = list(rows[start : start + self.batch_size])
-            self.graph.query(cypher, {"rows": batch})
-        return len(rows)
+        cypher = f"UNWIND $rows AS r\n{statement}\nRETURN count(*)"
+        written = 0
+        for batch in batched(rows, self.batch_size, strict=False):
+            result = self.graph.query(cypher, {"rows": list(batch)})
+            count = result.result_set[0][0] if result.result_set else 0
+            if count != len(batch):
+                raise UnmatchedRows(
+                    f"{len(batch) - count} of {len(batch)} rows matched nothing:\n"
+                    f"{statement}"
+                )
+            written += count
+        return written

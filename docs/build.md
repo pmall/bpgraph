@@ -2,104 +2,108 @@
 
 The graph is rebuilt, never updated. A run gathers every source into one directory — the curation database's export, and what is fetched for each silo — and builds a fresh graph and fresh vaults from it. See [`schema.md`](schema.md) for what is written, and [`roadmap.md`](roadmap.md) for why the sources are split into silos.
 
-```
-1. index       ->  bpgraph_staging          indexes only, before any data
-2. build       ->  bpgraph_staging          CREATE in bulk
-3. constrain   ->  bpgraph_staging          unique constraints
-4. validate    ->  CALL db.constraints()    every row must be OPERATIONAL
-5. swap        ->  RENAME bpgraph_staging bpgraph
-```
-
-Indexes come **first** so that every `MATCH` a load performs — and each relationship write is a key lookup — is index-backed. Constraints come **last**, because that is what makes them a gate rather than a write-time cost. A range index may precede its constraint; the reverse is an error, since creating a unique constraint also creates the index it needs.
-
-`bpgraph.build.build()` runs all five; `uv run bpgraph-build <run directory>` loads a run and calls it, writes the sequence vaults into the run's `vault/`, then prints the counts and the dataset releases the run was fetched from.
-
-Before step 1, loading has its own gates:
-
-- **Every viral taxon must belong to a curated virus** in [`curation/viruses.tsv`](../curation/viruses.tsv). A taxon no row encloses fails the load, naming the taxa to add; nothing falls back to an NCBI rank.
-- **Every detection method must have a class** in [`curation/methods.tsv`](../curation/methods.tsv). A PSI-MI term no row encloses, or that two rows disagree on, fails the load naming it. `uv run bpgraph-methods <run directory>` checks the curation against a run before a build.
-- **Every cited pmid must have metadata** from `bpgraph-pubmed`.
-
-`RENAME` overwrites its destination, so step 5 is the whole deployment. Old graphs are not kept. Staging exists so a bad export cannot land on the live graph — not for uptime.
+**Everything streams.** No step, fetch or build, holds a whole file in memory. A file is read a line at a time; where rows of two files have to meet — a curated row and the IntAct row it merges onto, a peptide and its description — both are written to an intermediate file keyed by what they share, sorted on disk with GNU `sort`, and read side by side, so memory holds one group of rows sharing a key (`bpgraph.files`). The graph is written in batches of 1,000 rows. The only thing held whole is PSI-MI with the curated method classes, some 1,700 terms of reference data.
 
 ## The run directory
 
-A run is one directory under `data/`, gitignored. What every silo shares sits at the top; each silo has a directory of its own, holding what was fetched for it alone:
+A run is one directory under `data/`, gitignored. What every silo shares sits at the top; each silo has a directory of its own, holding what was fetched for it alone. A fetch keeps exactly what the build reads — a raw dump is streamed, or deleted once it is read:
 
 ```
 data/2026-09-09/
-  export/              descriptions.tsv, peptides.tsv — what the curation database exported
+  export/              descriptions_hh.tsv, descriptions_vh.tsv, viral_proteins.tsv,
+                       peptides.tsv — what the curation database exported
   sources.tsv          which release of each dataset was fetched
-  taxdmp.zip           taxonomy.sqlite          NCBI taxonomy
-  psi-mi.obo                                    PSI-MI, for method names and classes
-  go-basic.obo                                  the GO ontology
+  taxonomy.sqlite      NCBI taxonomy, a parent per taxon
+  psi-mi.obo           PSI-MI, for method names and classes
   hosts/9606/          the human silo
-    swissprot.tsv      sequences.tsv            every reviewed human entry
-    intact.tsv                                  IntAct, experimental and PubMed-cited
-    goa.gaf.gz         go_annotations.tsv       experimental GO, one row per pmid
-    publications.tsv                            PubMed, for every pmid the silo cites
+    swissprot.tsv      every reviewed human entry: name, description, function
+    sequences.tsv      their sequences, for the vault
+    intact.tsv         IntAct's descriptions the graph takes
+    go_annotations.tsv experimental GO annotations, one row per pmid
+    go_terms.tsv       the GO terms they reach, ancestors included
+    go_edges.tsv       the is_a and part_of edges between those terms
+    publications.tsv   PubMed, for every pmid the silo cites
   viral/               the viral silo
-    functions.tsv      entries.tsv              UniProt text per span, sequence per entry
-    publications.tsv
-  topics/              ferroptosis.tsv          curated lists, resolved by hand
+    functions.tsv      UniProt function texts per entry and span, one row each
+    entries.tsv        UniProt protein name per entry
+    publications.tsv   PubMed, for every pmid the silo cites
   vault/               host-9606.sqlite, viral.sqlite — written by the build
 ```
 
-The export's `hh` rows are our curation of the human interactome, and belong to the human silo; its `vh` rows are the viral silo. Its format is [`export.md`](export.md).
+The export's `descriptions_hh.tsv` is our curation of the human interactome, and belongs to the human silo; `descriptions_vh.tsv` and `viral_proteins.tsv` are the viral silo. Its format is [`export.md`](export.md). The build writes its intermediate files into `build/` while it runs, and removes it when it ends.
 
-Fetch in this order — each step reads what the one before wrote — then build:
+## Fetching
+
+Each step reads what the ones before it wrote:
 
 ```sh
 uv run bpgraph-taxonomy data/2026-09-09     # NCBI taxonomy
 uv run bpgraph-psimi data/2026-09-09        # PSI-MI
 uv run bpgraph-swissprot data/2026-09-09    # hosts/9606: Swiss-Prot and sequences
-uv run bpgraph-intact data/2026-09-09       # hosts/9606: IntAct, about 7 minutes
-uv run bpgraph-go data/2026-09-09           # GO, and hosts/9606: experimental annotations
-uv run bpgraph-functions data/2026-09-09    # viral: UniProt text and sequences
+uv run bpgraph-intact data/2026-09-09       # hosts/9606: IntAct
+uv run bpgraph-go data/2026-09-09           # hosts/9606: GO annotations, terms, edges
+uv run bpgraph-functions data/2026-09-09    # viral: UniProt text and protein names
 uv run bpgraph-pubmed data/2026-09-09       # both silos: PubMed metadata
 uv run bpgraph-methods data/2026-09-09      # check every method has a class
 uv run bpgraph-build data/2026-09-09        # the graph and the vaults
 ```
 
-Every fetch records its dataset in `sources.tsv`, prefixed by its silo: the URL, the day it was fetched, and the release the source names — UniProt's `X-UniProt-Release`, IntAct's dated release, the ontology's `data-version`, GOA's `date-generated`, PubMed's `DbBuild`. `bpgraph-build` prints them after the counts. Each silo fetches its own publications, so a pmid two silos cite is fetched twice; `bpgraph-pubmed` only fetches pmids its silo's file lacks, so a rerun is cheap.
+- **Taxonomy.** NCBI's `taxdmp.zip`, loaded into SQLite row by row with each taxon's parent; the zip is deleted once loaded. A taxon's ancestors are a walk up its parents.
+- **Swiss-Prot.** Every reviewed entry of the host, fetched a page of 500 at a time. The graph's human proteins, and the set IntAct, GO and our curation are cut to. Swiss-Prot is for the host only: viral proteins come from UniProtKB as a whole, reviewed or not.
+- **IntAct.** The host's MITAB zip, over a gigabyte, inflated as it arrives. A row is kept when both partners are Swiss-Prot entries, it cites one pmid, and its method is experimental and says something about the technique: not inferred by curator, not predicted, and not of the curated class `unspecified`. Whether both partners are Swiss-Prot entries is two sorted merges against `swissprot.tsv`.
+- **GO.** The ontology and the host's GOA file, both streamed. GOA is cut to experimental annotations citing PubMed, on current terms and Swiss-Prot entries; then the closure above the annotated terms is walked one level at a time on disk, and the silo keeps the annotations, the terms reached and the edges walked.
+- **Viral UniProt.** The export's viral entries and spans, sorted by accession and fetched a hundred accessions at a time: the function text UniProt gives each span, and each entry's protein name. An entry UniProt has retired gets neither.
+- **PubMed.** Every pmid a silo cites, compared as a sorted file with the silo's `publications.tsv`: a pmid already there keeps its row, one missing is fetched, one nothing cites any more is dropped. It is the one slow fetch, and a rerun only fetches what is new.
 
-## Loading
+Every fetch records its dataset in `sources.tsv`, prefixed by its silo: the URL, the day it was fetched, and the release the source names — UniProt's `X-UniProt-Release`, IntAct's dated release, the ontology's `data-version`, GOA's `date-generated`, PubMed's `DbBuild`, the taxonomy's `Last-Modified`. `bpgraph-build` prints them after the counts.
 
-Each silo is loaded on its own, then joined:
+## The build, in order
 
-- **Human.** Every Swiss-Prot entry is a protein. IntAct's rows are descriptions, and our curated `hh` rows merge onto them: a row with the same pair, pmid and method class as an IntAct description adds its `stable_id` to it; one IntAct lacks is a description of its own. The load logs how many curated rows IntAct already had, and how many pairs only we have. A curated row naming an accession not in Swiss-Prot, or coded `MI:0000`, is dropped and logged.
-- **Viral.** Our `vh` rows, their viral partners grouped into curated proteins. The human partner must be a Swiss-Prot entry; a row whose partner is not is dropped and logged.
-- **Joined.** Methods, named from PSI-MI and classed from the curation; the publications something cites; the GO terms the annotations reach, with their ancestor closure; the topics; the peptides, placed by the silo their curated row belongs to.
+`uv run bpgraph-build data/2026-09-09` runs these steps in this order. Steps 1 to 7 only read the run and write files in `build/`: every error a run can hold fails there, with its file and line, before the graph is touched.
 
-## Stages within step 2
-
-1. **Proteins, taxonomy, topics** — the entity backbone, with `:IN_TAXON`.
-2. **Publications** — and `:FUNCTION_CITES` onto them.
-3. **Interactions** — `:Interaction`, `:Description`, `:Method`, `:Peptide`.
-4. **GO** — `:GoTerm` nodes with the ancestor closure, and the `:Annotation` nodes.
-5. **Derive** — the `:Interaction` counters. The `:INTERACTS_WITH` shortcut [`schema.md`](schema.md) describes would go here; it is not built.
+1. **Curated rows.** Both description files are read into one file of curated rows. A `stable_id` must be unique across the two; every method must have a curated class, and every viral taxon a curated virus, or the build fails naming them. A row coded `MI:0000` is dropped, and so is one whose human partner is not a Swiss-Prot entry — a sorted merge against `swissprot.tsv`, per partner — with the accessions logged. A dropped row stays in the file, marked, so its peptides go with it.
+2. **Viral sites.** Each VH row's viral partner is placed: its taxon made current, its curated virus found, its protein id made from the virus and the name. Every viral partner must be a row of `viral_proteins.tsv` under the same name and taxon. Each entry and span a kept row observes is a site, with its sequence.
+3. **HH descriptions.** IntAct's rows and our kept HH rows go into one file keyed by pair, pmid and method class, IntAct first and in IntAct order within a key, and are sorted. Each key's rows arrive together: a curated row joins the IntAct description with the lowest IntAct id, and is a description of its own when IntAct has none. The load logs how many curated rows IntAct already had.
+4. **VH descriptions.** Each kept VH row is a description of its own, and the vault notes which entry it observed.
+5. **Viral proteins.** Each site takes its UniProt function text and its entry's UniProt name; the sites of each protein are then read together. A protein's members are one chain by definition, so they should agree: a protein keeps every distinct text they carry, and those carrying more than one are logged for curation.
+6. **Peptides.** Each peptide finds its curated row, must name one of that row's partners as its source, and goes to the description the row became. A peptide on no row fails the build; one on a dropped row is dropped with it.
+7. **Publications.** Every pmid the graph cites — descriptions, GO annotations, function text — is looked up in the silos' `publications.tsv`, host first. A cited pmid no silo has fails the build: run `bpgraph-pubmed`.
+8. **Staging.** `bpgraph_staging` is emptied and its indexes created, before any data, so every `MATCH` a write performs is an index lookup.
+9. **Writing**, from the files of steps 1 to 7, in dependency order:
+   1. proteins, human then viral;
+   2. viruses, their families, `:PARENT` and `:IN_TAXON`;
+   3. publications, and `:FUNCTION_CITES` onto them;
+   4. peptides;
+   5. interactions: descriptions and peptide reports sorted by interaction are read side by side, and each interaction is written once, with its counters counted from its group, its two `:INVOLVES`, its `:INTERACTS_WITH` shortcut, its descriptions and their `:REPORTS`;
+   6. GO terms, their edges, and the annotations.
+10. **Gate.** The unique constraints are created and every one must settle on `OPERATIONAL`; one `FAILED` means a duplicate key, and staging is dropped.
+11. **Swap.** `RENAME bpgraph_staging bpgraph`. It overwrites its destination, so this is the whole deployment; old graphs are not kept. Staging exists so a bad export cannot land on the live graph — not for uptime.
+12. **Vaults.** `host-9606.sqlite` from `sequences.tsv`; `viral.sqlite` from the viral sites, their entries and the VH observations. Each is written beside where it goes, then moved there.
+13. **Cleanup.** `build/` is removed, whether the build succeeded or not.
 
 ## Writing
 
-Nothing pre-exists in a fresh graph, so `MERGE` buys nothing and costs a lookup per row. Deduplicate in Python — the run is a full snapshot, so every distinct protein, publication, method and peptide is known before the first write — then write in batches.
+Nothing pre-exists in a fresh graph, so every write is a `CREATE`: `MERGE` would buy nothing and cost a lookup per row. The preparation has already made every row distinct, so a node is written once.
 
 ```cypher
 UNWIND $rows AS r
 CREATE (:Protein:Human {id: r.id, name: r.name,
                         description: r.description, function: r.function})
+RETURN count(*)
 ```
 
-`GraphWriter.create` writes that clause itself, from the keys of the rows it is given, so a node's properties and the record behind them are one list rather than two that can drift.
-
-Nodes first, then relationships by key lookup:
+`GraphWriter.create` writes that clause itself, from the keys of the rows it is given, so a node's properties and the record behind them are one list rather than two that can drift. Relationships are written by key lookup:
 
 ```cypher
 UNWIND $rows AS r
-MATCH (a:Protein {id: r.a}), (b:Protein {id: r.b})
-CREATE (a)<-[:INVOLVES {side: 'a'}]-(:Interaction:VH {id: r.id})-[:INVOLVES {side: 'b'}]->(b)
+MATCH (a:Protein {id: r.side_a})
+MATCH (b:Protein {id: r.side_b})
+CREATE (a)<-[:INVOLVES {side: 'a'}]-(:Interaction:VH {id: r.id, n_descriptions: r.n_descriptions, …})-[:INVOLVES {side: 'b'}]->(b)
+CREATE (a)-[:INTERACTS_WITH {interaction_id: r.id, n_descriptions: r.n_descriptions, …}]->(b)
+RETURN count(*)
 ```
 
-Never interpolate values into Cypher — pass parameters.
+Every statement returns how many rows came through, and a batch where some matched nothing raises `UnmatchedRows`: the preparation guarantees every endpoint exists, so a row lost there is a bug, never data. Never interpolate values into Cypher — pass parameters.
 
 ## Constraints are the validation gate
 
@@ -110,30 +114,28 @@ type    label    properties  entitytype  status
 UNIQUE  Protein  [id]        NODE        FAILED
 ```
 
-Step 4 is therefore a hard gate: `FAILED` means the snapshot violated a key, and the staging graph is dropped rather than swapped in.
+Step 10 is therefore a hard gate: `FAILED` means the run violated a key, and the staging graph is dropped rather than swapped in.
 
 **Wait it out first.** A constraint is applied asynchronously, and reports `PENDING` and then `UNDER CONSTRUCTION` while it scans — on a graph this size, for several seconds. Neither is a verdict, and reading one as a failure fails a sound export; `validate_constraints` polls until every row has settled on `OPERATIONAL` or `FAILED`.
 
-The gate covers what deduplication cannot see. `bpgraph.dedupe` collapses records that repeat identically and raises `ConflictingRecords` when two share a key and disagree; whatever slips past lands on a constraint.
-
 ## Counters
 
-`Interaction.n_descriptions` / `n_publications` / `n_methods` / `n_peptides` are computed in one pass at the end of the build, not maintained. `n_methods` counts method classes.
+`Interaction.n_descriptions` / `n_publications` / `n_methods` / `n_peptides` are counted while the interaction is written, from the group of its descriptions and peptides: descriptions, distinct pmids, distinct method classes, distinct peptide sequences. The `:INTERACTS_WITH` edge is written in the same statement and carries the same four.
 
 ## Auditing what was built
 
-The constraint gate proves keys are unique and nothing else, so `uv run bpgraph-audit` reads the live graph and checks it against every other promise in [`schema.md`](schema.md): properties present and correctly typed, no property the schema does not list, one of `:Human`/`:Viral`, `:HH`/`:VH` and `:Virus`/`:Family`, derived ids agreeing with the values behind them, every edge joining the labels it is declared to join, a description being IntAct's or one curated row's, an annotation's evidence being experimental, slot `a` holding the human protein, the counters equalling what they count, no publication or peptide left with nothing pointing at it. Each check is one read-only query returning the rows that break its rule, so an empty result is a pass; the command exits non-zero when anything fails and prints a few offenders per failure.
+The constraint gate proves keys are unique and nothing else, so `uv run bpgraph-audit` reads the live graph and checks it against every other promise in [`schema.md`](schema.md): properties present and correctly typed, no property the schema does not list, one of `:Human`/`:Viral`, `:HH`/`:VH` and `:Virus`/`:Family`, derived ids agreeing with the values behind them, every edge joining the labels it is declared to join, a description being IntAct's or one curated row's, an annotation's evidence being experimental, slot `a` holding the human protein, the counters and the shortcut equalling what they count, no publication or peptide left with nothing pointing at it. Each check is one read-only query returning the rows that break its rule, so an empty result is a pass; the command exits non-zero when anything fails and prints a few offenders per failure.
 
-Run it after a build, and after anything that touches the writers. It takes about as long as a build.
+Run it after a build, and after anything that touches the writers.
 
-`bpgraph.audit` restates those rules by hand rather than deriving them from the models or the writers — code checked against itself always agrees. Changing the schema means changing `schema.md`, the writers, **and** the audit, and the audit failing is what tells you one of the three was missed.
+`bpgraph.audit` restates those rules by hand rather than deriving them from the loaders or the writers — code checked against itself always agrees. Changing the schema means changing `schema.md`, the writers, **and** the audit, and the audit failing is what tells you one of the three was missed.
 
-## What the load reports
+## What the build reports
 
-Some things are worth a human's look without being wrong enough to stop a build. The load logs them:
+Some things are worth a human's look without being wrong enough to stop a build. The build logs them:
 
-- **How our HH curation sits on IntAct**: curated rows IntAct already has, those it lacks, and the pairs only we have.
-- **Curated rows dropped**: coded `MI:0000`, or naming an accession no longer in Swiss-Prot.
+- **How our HH curation sits on IntAct**: curated rows IntAct already has, those it lacks, and the interactions only our curation reports.
+- **Curated rows dropped**: coded `MI:0000`, or naming an accession no longer in Swiss-Prot, with the accessions.
+- **Viral proteins whose members disagree**: members carrying different sets of function texts, or different UniProt names. One entry holding a generic text beside a curated one is not a disagreement. The protein keeps every distinct text; the list is for curation to check that the members really are one chain.
+- **Viral proteins whose members differ in length by more than half** — HBV `HBsAg` over its S/M/L forms, or a fragment.
 - **Viral names within one virus that differ only in case.** Names are case-sensitive, and EBV's `BARF1` / `BaRF1` and `BCRF1` / `BcRF1` are genuinely different proteins; any new pair may be a typo.
-- **Grouped viral proteins whose members differ in length by more than half** — HBV `HBsAg` over its S/M/L forms, or a fragment. Such members may not be one chain, and may not share one function text.
-- **Proteins whose entries carry different function text.** The protein keeps the commonest, weighted by descriptions.

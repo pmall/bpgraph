@@ -13,9 +13,6 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from pydantic import BaseModel, ValidationError
-from pydantic_core import ErrorDetails
-
 
 class LoadError(ValueError):
     """A run is missing something, or holds something it should not."""
@@ -98,22 +95,3 @@ def choice[T: StrEnum](
     except ValueError:
         allowed = ", ".join(sorted(member.value for member in options))
         raise cursor.fail(f"{column} must be one of {allowed}, not {value!r}") from None
-
-
-def make[T: BaseModel](cursor: Cursor, model: type[T], **fields: object) -> T:
-    """Build a model, turning a validation failure into a located error.
-
-    The models carry the rules a single row can break; this is what attaches a
-    file and a line number to them, so a file is fixable by looking at it.
-    """
-    try:
-        return model(**fields)
-    except ValidationError as error:
-        raise cursor.fail("; ".join(_describe(p) for p in error.errors())) from None
-
-
-def _describe(problem: ErrorDetails) -> str:
-    """One pydantic problem, as a line someone editing a spreadsheet can act on."""
-    column = ".".join(str(part) for part in problem["loc"])
-    message = problem["msg"].removeprefix("Value error, ")
-    return f"{column}: {message}" if column else message

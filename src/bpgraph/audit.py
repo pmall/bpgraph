@@ -9,7 +9,7 @@ counters match what they count — is unchecked at build time, because FalkorDB
 has no schema to check it against.
 
 **The expectations below are restated from docs/schema.md by hand, and that is
-the point.** Deriving them from the models or the writers would only prove the
+the point.** Deriving them from the loaders or the writers would only prove the
 code agrees with itself; written out separately, they disagree when either side
 drifts, and that disagreement is the finding.
 
@@ -39,7 +39,6 @@ NODE_PROPERTIES: Mapping[str, Mapping[str, str]] = {
     },
     "Virus": {"taxon_id": "Integer", "name": "String", "full_name": "String"},
     "Family": {"taxon_id": "Integer", "name": "String"},
-    "Topic": {"name": "String"},
     "Publication": {
         "pmid": "String",
         "title": "String",
@@ -48,7 +47,6 @@ NODE_PROPERTIES: Mapping[str, Mapping[str, str]] = {
         "year": "Integer",
         "authors": "List",
     },
-    "Method": {"psimi_id": "String", "name": "String", "class": "String"},
     "Interaction": {
         "id": "String",
         "n_descriptions": "Integer",
@@ -56,7 +54,14 @@ NODE_PROPERTIES: Mapping[str, Mapping[str, str]] = {
         "n_methods": "Integer",
         "n_peptides": "Integer",
     },
-    "Description": {"id": "String", "intact_id": "String", "stable_ids": "List"},
+    "Description": {
+        "id": "String",
+        "intact_id": "String",
+        "stable_ids": "List",
+        "method_id": "String",
+        "method_name": "String",
+        "method_class": "String",
+    },
     "Annotation": {
         "id": "String",
         "qualifier": "String",
@@ -89,19 +94,28 @@ RELATIONSHIPS: tuple[tuple[str, str, str, tuple[str, ...] | None], ...] = (
     ("FUNCTION_CITES", "Protein", "Publication", ()),
     ("SUPPORTS", "Description", "Interaction", ()),
     ("REPORTED_IN", "Description|Annotation", "Publication", ()),
-    ("DETECTED_BY", "Description", "Method", ()),
     ("REPORTS", "Description", "Peptide", ("source_side",)),
     ("IN_TAXON", "Viral", "Virus", ()),
     ("PARENT", "Virus", "Family", ()),
-    ("INVOLVED_IN", "Human", "Topic", None),
+    (
+        "INTERACTS_WITH",
+        "Protein",
+        "Protein",
+        (
+            "interaction_id",
+            "n_descriptions",
+            "n_publications",
+            "n_methods",
+            "n_peptides",
+        ),
+    ),
     ("ANNOTATES", "Annotation", "Human", ()),
     ("OF_TERM", "Annotation", "GoTerm", ()),
     ("IS_A", "GoTerm", "GoTerm", ()),
     ("PART_OF", "GoTerm", "GoTerm", ()),
 )
 """Type, the labels it must join — `|` separating the labels a source may
-carry — and its properties. `None` means they vary: by topic for
-`INVOLVED_IN`, checked by `TOPIC_PROPERTIES`."""
+carry — and its properties. `None` means they vary."""
 
 EXPERIMENTAL = (
     "EXP",
@@ -117,11 +131,6 @@ EXPERIMENTAL = (
     "HEP",
 )
 """The GO evidence codes an annotation may carry: experimental ones only."""
-
-TOPIC_PROPERTIES: Mapping[str, tuple[str, ...]] = {
-    "ferroptosis": ("role",),
-}
-"""Every topic, and the properties its `:INVOLVED_IN` edges carry."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,21 +205,6 @@ def _edge_shape(
     )
 
 
-def _topic_shape(topic: str, properties: tuple[str, ...]) -> Check:
-    """The properties one topic's edges carry, which no other topic shares."""
-    tests = [f"typeOf(r.{name}) = 'Null'" for name in properties]
-    tests.append(f"size(keys(r)) <> {len(properties)}")
-    return Check(
-        name=f"INVOLVED_IN.{topic}",
-        rule=f"{topic} involvements carry {', '.join(properties)}",
-        cypher=(
-            f"MATCH (p)-[r:INVOLVED_IN]->(:Topic {{name: '{topic}'}})\n"
-            f"WHERE {' OR '.join(tests)}\n"
-            "RETURN p.id AS id, keys(r) AS keys"
-        ),
-    )
-
-
 KNOWN_LABELS = (*NODE_PROPERTIES, "Taxon")
 
 INVARIANTS: tuple[Check, ...] = (
@@ -261,13 +255,12 @@ INVARIANTS: tuple[Check, ...] = (
     ),
     Check(
         "Description.evidence",
-        "one interaction, one publication and one method behind every description",
+        "one interaction and one publication behind every description",
         "MATCH (d:Description)\n"
         "WITH d, size([(d)-[:SUPPORTS]->() | 1]) AS claims,\n"
-        "        size([(d)-[:REPORTED_IN]->() | 1]) AS papers,\n"
-        "        size([(d)-[:DETECTED_BY]->() | 1]) AS methods\n"
-        "WHERE claims <> 1 OR papers <> 1 OR methods <> 1\n"
-        "RETURN d.id AS id, claims, papers, methods",
+        "        size([(d)-[:REPORTED_IN]->() | 1]) AS papers\n"
+        "WHERE claims <> 1 OR papers <> 1\n"
+        "RETURN d.id AS id, claims, papers",
     ),
     Check(
         "Description.source",
@@ -310,25 +303,41 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN d.id AS id, r.source_side AS source_side",
     ),
     Check(
-        "Topic.documented",
-        "every topic is one schema.md documents",
-        "MATCH (t:Topic)\n"
-        f"WHERE NOT t.name IN {list(TOPIC_PROPERTIES)}\n"
-        "RETURN t.name AS topic",
+        "Description.method",
+        "a method id is a PSI-MI id, and its name and class are never empty",
+        "MATCH (d:Description)\n"
+        "WHERE NOT d.method_id STARTS WITH 'MI:' OR size(d.method_id) <> 7\n"
+        "   OR d.method_name = ''\n"
+        "   OR d.method_class = ''\n"
+        "RETURN d.id AS id, d.method_id AS method_id, d.method_class AS method_class",
     ),
     Check(
         "Interaction.counters",
         "the counters equal what they count",
         "MATCH (i:Interaction)<-[:SUPPORTS]-(d:Description)\n"
         "OPTIONAL MATCH (d)-[:REPORTED_IN]->(b:Publication)\n"
-        "OPTIONAL MATCH (d)-[:DETECTED_BY]->(m:Method)\n"
         "OPTIONAL MATCH (d)-[:REPORTS]->(x:Peptide)\n"
         "WITH i, count(DISTINCT d) AS descriptions,\n"
         "        count(DISTINCT b) AS publications,\n"
-        "        count(DISTINCT m.class) AS methods, count(DISTINCT x) AS peptides\n"
+        "        count(DISTINCT d.method_class) AS methods,\n"
+        "        count(DISTINCT x) AS peptides\n"
         "WHERE i.n_descriptions <> descriptions OR i.n_publications <> publications\n"
         "   OR i.n_methods <> methods OR i.n_peptides <> peptides\n"
         "RETURN i.id AS id, descriptions, publications, methods, peptides",
+    ),
+    Check(
+        "INTERACTS_WITH.shortcut",
+        "every interaction has one shortcut edge, from side 'a' to side 'b', "
+        "copying its counters",
+        "MATCH (i:Interaction)-[:INVOLVES {side: 'a'}]->(a:Protein)\n"
+        "MATCH (i)-[:INVOLVES {side: 'b'}]->(b:Protein)\n"
+        "WITH i, [(a)-[r:INTERACTS_WITH {interaction_id: i.id}]->(b) | r] AS edges\n"
+        "WHERE size(edges) <> 1\n"
+        "   OR edges[0].n_descriptions <> i.n_descriptions\n"
+        "   OR edges[0].n_publications <> i.n_publications\n"
+        "   OR edges[0].n_methods <> i.n_methods\n"
+        "   OR edges[0].n_peptides <> i.n_peptides\n"
+        "RETURN i.id AS id, size(edges) AS edges",
     ),
     Check(
         "Interaction.supported",
@@ -398,13 +407,6 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN b.pmid AS pmid",
     ),
     Check(
-        "Method.used",
-        "every method detected at least one description",
-        "MATCH (m:Method)\n"
-        "WHERE NOT (m)<-[:DETECTED_BY]-(:Description)\n"
-        "RETURN m.psimi_id AS psimi_id",
-    ),
-    Check(
         "Peptide.reported",
         "every peptide is reported by at least one description",
         "MATCH (x:Peptide)\n"
@@ -417,7 +419,6 @@ CHECKS: tuple[Check, ...] = (
     *(_node_shape(label, properties) for label, properties in NODE_PROPERTIES.items()),
     *(_sublabel(base, options) for base, options in SUBLABELS.items()),
     *(_edge_shape(*relationship) for relationship in RELATIONSHIPS),
-    *(_topic_shape(*topic) for topic in TOPIC_PROPERTIES.items()),
     *INVARIANTS,
 )
 
