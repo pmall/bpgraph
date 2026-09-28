@@ -14,9 +14,10 @@ empty name. `function` is the entry's `CC FUNCTION` text, joined the way
 text cites as its evidence.
 """
 
-import csv
 import json
 import logging
+import re
+import tempfile
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,13 +25,25 @@ from typing import NotRequired, TypedDict, cast
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
+from bpgraph import files
 from bpgraph.run import HUMAN, HostPaths, Run
 from bpgraph.sources import record_source
-from bpgraph.uniprot import FUNCTION, PMID_SEPARATOR, Text, cited, clean
+from bpgraph.uniprot import (
+    FUNCTION,
+    PMID_SEPARATOR,
+    ProteinDescription,
+    Text,
+    cited,
+    clean,
+    function_text,
+    protein_name,
+)
 
 logger = logging.getLogger(__name__)
 
-STREAM_URL = "https://rest.uniprot.org/uniprotkb/stream"
+SEARCH_URL = "https://rest.uniprot.org/uniprotkb/search"
+PAGE_SIZE = 500
+NEXT = re.compile(r'<([^>]+)>; rel="next"')
 FIELDS = ("accession", "gene_primary", "protein_name", "cc_function", "sequence")
 COLUMNS = ("accession", "name", "description", "function", "pmids")
 SEQUENCE_COLUMNS = ("accession", "sequence")
@@ -38,15 +51,6 @@ SEQUENCE_COLUMNS = ("accession", "sequence")
 
 class _Value(TypedDict):
     value: str
-
-
-class _Name(TypedDict):
-    fullName: _Value
-
-
-class _Description(TypedDict):
-    recommendedName: NotRequired[_Name]
-    submissionNames: NotRequired[list[_Name]]
 
 
 class _Gene(TypedDict):
@@ -61,7 +65,7 @@ class _Comment(TypedDict):
 
 class _Record(TypedDict):
     primaryAccession: str
-    proteinDescription: _Description
+    proteinDescription: ProteinDescription
     genes: NotRequired[list[_Gene]]
     comments: NotRequired[list[_Comment]]
     sequence: _Value
@@ -87,16 +91,13 @@ def _entry(record: _Record) -> Entry:
         for gene in record.get("genes", [])
         if "geneName" in gene
     ]
-    described = record["proteinDescription"]
-    names = [described["recommendedName"]] if "recommendedName" in described else []
-    names += described.get("submissionNames", [])
     functions: list[str] = []
     pmids: list[str] = []
     for comment in record.get("comments", []):
         if comment["commentType"] != FUNCTION:
             continue
         texts = comment.get("texts", [])
-        text = clean(" ".join(t["value"] for t in texts))
+        text = function_text(" ".join(t["value"] for t in texts))
         molecule = comment.get("molecule", "")
         if text:
             functions.append(f"[{molecule}]: {text}" if molecule else text)
@@ -104,83 +105,79 @@ def _entry(record: _Record) -> Entry:
     return Entry(
         accession=accession,
         name=clean(genes[0]) if genes else accession,
-        description=clean(names[0]["fullName"]["value"]) if names else "",
+        description=protein_name(record["proteinDescription"]),
         function=" ".join(functions),
         pmids=tuple(dict.fromkeys(pmids)),
     )
 
 
-def fetch(taxon_id: int) -> tuple[list[tuple[Entry, str]], str]:
-    """Every reviewed entry of a host with its sequence, and the UniProt
-    release they are from."""
-    url = f"{STREAM_URL}?" + urlencode(
+def _pages(taxon_id: int) -> Iterator[tuple[list[_Record], str]]:
+    """Every reviewed entry of a host, a page at a time, with the release each
+    page is from. UniProt links each page to the next one."""
+    url: str | None = f"{SEARCH_URL}?" + urlencode(
         {
             "query": f"reviewed:true AND organism_id:{taxon_id}",
             "fields": ",".join(FIELDS),
             "format": "json",
+            "size": PAGE_SIZE,
         }
     )
-    logger.info("swiss-prot: fetching %s", url)
-    with urlopen(url) as response:
-        records = cast(_Response, json.load(response))["results"]
-        release = response.headers.get("X-UniProt-Release", "")
-    entries = [(_entry(record), record["sequence"]["value"]) for record in records]
-    return sorted(entries, key=lambda pair: pair[0].accession), release
+    while url is not None:
+        with urlopen(url) as response:
+            records = cast(_Response, json.load(response))["results"]
+            release = response.headers.get("X-UniProt-Release", "")
+            following = NEXT.search(response.headers.get("Link", ""))
+        yield records, release
+        url = following.group(1) if following else None
 
 
 def write_swissprot(host: HostPaths, sources: Path) -> int:
-    """Fetch and write `swissprot.tsv` and `sequences.tsv`. Returns the entries
-    written."""
-    entries, release = fetch(host.taxon_id)
+    """Fetch and write `swissprot.tsv` and `sequences.tsv`, each sorted by
+    accession. Returns the entries written."""
     host.directory.mkdir(parents=True, exist_ok=True)
-    with (
-        host.swissprot.open("w", encoding="utf-8", newline="\n") as handle,
-        host.sequences.open("w", encoding="utf-8", newline="\n") as sequences,
-    ):
-        handle.write("\t".join(COLUMNS) + "\n")
-        sequences.write("\t".join(SEQUENCE_COLUMNS) + "\n")
-        for entry, sequence in entries:
-            fields = (
-                entry.accession,
-                entry.name,
-                entry.description,
-                entry.function,
-                PMID_SEPARATOR.join(entry.pmids),
-            )
-            handle.write("\t".join(fields) + "\n")
-            sequences.write(f"{entry.accession}\t{sequence}\n")
-    record_source(sources, f"{host.taxon_id} swiss-prot", STREAM_URL, release)
-    return len(entries)
-
-
-def read_swissprot(path: Path) -> dict[str, Entry]:
-    """The file, keyed by accession."""
-    with path.open(encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle, delimiter="\t", quoting=csv.QUOTE_NONE)
-        return {
-            row["accession"]: Entry(
-                accession=row["accession"],
-                name=row["name"],
-                description=row["description"],
-                function=row["function"],
-                pmids=tuple(p for p in row["pmids"].split(PMID_SEPARATOR) if p),
-            )
-            for row in reader
-        }
+    releases: set[str] = set()
+    with tempfile.TemporaryDirectory(dir=host.directory) as directory:
+        entries, sequences = Path(directory) / "entries", Path(directory) / "sequences"
+        with (
+            entries.open("w", encoding="utf-8", newline="\n") as e,
+            sequences.open("w", encoding="utf-8", newline="\n") as q,
+        ):
+            fetched = 0
+            for records, release in _pages(host.taxon_id):
+                releases.add(release)
+                fetched += len(records)
+                for record in records:
+                    entry = _entry(record)
+                    fields = (
+                        entry.accession,
+                        entry.name,
+                        entry.description,
+                        entry.function,
+                        PMID_SEPARATOR.join(entry.pmids),
+                    )
+                    e.write("\t".join(fields) + "\n")
+                    q.write(f"{entry.accession}\t{record['sequence']['value']}\n")
+                logger.info("swiss-prot: %d entries", fetched)
+        written = files.write_table(
+            host.swissprot, COLUMNS, files.read(files.sort(entries))
+        )
+        files.write_table(
+            host.sequences, SEQUENCE_COLUMNS, files.read(files.sort(sequences))
+        )
+    if len(releases) > 1:
+        logger.warning(
+            "swiss-prot: the release changed mid-fetch: %s", sorted(releases)
+        )
+    record_source(
+        sources, f"{host.taxon_id} swiss-prot", SEARCH_URL, ",".join(sorted(releases))
+    )
+    return written
 
 
 def canonical(identifier: str) -> str:
     """The entry an isoform (`P04637-2`) or a chain (`P04637-PRO_0000185703`)
     belongs to."""
     return identifier.partition("-")[0]
-
-
-def iter_accessions(path: Path) -> Iterator[str]:
-    """The accessions of the file, without loading the text."""
-    with path.open(encoding="utf-8") as handle:
-        next(handle)
-        for line in handle:
-            yield line.partition("\t")[0]
 
 
 def main() -> None:

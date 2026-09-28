@@ -4,13 +4,15 @@ A run is one directory under `data/`, named after the export it builds from —
 `data/2026-09-09`. It holds three kinds of thing:
 
 - what the relational database exported, in `export/`, exactly as produced;
-- what every silo shares: the NCBI taxonomy and the two ontologies, at the top;
+- what every silo shares: the NCBI taxonomy and PSI-MI, at the top;
 - one directory per silo, each holding what was fetched for it alone:
   `hosts/9606/` for human, `viral/` for our virus–host interactions.
 
 A silo reads nothing from another. A host is its own UniProt, IntAct, GO and
 PubMed; adding one adds a directory. The vaults a build writes sit in
-`vault/`, one file per silo.
+`vault/`, one file per silo. A fetch keeps what the build reads and nothing
+else: a raw dump is streamed, or deleted once it is read. The build's own
+intermediate files live in `build/` while it runs, and go with it.
 
 A new export is a new directory, so it holds nothing fetched for the last one,
 and every public dump a run reads is at least as recent as its export.
@@ -47,14 +49,19 @@ class HostPaths:
         return self.directory / "intact.tsv"
 
     @property
-    def gaf(self) -> Path:
-        """The GOA dump of the host, as downloaded."""
-        return self.directory / "goa.gaf.gz"
+    def go_annotations(self) -> Path:
+        """Its experimental GO annotations, cut from GOA by `bpgraph.go`."""
+        return self.directory / "go_annotations.tsv"
 
     @property
-    def go_annotations(self) -> Path:
-        """Its experimental GO annotations, cut from the dump by `bpgraph.go`."""
-        return self.directory / "go_annotations.tsv"
+    def go_terms(self) -> Path:
+        """The GO terms its annotations reach, ancestors included."""
+        return self.directory / "go_terms.tsv"
+
+    @property
+    def go_edges(self) -> Path:
+        """The `is_a` and `part_of` edges between those terms."""
+        return self.directory / "go_edges.tsv"
 
     @property
     def publications(self) -> Path:
@@ -80,7 +87,7 @@ class ViralPaths:
 
     @property
     def entries(self) -> Path:
-        """The sequence of every viral entry, for the vault."""
+        """UniProt's protein name for every viral entry, by `bpgraph.uniprot`."""
         return self.directory / "entries.tsv"
 
     @property
@@ -105,24 +112,13 @@ class Run:
         return self.directory / "export"
 
     @property
-    def topics(self) -> Path:
-        """The curated topic lists, one TSV per topic, resolved against this
-        run's proteins by hand from whatever form the biologists keep them in."""
-        return self.directory / "topics"
-
-    @property
     def sources(self) -> Path:
         """Which release of each public dataset was fetched, by `bpgraph.sources`."""
         return self.directory / "sources.tsv"
 
     @property
-    def taxdump(self) -> Path:
-        """The NCBI taxonomy dump, as downloaded."""
-        return self.directory / "taxdmp.zip"
-
-    @property
     def taxonomy(self) -> Path:
-        """The NCBI taxonomy dump, loaded into SQLite by `bpgraph.taxonomy`."""
+        """The NCBI taxonomy, loaded into SQLite by `bpgraph.taxonomy`."""
         return self.directory / "taxonomy.sqlite"
 
     @property
@@ -131,14 +127,14 @@ class Run:
         return self.directory / "psi-mi.obo"
 
     @property
-    def ontology(self) -> Path:
-        """The GO ontology, as downloaded by `bpgraph.go`."""
-        return self.directory / "go-basic.obo"
-
-    @property
     def vault(self) -> Path:
         """The vaults the build writes, one SQLite file per silo."""
         return self.directory / "vault"
+
+    @property
+    def build(self) -> Path:
+        """The build's intermediate files, removed when it is done."""
+        return self.directory / "build"
 
     def host(self, taxon_id: int = HUMAN) -> HostPaths:
         return HostPaths(taxon_id, self.directory / "hosts" / str(taxon_id))

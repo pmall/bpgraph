@@ -1,209 +1,171 @@
-"""Putting a run's silos together into one snapshot, and its vaults.
+"""Preparing a run: every file a build writes from, checked, in `build/`.
 
-Each silo loads on its own: the host from what was fetched for it, the viral
-silo from our VH rows and what was fetched for them. What they share is joined
-here, and nowhere else:
+Nothing is written to the graph until this is done, so every error a run can
+hold — a malformed row, a method or a viral taxon nobody curated, a peptide on
+no row, a cited pmid with no metadata — fails here, with the file and line.
 
-- **Methods.** Every PSI-MI term any silo uses must have a curated class, or
-  the load fails naming the terms, as an uncurated viral taxon does. A method
-  is named from PSI-MI, not from whatever copy of the name a source carries.
-- **Publications.** A pmid two silos cite is one node. Only pmids something
-  cites become nodes, and a cited pmid with no metadata in any silo fails the
-  load: run `bpgraph-pubmed`.
-- **GO.** The terms every annotation reaches, and their ancestor closure.
-- **Topics**, curated lists of host proteins.
-- **Peptides**, which the export attaches to a curated row: each silo places
-  those of its own rows.
+What the silos share is joined here, and nowhere else:
+
+- **Methods.** Every PSI-MI term a description uses must have a curated class.
+  A method is named from PSI-MI, not from whatever copy of the name a source
+  carries.
+- **Publications.** A pmid two silos cite is one publication, taken from the
+  first silo that has it. Only pmids something cites are kept.
 """
 
 import logging
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
-from typing import Self
 
-from bpgraph.enums import InteractionKind
-from bpgraph.go import read_ontology as read_go
-from bpgraph.loaders.export import export_rows, peptide_references
-from bpgraph.loaders.host import HostSilo, load_host
-from bpgraph.loaders.tsv import LoadError, make, required, rows
-from bpgraph.loaders.viral import ViralSilo, load_viral
-from bpgraph.methods import ROOT, MethodClasses
-from bpgraph.models import (
-    Description,
-    Involvement,
-    Method,
-    Protein,
-    ProteinRef,
-    Publication,
-    Snapshot,
-    Topic,
-)
-from bpgraph.psimi import read_ontology as read_psimi
-from bpgraph.pubmed import read_publications
-from bpgraph.run import HUMAN, Run
-from bpgraph.taxonomy import Taxonomy
-from bpgraph.vault import HostVault, ViralVault
-from bpgraph.viruses import CuratedViruses
+from bpgraph import files
+from bpgraph.loaders.curated import load_curated
+from bpgraph.loaders.host import hh_descriptions
+from bpgraph.loaders.peptides import reports
+from bpgraph.loaders.records import Description, ViralProtein, of
+from bpgraph.loaders.tsv import LoadError, listed, rows
+from bpgraph.loaders.viral import vh_descriptions, viral_proteins
+from bpgraph.methods import MethodClasses
+from bpgraph.psimi import read_ontology
+from bpgraph.pubmed import COLUMNS as PUBLICATION_COLUMNS
+from bpgraph.run import HUMAN, HostPaths, Run
+from bpgraph.taxonomy import Taxon, Taxonomy
+from bpgraph.viruses import CuratedViruses, Virus
 
 logger = logging.getLogger(__name__)
 
+MISSING_REPORTED = 5
+
 
 @dataclass(frozen=True, slots=True)
-class Loaded:
-    """What a run builds: the graph, and a vault per silo."""
+class Prepared:
+    """Everything a build writes, as files in the run's `build/`."""
 
-    snapshot: Snapshot
-    hosts: tuple[HostVault, ...]
-    viral: ViralVault
+    host: HostPaths
+    descriptions: Path
+    """`Description` records, sorted by interaction."""
+    reports: Path
+    """`Report` records, sorted by interaction."""
+    viral_proteins: Path
+    """`ViralProtein` records."""
+    viruses: tuple[Virus, ...]
+    families: tuple[tuple[int, Taxon], ...]
+    """Each virus with a family, and that family."""
+    publications: Path
+    """Every publication something cites, in `publications.tsv` order."""
+    sites: Path
+    """`Site` records: the vault's mature proteins."""
+    entries: Path
+    """The vault's viral entries."""
+    observations: Path
+    """The vault's observations: description id, viral entry."""
 
 
-def _methods(
-    descriptions: tuple[Description, ...],
-    classes: Mapping[str, str],
-    names: Mapping[str, str],
-) -> tuple[Method, ...]:
-    used = sorted({d.psimi_id for d in descriptions})
-    return tuple(
-        Method(psimi_id=p, name=names[p], method_class=classes[p]) for p in used
+def _cited(host: HostPaths, descriptions: Path, proteins: Path) -> Iterator[list[str]]:
+    """Every pmid the graph cites: descriptions, GO annotations, and the
+    function text of every protein."""
+    for record in files.read(descriptions):
+        yield [of(Description, record).pmid]
+    for _, row in rows(host.go_annotations):
+        yield [row["pmid"]]
+    for cursor, row in rows(host.swissprot):
+        yield from ([pmid] for pmid in listed(cursor, row, "pmids"))
+    for record in files.read(proteins):
+        yield from (
+            [pmid] for pmid in of(ViralProtein, record).pmids.split(";") if pmid
+        )
+
+
+def _publications(run: Run, host: HostPaths, cited: Path, scratch: Path) -> Path:
+    """The cited publications, from the first silo that has each. A cited pmid
+    no silo has fails the build: its silo's publications are not fetched."""
+    fetched = files.sorted_file(
+        scratch / "fetched",
+        (
+            [row["pmid"], rank, *(row[c] for c in PUBLICATION_COLUMNS[1:])]
+            for rank, path in (("0", host.publications), ("1", run.viral.publications))
+            for _, row in rows(path)
+        ),
+    )
+    publications = scratch / "publications"
+    missing: list[str] = []
+    count = 0
+    with publications.open("w", encoding="utf-8") as out:
+        for (pmid,), wanted, found in files.cogroup(
+            files.read(cited), files.read(fetched), 1
+        ):
+            if not wanted:
+                continue
+            if not found:
+                count += 1
+                if len(missing) < MISSING_REPORTED:
+                    missing.append(pmid)
+                continue
+            out.write("\t".join([pmid, *found[0][2:]]) + "\n")
+    if count:
+        raise LoadError(
+            f"{count} cited pmids have no metadata, e.g. {', '.join(missing)}: "
+            f"run bpgraph-pubmed {run.directory}"
+        )
+    return publications
+
+
+def prepare(run: Run, scratch: Path) -> Prepared:
+    """Read and check every silo of a run into `scratch`."""
+    psimi = read_ontology(run.psimi)
+    classes = MethodClasses.load(psimi)
+    class_of = cache(classes.class_of)
+
+    @cache
+    def name_of(psimi_id: str) -> str:
+        return psimi.terms[psimi_id].name
+
+    taxonomy = Taxonomy.open(run.taxonomy)
+    viruses = CuratedViruses.load(taxonomy)
+    host = run.host(HUMAN)
+
+    proteins = files.sorted_file(
+        scratch / "swissprot", ([row["accession"]] for _, row in rows(host.swissprot))
+    )
+    curated, uncurated = load_curated(
+        run.export, proteins, scratch, psimi, class_of, viruses
     )
 
-
-def _publications(run: Run, cited: set[str]) -> tuple[Publication, ...]:
-    """The cited pmids, from whichever silo fetched each first."""
-    found: dict[str, Publication] = {}
-    for path in (run.host(HUMAN).publications, run.viral.publications):
-        for pmid, article in read_publications(path).items():
-            if pmid in cited and pmid not in found:
-                found[pmid] = Publication(
-                    pmid=article.pmid,
-                    title=article.title,
-                    year=article.year,
-                    journal=article.journal,
-                    abstract=article.abstract,
-                    authors=article.authors,
-                )
-    missing = cited - set(found)
-    if missing:
-        raise LoadError(
-            f"{len(missing)} cited pmids have no metadata, e.g. "
-            f"{', '.join(sorted(missing)[:5])}: run bpgraph-pubmed {run.directory}"
+    descriptions = scratch / "descriptions"
+    observations = scratch / "observations"
+    with (
+        descriptions.open("w", encoding="utf-8") as out,
+        observations.open("w", encoding="utf-8") as observed,
+    ):
+        hh_descriptions(
+            host, curated.curated, scratch, class_of, name_of, uncurated, out
         )
-    return tuple(found[pmid] for pmid in sorted(found, key=int))
+        vh_descriptions(curated.curated, name_of, out, observed)
+    if uncurated:
+        classes.resolve(uncurated)
+    files.sort(descriptions)
 
+    viral = viral_proteins(run.viral, curated.sites, curated.exported, scratch)
+    virus_ids = files.sorted_file(
+        scratch / "viruses",
+        ([of(ViralProtein, r).virus_id] for r in files.read(viral.proteins)),
+        unique=True,
+    )
+    used = tuple(viruses.viruses[int(v)] for (v,) in files.read(virus_ids))
 
-def _involvements(run: Run, hosts: Mapping[str, Protein]) -> Iterator[Involvement]:
-    """Every topic list in the run's `topics/`, one topic per file.
-
-    A list may name an accession that is not a host protein — retired from
-    Swiss-Prot since it was resolved — so it is logged and left out rather than
-    failing the run.
-    """
-    for path in sorted(run.topics.glob("*.tsv")):
-        absent: list[str] = []
-        for cursor, row in rows(path):
-            accession = required(cursor, row, "accession")
-            protein = hosts.get(accession)
-            if protein is None:
-                absent.append(accession)
-                continue
-            yield make(
-                cursor,
-                Involvement,
-                protein=ProteinRef(id=protein.id, kind=protein.kind),
-                topic=path.stem,
-                properties={k: v for k, v in row.items() if k != "accession"},
-            )
-        if absent:
-            logger.warning(
-                "%s: %d accessions are not host proteins: %s",
-                path.name,
-                len(absent),
-                ", ".join(absent),
-            )
-
-
-@dataclass(frozen=True, slots=True)
-class RunLoader:
-    """Reads one run directory. See docs/build.md for what it holds."""
-
-    run: Run
-    taxonomy: Taxonomy
-    viruses: CuratedViruses
-
-    @classmethod
-    def open(cls, directory: Path) -> Self:
-        """Read `directory` against the taxonomy fetched into it and the
-        curated virus list."""
-        run = Run(directory)
-        taxonomy = Taxonomy.open(run.taxonomy)
-        return cls(run, taxonomy, CuratedViruses.load(taxonomy))
-
-    def load(self) -> Loaded:
-        run = self.run
-        psimi = read_psimi(run.psimi)
-        curated = list(export_rows(run.export, psimi))
-        references = peptide_references(run.export)
-        host_paths = run.host(HUMAN)
-        classes = MethodClasses.load(psimi).resolve(
-            (
-                {row.psimi_id for row in curated}
-                | {required(c, r, "psimi_id") for c, r in rows(host_paths.intact)}
-            )
-            - {ROOT}
-        )
-
-        host: HostSilo = load_host(
-            host_paths,
-            [row for row in curated if row.kind is InteractionKind.HH],
-            references,
-            classes,
-        )
-        viral: ViralSilo = load_viral(
-            run.viral,
-            [row for row in curated if row.kind is InteractionKind.VH],
-            references,
-            host.proteins,
-            self.taxonomy,
-            self.viruses,
-        )
-        orphans = set(references) - host.stable_ids - viral.stable_ids
-        if orphans:
-            raise LoadError(
-                f"peptides.tsv names {len(orphans)} descriptions absent from "
-                f"descriptions.tsv, e.g. {', '.join(sorted(orphans)[:5])}"
-            )
-
-        descriptions = (*host.descriptions, *viral.descriptions)
-        citations = (*host.citations, *viral.citations)
-        cited = (
-            {d.pmid for d in descriptions}
-            | {a.pmid for a in host.annotations}
-            | {c.pmid for c in citations}
-        )
-        go = read_go(run.ontology)
-        go_terms, go_edges = go.closure({a.go_id for a in host.annotations})
-        viruses = viral.viruses
-        families, taxon_links = self.taxonomy.families(v.taxon_id for v in viruses)
-        involvements = tuple(_involvements(run, host.proteins))
-        names = {term: psimi.terms[term].name for term in classes}
-
-        snapshot = Snapshot(
-            proteins=(*host.proteins.values(), *viral.proteins.values()),
-            function_citations=citations,
-            viruses=viruses,
-            families=families,
-            taxon_links=taxon_links,
-            memberships=viral.memberships,
-            topics=tuple(
-                Topic(name=name) for name in sorted({i.topic for i in involvements})
-            ),
-            involvements=involvements,
-            publications=_publications(run, cited),
-            methods=_methods(descriptions, classes, names),
-            descriptions=descriptions,
-            go_terms=tuple(go_terms),
-            go_edges=tuple(go_edges),
-            go_annotations=host.annotations,
-        )
-        return Loaded(snapshot=snapshot, hosts=(host.vault,), viral=viral.vault)
+    cited = files.sorted_file(
+        scratch / "cited", _cited(host, descriptions, viral.proteins), unique=True
+    )
+    return Prepared(
+        host=host,
+        descriptions=descriptions,
+        reports=reports(run.export, curated.curated, descriptions, scratch),
+        viral_proteins=viral.proteins,
+        viruses=used,
+        families=tuple(taxonomy.families(v.taxon_id for v in used)),
+        publications=_publications(run, host, cited, scratch),
+        sites=curated.sites,
+        entries=viral.entries,
+        observations=observations,
+    )

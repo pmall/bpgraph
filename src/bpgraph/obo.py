@@ -5,7 +5,7 @@ A file is a header, then stanzas: a `[Term]` or `[Typedef]` heading followed by
 ontology's business.
 """
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
 
 TERM = "[Term]"
@@ -20,23 +20,28 @@ def target(value: str) -> str:
     return value.split(DANGLING)[0].strip()
 
 
-def stanzas(path: Path) -> Iterator[tuple[str, Mapping[str, list[str]]]]:
-    """The file's stanzas, each as its tag lines grouped by tag.
+def parse(lines: Iterable[str]) -> Iterator[tuple[str, Mapping[str, list[str]]]]:
+    """The stanzas of an OBO text, each as its tag lines grouped by tag.
 
     A tag may repeat — `is_a` once per parent — so every one of them is a list.
     The header above the first stanza has no heading and is never yielded.
     """
     heading = ""
     fields: dict[str, list[str]] = {}
-    with path.open(encoding="utf-8") as handle:
-        for line in handle:
-            stripped = line.strip()
-            if stripped.startswith("["):
-                if heading:
-                    yield heading, fields
-                heading, fields = stripped, {}
-            elif ": " in stripped:
-                tag, _, value = stripped.partition(": ")
-                fields.setdefault(tag, []).append(value.strip())
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("["):
+            if heading:
+                yield heading, fields
+            heading, fields = stripped, {}
+        elif ": " in stripped:
+            tag, _, value = stripped.partition(": ")
+            fields.setdefault(tag, []).append(value.strip())
     if heading:
         yield heading, fields
+
+
+def stanzas(path: Path) -> Iterator[tuple[str, Mapping[str, list[str]]]]:
+    """The stanzas of an OBO file."""
+    with path.open(encoding="utf-8") as handle:
+        yield from parse(handle)

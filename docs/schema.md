@@ -9,7 +9,7 @@ Companion documents, load when relevant: [`build.md`](build.md) (how a run build
 1. **No optional properties.** Every property listed here is always present. Free text that is unknown is `''`, never null or absent.
 2. **A single key per label**, and every `MATCH` on a node targets it. Most keys come from the data; a few are derived (§3).
 3. **Labels carry the type, not properties.** Human vs viral, hh vs vh, virus vs family are labels — no `kind` or `rank` property duplicates them.
-4. **Reify the n-ary facts.** An interaction observation links two proteins, a publication, a method and some peptides; a GO annotation links a protein, a term and a publication. Cypher edges join exactly two nodes and cannot be an endpoint themselves, so those facts are nodes: `:Description` and `:Annotation`.
+4. **Reify the n-ary facts.** An interaction observation links two proteins, a publication and some peptides; a GO annotation links a protein, a term and a publication. Cypher edges join exactly two nodes and cannot be an endpoint themselves, so those facts are nodes: `:Description` and `:Annotation`.
 5. **Two levels of interaction.** `:Interaction` is the deduplicated claim ("A binds B"); `:Description` is one observation of it, in one publication.
 6. **Every fact we did not curate points at a publication.** Interactions, GO annotations and function text come in only when a publication backs them, and the publication is a node an agent can read. One publication may back all three.
 7. **Sequences only on `:Peptide`.** Peptides are the deliverable; every other sequence is in the sequence vaults beside the graph, never in it (§5).
@@ -35,7 +35,7 @@ A **viral** protein is a curated mature protein of a curated virus, whichever st
 
 **Names are case-sensitive.** EBV carries `BARF1`, a secreted protein, beside `BaRF1`, the ribonucleotide reductase small subunit. Folding case would merge them.
 
-**`function` is pooled for a viral protein.** UniProt text is per entry, and per chain where the entry scopes it; a viral protein on several entries has several. Curation groups one chain across strains, so they should agree, and the protein takes the commonest, weighted by how many descriptions observed each entry. The build logs every protein whose entries disagree. The publications UniProt cites for the text are `:FUNCTION_CITES` edges.
+**A viral protein keeps every text its members carry.** Only reviewed entries give function text: an unreviewed entry's is automatic annotation citing no publication. UniProt text is per entry, and per chain where the entry scopes it; a viral protein on several entries has several. Curation groups one chain across strains, so they should agree — but they are worded by different curators, so none is picked: `function` holds each distinct text once, as paragraphs separated by a blank line, and `description` each distinct UniProt name once, separated by `; `. The build logs every protein carrying more than one, for curation to check the members really are one chain. The publications UniProt cites for the texts are `:FUNCTION_CITES` edges.
 
 ### `:Taxon` + `:Virus` | `:Family`
 
@@ -58,14 +58,6 @@ Only the curated viruses a viral protein belongs to, and the family above each. 
 
 The virus level is curated rather than an NCBI rank: NCBI attaches UniProt entries to strains, and its species sometimes pool viruses nobody would, *Betacoronavirus pandemicum* holding both SARS-CoV-2 and SARS-CoV. The `:PARENT` edge from a virus to its family is derived at build time from the NCBI taxonomy, which this repo keeps in SQLite (`bpgraph.taxonomy`). A virus with no family gets no edge: it stays queryable, it just falls out of family rollups.
 
-### `:Topic`
-
-A subject of study (`ferroptosis`), curated as a list of human proteins — not a GO term. The lists are not in the export; see [`export.md`](export.md).
-
-| property | type | notes   |
-| -------- | ---- | ------- |
-| `name`   | str  | **key** |
-
 ### `:Publication`
 
 A PubMed article, whatever cites it: a description, an annotation, a protein's function text, or several of them. Metadata comes from PubMed. A pmid PubMed does not return keeps its `pmid` alone: empty text, `year` 0.
@@ -79,16 +71,6 @@ A PubMed article, whatever cites it: a description, an annotation, a protein's f
 | `year`     | int   | `0` when PubMed does not give one    |
 | `authors`  | [str] | `LastName Initials`, or a consortium |
 
-### `:Method`
-
-| property   | type | notes                                                    |
-| ---------- | ---- | -------------------------------------------------------- |
-| `psimi_id` | str  | **key**, e.g. `MI:0018`                                  |
-| `name`     | str  | PSI-MI's name, e.g. `two hybrid`                         |
-| `class`    | str  | curated class of independent evidence, e.g. `two hybrid` |
-
-Methods too close to count as independent confirmation share a `class`: [`curation/methods.tsv`](../curation/methods.tsv), explained in [`curation/methods.md`](../curation/methods.md). A term takes the class of the closest curated term above it in PSI-MI.
-
 ### `:Interaction` + `:HH` | `:VH`
 
 The deduplicated claim that two proteins interact. Because a viral protein pools its strains, so does the claim: every description of HBx binding a human protein supports one interaction, whichever HBV accession it was observed on. No provenance of its own — that hangs off `:Description`. The counters are the confidence signal; there is no score. `:HH` and `:VH` appear on no other label, so `MATCH (i:VH)` is unambiguous.
@@ -98,7 +80,7 @@ The deduplicated claim that two proteins interact. Because a viral protein pools
 | `id`             | str  | **key**, derived (§3)                                         |
 | `n_descriptions` | int  | supporting descriptions                                       |
 | `n_publications` | int  | **distinct** publications                                     |
-| `n_methods`      | int  | **distinct** method **classes**                               |
+| `n_methods`      | int  | **distinct** method **classes** of its descriptions           |
 | `n_peptides`     | int  | distinct peptides; `> 0` answers "do we have a peptide here?" |
 
 Slot ordering is fixed, carries no biological direction, and exists only to make the id deterministic:
@@ -112,15 +94,20 @@ Human-first generalizes: add a `:BH` later and queries entering from the human s
 
 ### `:Description`
 
-One observation of an interaction: one protein pair, one publication, one method, and its peptides. Everything about it is its edges. Its type is its interaction's — `(d)-[:SUPPORTS]->(:VH)`.
+One observation of an interaction: one protein pair, one publication, one method, and its peptides. Its method is three properties; everything else about it is its edges. Its type is its interaction's — `(d)-[:SUPPORTS]->(:VH)`.
 
 A human–human description comes from IntAct, from our curation, or from both. Our curated row **is** an IntAct description when both have the same pair, the same pmid and the same method class; it then adds its `stable_id` to IntAct's description rather than a description of its own. A virus–human description is always ours.
 
-| property     | type  | notes                                                               |
-| ------------ | ----- | ------------------------------------------------------------------- |
-| `id`         | str   | **key**, derived (§3)                                               |
-| `intact_id`  | str   | IntAct's interaction id, `EBI-…`; `''` when IntAct does not have it |
-| `stable_ids` | [str] | our curated rows that are this observation; `[]` when none are      |
+| property       | type  | notes                                                                    |
+| -------------- | ----- | ------------------------------------------------------------------------ |
+| `id`           | str   | **key**, derived (§3)                                                    |
+| `intact_id`    | str   | IntAct's interaction id, `EBI-…`; `''` when IntAct does not have it      |
+| `stable_ids`   | [str] | our curated rows that are this observation; `[]` when none are           |
+| `method_id`    | str   | PSI-MI id of the detection method, e.g. `MI:0018`                        |
+| `method_name`  | str   | PSI-MI's name, e.g. `two hybrid`                                         |
+| `method_class` | str   | curated class of independent evidence, e.g. `two hybrid`                 |
+
+The method is a property because it joins nothing: a description has exactly one, and no query walks from a method to its descriptions. Methods too close to count as independent confirmation share a `method_class`: [`curation/methods.tsv`](../curation/methods.tsv), explained in [`curation/methods.md`](../curation/methods.md). A term takes the class of the closest curated term above it in PSI-MI.
 
 So `intact_id <> ''` is IntAct's, `size(stable_ids) > 0` is ours, and both is an observation IntAct and we recorded independently. One IntAct id may hold several descriptions: IntAct expands a complex into one row per pair.
 
@@ -172,7 +159,6 @@ ______________________________________________________________________
 | `(:Interaction)-[:INVOLVES]->(:Protein)`        | `side: 'a'\|'b'`        | the two partners                            |
 | `(:Description)-[:SUPPORTS]->(:Interaction)`    | —                       | observation → claim                         |
 | `(:Description)-[:REPORTED_IN]->(:Publication)` | —                       |                                             |
-| `(:Description)-[:DETECTED_BY]->(:Method)`      | —                       |                                             |
 | `(:Description)-[:REPORTS]->(:Peptide)`         | `source_side: 'a'\|'b'` | the peptide, and which partner it came from |
 | `(:Annotation)-[:ANNOTATES]->(:Human)`          | —                       | the annotated protein                       |
 | `(:Annotation)-[:OF_TERM]->(:GoTerm)`           | —                       | the term, the most specific that fits       |
@@ -180,7 +166,7 @@ ______________________________________________________________________
 | `(:Protein)-[:FUNCTION_CITES]->(:Publication)`  | —                       | evidence UniProt cites for `function`       |
 | `(:Viral)-[:IN_TAXON]->(:Virus)`                | —                       | the curated virus                           |
 | `(:Virus)-[:PARENT]->(:Family)`                 | —                       | virus → family                              |
-| `(:Human)-[:INVOLVED_IN]->(:Topic)`             | per topic, see below    | from the curated list                       |
+| `(:Protein)-[:INTERACTS_WITH]->(:Protein)`      | counters, see below     | shortcut over an interaction                |
 | `(:GoTerm)-[:IS_A]->(:GoTerm)`                  | —                       | GO ontology                                 |
 | `(:GoTerm)-[:PART_OF]->(:GoTerm)`               | —                       | GO ontology                                 |
 
@@ -192,17 +178,19 @@ ______________________________________________________________________
 
 Entering from a protein, compare that protein's own `INVOLVES.side` against `source_side`: equal means the protein is the peptide's **source**, different means it is the **target**. Omitting the comparison silently mixes the two. Worked queries are in [`queries.md`](queries.md).
 
-### `:INVOLVED_IN` properties
+### `:INTERACTS_WITH`
 
-Each topic records its own things about its proteins, so the properties depend on the topic — they are its list's columns, verbatim, as text. A topic is added here with its properties, or the audit rejects it.
+The shortcut from one partner of an interaction to the other, so a walk over the interactome is one hop instead of `Protein ← INVOLVES ← Interaction → INVOLVES → Protein` with a `side` to compare. One edge per `:Interaction`, always from side `a` to side `b` and always matched **undirected**: `(p)-[:INTERACTS_WITH]-(q)`. Whether it is human–human or virus–human is read from the endpoints' `:Human` and `:Viral` labels.
 
-| topic         | properties | values                                                                                                          |
-| ------------- | ---------- | --------------------------------------------------------------------------------------------------------------- |
-| `ferroptosis` | `role`     | `driver` promotes ferroptosis, `suppressor` holds it back, `both` does either depending on context. From FerrDB |
+| property         | type | notes                                                   |
+| ---------------- | ---- | ------------------------------------------------------- |
+| `interaction_id` | str  | the `:Interaction` it shortcuts, for the evidence       |
+| `n_descriptions` | int  | copied from the interaction, as are the three below     |
+| `n_publications` | int  |                                                         |
+| `n_methods`      | int  |                                                         |
+| `n_peptides`     | int  |                                                         |
 
-### Derived shortcuts (optional)
-
-`(:Protein)-[:INTERACTS_WITH]->(:Protein)` with `n_publications`, `n_methods`, shortening 2-hop traversals to 1. Stored in the canonical direction only and always matched **undirected**. `:Interaction` stays the source of truth; build this only if traversals become a nuisance.
+`:Interaction` stays the source of truth: the evidence, the peptides and their direction are reached through it, and the audit checks that the edge agrees with it. A homodimer is a self-loop, so a query ranking partners still excludes it with `WHERE partner <> self`.
 
 ______________________________________________________________________
 
@@ -214,10 +202,8 @@ Every label has one key property, and it is what `MERGE` and `MATCH` target. Mos
 | -------------- | ---------- | ----------------------- |
 | `:Peptide`     | `sequence` | from the data           |
 | `:Publication` | `pmid`     |                         |
-| `:Method`      | `psimi_id` |                         |
 | `:GoTerm`      | `go_id`    |                         |
 | `:Taxon`       | `taxon_id` |                         |
-| `:Topic`       | `name`     |                         |
 | `:Protein`     | `id`       | **derived** — see below |
 | `:Interaction` | `id`       | **derived**             |
 | `:Description` | `id`       | **derived**             |
@@ -255,11 +241,9 @@ CREATE INDEX FOR (p:Protein)     ON (p.id);
 CREATE INDEX FOR (p:Protein)     ON (p.name);
 CREATE INDEX FOR (t:Taxon)       ON (t.taxon_id);
 CREATE INDEX FOR (t:Taxon)       ON (t.name);
-CREATE INDEX FOR (t:Topic)       ON (t.name);
 CREATE INDEX FOR (g:GoTerm)      ON (g.go_id);
 CREATE INDEX FOR (g:GoTerm)      ON (g.namespace);
 CREATE INDEX FOR (b:Publication) ON (b.pmid);
-CREATE INDEX FOR (m:Method)      ON (m.psimi_id);
 CREATE INDEX FOR (i:Interaction) ON (i.id);
 CREATE INDEX FOR (d:Description) ON (d.id);
 CREATE INDEX FOR (d:Description) ON (d.intact_id);
@@ -273,10 +257,8 @@ CALL db.idx.fulltext.createNodeIndex('Publication', 'title', 'abstract');
 ```
 GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE Protein     PROPERTIES 1 id
 GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE Taxon       PROPERTIES 1 taxon_id
-GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE Topic       PROPERTIES 1 name
 GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE GoTerm      PROPERTIES 1 go_id
 GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE Publication PROPERTIES 1 pmid
-GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE Method      PROPERTIES 1 psimi_id
 GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE Interaction PROPERTIES 1 id
 GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE Description PROPERTIES 1 id
 GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE Annotation  PROPERTIES 1 id
@@ -293,10 +275,10 @@ Sequences are not in the graph. A build writes them beside it, one SQLite file p
 
 **`viral.sqlite`**:
 
-| table         | key                                        | columns                                                          |
-| ------------- | ------------------------------------------ | ---------------------------------------------------------------- |
-| `entry`       | `accession`                                | `taxon_id`, `taxon_name` (the strain), `description`, `sequence` |
-| `mature`      | `protein_id`, `accession`, `start`, `stop` | where a viral protein sits on an entry, 1-based inclusive        |
-| `observation` | `description_id`                           | `accession`: the viral entry a VH description observed           |
+| table         | key                                        | columns                                                                  |
+| ------------- | ------------------------------------------ | ------------------------------------------------------------------------ |
+| `entry`       | `accession`                                | `taxon_id`, `taxon_name` (the strain), `description`                     |
+| `mature`      | `protein_id`, `accession`, `start`, `stop` | where a viral protein sits on an entry, 1-based inclusive, and `sequence` |
+| `observation` | `description_id`                           | `accession`: the viral entry a VH description observed                   |
 
-A viral protein's sequences are its `mature` rows, each sliced out of its entry: as many as places it was observed at. `sequence` is empty for an entry UniProt has retired.
+A viral protein's sequences are its `mature` rows, as curation recorded them: as many as places it was observed at. An entry's `description` is UniProt's protein name, empty for an entry UniProt has retired.

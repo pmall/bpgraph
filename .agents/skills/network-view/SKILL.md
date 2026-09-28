@@ -40,7 +40,7 @@ Query the live graph with the `query` tool of the `bpgraph` MCP server, as `docs
 
 - `id` is the graph's protein `id`. `kind` is `human` or `viral`, taken from the protein's label.
 - `taxon_name` is the virus's `name` from `(:Viral)-[:IN_TAXON]->(:Virus)` for a viral protein (`HCV`, `SARS-CoV-2`), and `Homo sapiens` for a human one.
-- `attributes` is optional. Use it for anything else worth showing or styling by, such as the topic's `role` or the viral family. It appears when a protein is clicked, and the page can style by it.
+- `attributes` is optional. Use it for anything else worth showing or styling by, such as the `role` the topic's list gives a protein, or the viral family. The graph holds no topics: take the list from the user. It appears when a protein is clicked, and the page can style by it.
 - An interaction connects two listed proteins, and each pair appears once. The counters come from the graph's `:Interaction`.
 - The renderer refuses a file that breaks these rules.
 

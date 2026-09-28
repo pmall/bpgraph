@@ -25,10 +25,8 @@ class ConstraintRow(TypedDict):
 UNIQUE_CONSTRAINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Protein", ("id",)),
     ("Taxon", ("taxon_id",)),
-    ("Topic", ("name",)),
     ("GoTerm", ("go_id",)),
     ("Publication", ("pmid",)),
-    ("Method", ("psimi_id",)),
     ("Interaction", ("id",)),
     ("Description", ("id",)),
     ("Annotation", ("id",)),

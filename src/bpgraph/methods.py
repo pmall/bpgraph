@@ -33,6 +33,11 @@ says nothing about the method, and a row for it would enclose every term and
 turn the gate off, so a description coded with it is dropped instead."""
 
 
+UNSPECIFIED = "unspecified"
+"""The class of every term that says nothing about the technique. The IntAct
+subset excludes it, as it excludes inferred and predicted methods."""
+
+
 class UncuratedMethods(ValueError):
     """Methods no curated row encloses, or that two rows disagree on. Add rows
     to `methods.tsv`."""
@@ -147,6 +152,8 @@ def main() -> None:
     """
     import sys
 
+    from bpgraph.loaders.export import DESCRIPTIONS
+
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     if len(sys.argv) != 2:
         sys.exit("usage: bpgraph-methods <run directory>")
@@ -154,7 +161,7 @@ def main() -> None:
     ontology = read_ontology(run.psimi)
     counts: dict[str, Counter[str]] = {"export": Counter(), "intact": Counter()}
     for source, path in (
-        ("export", run.export / "descriptions.tsv"),
+        *(("export", run.export / name) for name in DESCRIPTIONS.values()),
         ("intact", run.host(HUMAN).intact),
     ):
         with path.open(encoding="utf-8", newline="") as handle:
