@@ -46,7 +46,7 @@ src/bpgraph/
                 IntAct merge, viral.py the viral proteins, peptides.py, and
                 run.py puts them together; tsv.py parses, records.py the
                 intermediate records
-.agents/skills/ the analysis skills; .claude/skills links to them
+skills/         the analysis skills; .agents/skills and .claude/skills link here
 ```
 
 `api/` is the only code that decides what is written: every write statement lives there, and `client.py` only runs them. `loaders/` turn a run's files into checked, distinct rows in the run's `build/`; they never touch the database. Keeping that line intact is what stops source quirks reaching the graph.
@@ -87,4 +87,4 @@ At the end of every coding session, in order, fixing what they surface rather th
 4. `uv run pyright`
 5. `uv run python -m compileall -q src` — add other code roots as they appear.
 6. `uv run pytest`, if there is anything to test. This is ingestion code and query scripts; most of it is verified by running it, not by unit tests.
-7. `uv run mdformat --wrap no --number *.md docs curation .agents/skills`
+7. `uv run mdformat --wrap no --number *.md docs curation skills`

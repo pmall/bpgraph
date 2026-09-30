@@ -26,7 +26,7 @@ The live graph `bpgraph` on the FalkorDB server is the only source of truth abou
 - **Building a graph** or changing what it holds: [`docs/build.md`](docs/build.md) and [`docs/export.md`](docs/export.md).
 - **Writing code**, for the build or a skill's script: [`docs/development.md`](docs/development.md).
 
-Analyses that recur are skills in `.agents/skills`. A skill says what to analyse and what to report, and a script gives it a standard entry point for the mechanical part.
+Analyses that recur are skills in `skills`. A skill says what to analyse and what to report, and a script gives it a standard entry point for the mechanical part.
 
 ## Git
 
