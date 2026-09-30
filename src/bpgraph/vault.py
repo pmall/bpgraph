@@ -13,17 +13,25 @@ question a vault answers is about one protein at a time, never many.
   so it has as many sequences as places it was observed at. The vault also
   keeps which entry each VH description used, which the graph no longer holds.
 
-A build writes the vaults from the same run as the graph, after the graph is
-published, and replaces them whole.
+A build writes the vaults into its run, from the same run as the graph, and
+publishes them once the graph is swapped: copies them to the live vault
+directory, `BPGRAPH_VAULT`, where the API reads them, each replaced whole.
 """
 
+import shutil
 import sqlite3
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
 
-from bpgraph.run import Run
+VIRAL_FILE = "viral.sqlite"
+
+
+def host_file(taxon_id: int) -> str:
+    """The file name of a host's vault."""
+    return f"host-{taxon_id}.sqlite"
+
 
 HOST_SCHEMA = (
     "CREATE TABLE sequence (accession TEXT PRIMARY KEY, sequence TEXT NOT NULL)",
@@ -114,28 +122,49 @@ def write_viral(
     )
 
 
+def publish(written: Iterable[Path], live: Path) -> list[Path]:
+    """Copy a build's vaults to where the API reads them, each replacing the
+    one there whole. Called once the graph is swapped, so the vaults served
+    are the live graph's."""
+    live.mkdir(parents=True, exist_ok=True)
+    published: list[Path] = []
+    for path in written:
+        partial = live / f"{path.name}.partial"
+        shutil.copyfile(path, partial)
+        published.append(partial.replace(live / path.name))
+    return published
+
+
 def _open(path: Path) -> sqlite3.Connection:
     if not path.exists():
-        raise FileNotFoundError(f"{path} does not exist: build the run first")
+        raise FileNotFoundError(f"{path.name} is not published: build a run first")
     return sqlite3.connect(f"file:{path}?mode=ro", uri=True)
 
 
-def host_sequence(run: Run, accession: str, taxon_id: int) -> str | None:
-    """A host protein's sequence, or nothing if the host has no such entry."""
-    host = run.host(taxon_id)
-    connection = _open(run.vault / host.vault)
+def _marks(values: Sequence[str]) -> str:
+    return ", ".join("?" * len(values))
+
+
+def host_sequences(
+    directory: Path, taxon_id: int, accessions: Sequence[str]
+) -> dict[str, str]:
+    """The sequences of a host's proteins, by accession. An accession the
+    host does not have is left out."""
+    connection = _open(directory / host_file(taxon_id))
     try:
-        row = connection.execute(
-            "SELECT sequence FROM sequence WHERE accession = ?", (accession,)
-        ).fetchone()
+        found = connection.execute(
+            "SELECT accession, sequence FROM sequence "
+            f"WHERE accession IN ({_marks(accessions)})",
+            tuple(accessions),
+        ).fetchall()
     finally:
         connection.close()
-    return None if row is None else row[0]
+    return dict(found)
 
 
-def mature_sequences(run: Run, protein_id: str) -> list[MatureSequence]:
+def mature_sequences(directory: Path, protein_id: str) -> list[MatureSequence]:
     """Every place a viral protein was observed, with its residues there."""
-    connection = _open(run.vault / run.viral.vault)
+    connection = _open(directory / VIRAL_FILE)
     try:
         found = connection.execute(
             """SELECT m.accession, e.taxon_name, m.start, m.stop, m.sequence
@@ -149,3 +178,18 @@ def mature_sequences(run: Run, protein_id: str) -> list[MatureSequence]:
         MatureSequence(accession, taxon, start, stop, sequence)
         for accession, taxon, start, stop, sequence in found
     ]
+
+
+def observed_entries(directory: Path, description_ids: Sequence[str]) -> dict[str, str]:
+    """The viral entry each VH description observed, by description id. Any
+    other description is left out."""
+    connection = _open(directory / VIRAL_FILE)
+    try:
+        found = connection.execute(
+            "SELECT description_id, accession FROM observation "
+            f"WHERE description_id IN ({_marks(description_ids)})",
+            tuple(description_ids),
+        ).fetchall()
+    finally:
+        connection.close()
+    return dict(found)

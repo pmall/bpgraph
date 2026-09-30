@@ -6,7 +6,7 @@ How to explore the graph: answering questions, and the analysis skills. See [`sc
 
 Query the live graph `bpgraph` on the FalkorDB server, and nothing else. It is the only source of truth. **Do not read `data/`** to answer a question: it holds the raw sources of a build, some of which never reach the graph, and they would contradict it. If the graph lacks something, say so rather than looking elsewhere.
 
-Explore through the `bpgraph` MCP server, at `http://localhost:8080/mcp` and registered in `.mcp.json`. Its `query` tool runs one read-only Cypher statement, with values passed as `$name` placeholders in `params`, and returns one object per row. The database refuses writes.
+Explore through the `bpgraph` MCP server, at `http://localhost:8080/mcp`. Start with its predefined tools; its `cypher` tool runs one read-only Cypher statement, with values passed as `$name` placeholders in `params`, and returns one object per row. The database refuses writes.
 
 A node comes back as its properties plus `_labels`, an edge as its properties plus `_type`. Return the properties you need rather than whole nodes: a protein's `function` and a publication's `abstract` are long. The text is where the value is, though. Read it once you have narrowed down to the proteins and publications that matter.
 
@@ -19,6 +19,7 @@ uv run bpgraph-query --params '{"pid": "P36969"}' < query.cypher
 
 ## Rules
 
+- **Enter through `:Protein`**, the label whose `id` is indexed, and close the filter with `WITH`: `MATCH (h:Protein) WHERE h.id IN $accessions AND h:Human WITH h MATCH …`. Matching `(h:Human {id: …})` scans every human protein.
 - **Sides.** In a `:VH` interaction side `a` is the human protein and side `b` the viral one. In `:HH` the order means nothing. To list a protein's partners, go `(p)-[:INTERACTS_WITH]-(q) WHERE q <> p`: the shortcut edge carries the interaction's counters and its `interaction_id`, and needs no side. Go through `:Interaction` (`(p)<-[:INVOLVES]-(i)-[:INVOLVES]->(q)`) when the side matters, as for peptides. A homodimer is an `:HH` whose two `:INVOLVES` reach the same protein, and a self-loop on the shortcut, and that filter drops it.
 - **Peptide direction.** The peptide came from the partner whose `INVOLVES.side` equals `REPORTS.source_side`, and binds the other one. Without that comparison, source and target are mixed up.
 - **Viral proteins** are curated: `NS5A` of HCV is one `:Protein`, pooled over every strain and accession it was observed on, so its interactions and counters are pooled too. Name one by virus and name: `(p:Viral {name: 'HBx'})-[:IN_TAXON]->(:Virus {name: 'HBV'})`, or by id, `10407:HBx`. Names are case-sensitive.
