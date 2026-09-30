@@ -74,7 +74,6 @@ def vh_descriptions(
             pmid=row.pmid,
             method_id=row.psimi_id,
             method_name=name_of(row.psimi_id),
-            method_class=row.method_class,
         )
         out.write("\t".join(description) + "\n")
         observations.write(f"{row.stable_id}\t{row.accession_2}\n")

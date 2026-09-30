@@ -145,7 +145,6 @@ def _interactions(writer: GraphWriter, prepared: Prepared) -> dict[str, int]:
                     "side_b": first.side_b,
                     "n_descriptions": len(members),
                     "n_publications": len({d.pmid for d in members}),
-                    "n_methods": len({d.method_class for d in members}),
                     "n_peptides": len({of(Report, r).sequence for r in peptides}),
                 }
             )
@@ -158,7 +157,6 @@ def _interactions(writer: GraphWriter, prepared: Prepared) -> dict[str, int]:
                     "pmid": d.pmid,
                     "method_id": d.method_id,
                     "method_name": d.method_name,
-                    "method_class": d.method_class,
                 }
                 for d in members
             )

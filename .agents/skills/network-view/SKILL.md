@@ -14,7 +14,7 @@ Three steps:
 ## Inputs
 
 - **What to draw**, e.g. ferroptosis × Flaviviridae. Ask if it is unclear.
-- **Evidence level.** The default is the **golden dataset**: an interaction backed by at least 2 distinct publications **or** at least 2 distinct detection methods. Apply it to each interaction on its own, meaning one viral protein with one human protein. Never add up evidence across proteins to get over the bar.
+- **Evidence level.** The default is the **golden dataset**: an interaction backed by at least 2 distinct publications. Apply it to each interaction on its own, meaning one viral protein with one human protein. Never add up evidence across proteins to get over the bar.
 - **Destination:** wherever the user asks. Ask if they haven't said. Name the files after the network, e.g. `ferroptosis-flaviviridae.json`.
 
 ## 1. The dataset
@@ -33,7 +33,7 @@ Query the live graph with the `query` tool of the `bpgraph` MCP server, as `docs
      "description": "Genome polyprotein", "taxon_name": "HCV"}
   ],
   "interactions": [
-    {"source": "P36969", "target": "3052230:NS5A", "n_publications": 1, "n_methods": 2}
+    {"source": "P36969", "target": "3052230:NS5A", "n_publications": 2}
   ]
 }
 ```

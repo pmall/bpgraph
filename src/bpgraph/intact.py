@@ -5,18 +5,21 @@ file — for human, a zip of over a gigabyte. It is streamed rather than
 downloaded: the zip is inflated as it arrives and each row is filtered on the
 way past, so only `intact.tsv` lands in the host's silo.
 
-A row is kept when:
+The graph is for an agent that explores it to formulate biological hypotheses,
+such as mechanistic explanations. So an IntAct row is kept when it reports a
+real interaction, observed by an experiment, in a publication:
 
 - both partners are Swiss-Prot entries of the host, once an isoform or a chain
   is mapped to its entry;
-- it cites a PubMed id;
-- its detection method is experimental and says something about the technique:
-  not under `MI:0364` (inferred by curator) nor `MI:0063` (interaction
-  prediction), and not of the curated class `unspecified`.
+- it cites exactly one PubMed id: the publication an agent reads;
+- it is not a negative result;
+- its detection method is flagged `keep` in `curation/methods.tsv`;
+- no lower pmid of its group in `curation/publications.tsv` reports the same
+  pair: a publication that re-reports an experiment adds only the pairs it is
+  the first of its group to report.
 
-Every interaction type is kept, association and colocalization included: what
-makes a row evidence here is the experiment behind it. The types kept are
-logged.
+A detection method with no row there fails the fetch, naming it, once the
+whole file is read.
 
 Spoke-expanded complexes are kept, so one IntAct interaction id may name
 several rows, one per pair. Negative interactions are published apart and never
@@ -31,14 +34,14 @@ import zlib
 from collections import Counter
 from collections.abc import Iterable, Iterator
 from enum import IntEnum
-from functools import cache
 from pathlib import Path
 from urllib.request import Request, urlopen
 
 from bpgraph import files
 from bpgraph.loaders.tsv import rows
-from bpgraph.methods import UNSPECIFIED, MethodClasses
+from bpgraph.methods import Methods
 from bpgraph.psimi import Ontology, read_ontology
+from bpgraph.publications import read_groups
 from bpgraph.run import HUMAN, HostPaths, Run
 from bpgraph.sources import record_source
 from bpgraph.swissprot import canonical
@@ -52,8 +55,6 @@ SPECIES = {HUMAN: "human"}
 """IntAct's name for each host's file."""
 RELEASES_URL = "https://ftp.ebi.ac.uk/pub/databases/intact/"
 """`current` names no release; the dated directory beside it does."""
-
-NOT_EXPERIMENTAL = ("MI:0364", "MI:0063")
 
 UNIPROT = "uniprotkb:"
 PUBMED = "pubmed:"
@@ -76,7 +77,6 @@ class _Field(IntEnum):
     ID_B = 1
     METHOD = 6
     PUBLICATIONS = 8
-    TYPE = 11
     INTERACTION_IDS = 13
     NEGATIVE = 35
 
@@ -146,14 +146,13 @@ def _values(cell: str, prefix: str) -> list[str]:
 def _candidates(
     lines: Iterable[str],
     ontology: Ontology,
-    classes: MethodClasses,
+    methods: Methods,
     dropped: Counter[str],
+    uncurated: set[str],
 ) -> Iterator[list[str]]:
     """The rows that pass every test a row can pass alone, keyed by their first
     partner: `[accession1, accession2, intact_id, pmid, psimi_id]`. Whether
     both partners are Swiss-Prot entries is for the merges that follow."""
-    types: Counter[str] = Counter()
-    class_of = cache(classes.class_of)
     for line in lines:
         if line.startswith("#") or not line:
             continue
@@ -175,29 +174,27 @@ def _candidates(
         if len(set(pmids)) > 1:
             dropped["several pubmed ids"] += 1
             continue
-        methods = PSIMI.findall(fields[_Field.METHOD])
-        if len(methods) != 1:
+        coded = PSIMI.findall(fields[_Field.METHOD])
+        if len(coded) != 1:
             dropped["not one method"] += 1
             continue
-        method = ontology.canonical(methods[0])
+        method = ontology.canonical(coded[0])
         if method is None:
             dropped["method not in psi-mi"] += 1
             continue
-        if ontology.under(method, NOT_EXPERIMENTAL):
-            dropped["not experimental"] += 1
+        keep = methods.keep(method)
+        if keep is None:
+            uncurated.add(method)
             continue
-        if class_of(method) == UNSPECIFIED:
-            dropped["method says nothing about the technique"] += 1
+        if not keep:
+            dropped[f"method not kept: {method} {ontology.terms[method].name}"] += 1
             continue
         ids = _values(fields[_Field.INTERACTION_IDS], INTACT)
         if len(ids) != 1:
             dropped["not one intact id"] += 1
             continue
         first, second = sorted((a, b))
-        types[fields[_Field.TYPE]] += 1
         yield [first, second, ids[0], pmids[0], method]
-    for kind, count in types.most_common():
-        logger.info("intact: %d rows of type %s", count, kind)
 
 
 def _on_swissprot(
@@ -210,6 +207,22 @@ def _on_swissprot(
             yield from (row[1:] + row[:1] for row in found)
         else:
             dropped["not swiss-prot of the host"] += len(found)
+
+
+def _unrepeated(
+    path: Path, groups: dict[str, str], dropped: Counter[str]
+) -> Iterator[list[str]]:
+    """The rows of a file sorted by pair, `[a, b, pmid, intact_id, method]`,
+    read pair by pair in ascending pmid: a pair stays on the first pmid of each
+    group that reports it."""
+    for _, found in files.groups(files.read(path), 2):
+        first: dict[str, str] = {}
+        for a, b, pmid, intact_id, method in sorted(found, key=lambda r: int(r[2])):
+            group = groups.get(pmid)
+            if group and first.setdefault(group, pmid) != pmid:
+                dropped[f"repeated in group {group}: {pmid}"] += 1
+                continue
+            yield [intact_id, a, b, pmid, method]
 
 
 def _release() -> str:
@@ -225,7 +238,9 @@ def write_intact(
     """Stream, filter and write one host's `intact.tsv`. Returns the rows
     written and the count dropped per reason."""
     ontology = read_ontology(psimi)
-    classes = MethodClasses.load(ontology)
+    methods = Methods.load(ontology)
+    groups = read_groups()
+    uncurated: set[str] = set()
     release = _release()
     url = SPECIES_URL.format(SPECIES[host.taxon_id])
     logger.info("intact: streaming %s", url)
@@ -236,20 +251,26 @@ def write_intact(
             scratch / "proteins", ([r["accession"]] for _, r in rows(host.swissprot))
         )
         first = files.sorted_file(
-            scratch / "first", _candidates(_lines(url), ontology, classes, dropped)
+            scratch / "first",
+            _candidates(_lines(url), ontology, methods, dropped, uncurated),
         )
+        if uncurated:
+            methods.check(uncurated)
         second = files.sorted_file(
             scratch / "second", _on_swissprot(first, proteins, dropped)
         )
-        both = files.sorted_file(
-            scratch / "both",
+        pairs = files.sorted_file(
+            scratch / "pairs",
             (
-                [intact_id, a, b, pmid, method]
+                [a, b, pmid, intact_id, method]
                 for intact_id, pmid, method, a, b in _on_swissprot(
                     second, proteins, dropped
                 )
             ),
             unique=True,
+        )
+        both = files.sorted_file(
+            scratch / "both", _unrepeated(pairs, groups, dropped), unique=True
         )
         written = files.write_table(host.intact, COLUMNS, files.read(both))
     record_source(sources, f"{host.taxon_id} intact", url, release)

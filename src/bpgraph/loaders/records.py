@@ -21,9 +21,9 @@ def of[T: tuple[str, ...]](kind: type[T], record: Record, width: int = 0) -> T:
 class Curated(NamedTuple):
     """One row of the export's description files.
 
-    `status` says what the build does with it: `kept`, or dropped because it is
-    coded `MI:0000` (`root`) or names a human partner Swiss-Prot does not have
-    (`absent`). A dropped row still answers for its peptides, which go with it.
+    `status` says what the build does with it: `kept`, or dropped because it
+    names a human partner Swiss-Prot does not have (`absent`). A dropped row
+    still answers for its peptides, which go with it.
     `partner_2` is the second partner's protein id: its accession if human,
     its curated virus and name if viral, which `strain_id` and `strain_name`
     then place in the taxonomy.
@@ -34,7 +34,6 @@ class Curated(NamedTuple):
     status: str
     pmid: str
     psimi_id: str
-    method_class: str
     accession_1: str
     accession_2: str
     start_2: str
@@ -60,7 +59,6 @@ class Curated(NamedTuple):
 
 
 KEPT = "kept"
-ROOT = "root"
 ABSENT = "absent"
 
 
@@ -77,7 +75,6 @@ class Description(NamedTuple):
     pmid: str
     method_id: str
     method_name: str
-    method_class: str
 
 
 class Report(NamedTuple):
