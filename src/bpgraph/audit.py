@@ -19,12 +19,17 @@ publications repeat one experiment. They are the rules, not code.
 
 Every check is one read-only query that returns the rows *breaking* its rule,
 so an empty result is a pass. Queries end in `RETURN` — the runner appends the
-limit. The audit must stay quick enough to run after every build: count a
-node's edges with `outdegree` or `indegree`, never a pattern comprehension,
-and never walk a variable-length path down the GO DAG, whose paths explode.
+limit. The audit must stay quick enough to run after every build, well
+under a minute, and it runs its checks side by side to get there. Across a
+large label, count rather than test node by node: compare the edges, the
+distinct sources and the nodes, with the totals the runner passes as
+parameters. Never use `outdegree` on a type with many edges, never a pattern
+comprehension, and never walk a variable-length path down the GO DAG, whose
+paths explode.
 """
 
 from collections.abc import Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from falkordb.graph import Graph
@@ -194,25 +199,69 @@ def _sublabel(base: str, options: tuple[str, str]) -> Check:
     )
 
 
+def _edge_joins(kind: str, source: str, target: str) -> Check:
+    """Every edge of a type joins the labels it may: the edges between those
+    labels are all the edges of the type, `$edges_<type>`. Counted rather than
+    scanned, since an edge from anywhere means visiting every node."""
+    joined = "\n".join(
+        f"OPTIONAL MATCH (:{label})-[r:{kind}]->(:{target})\n"
+        f"WITH {'joined + ' if i else ''}count(r) AS joined"
+        for i, label in enumerate(source.split("|"))
+    )
+    return Check(
+        name=f"{kind}.joins",
+        rule=f"every {kind} edge is (:{source})-[:{kind}]->(:{target})",
+        cypher=(
+            f"{joined}\n"
+            f"WITH joined WHERE joined <> $edges_{kind}\n"
+            f"RETURN $edges_{kind} AS edges, joined"
+        ),
+    )
+
+
+def _edge_properties(kind: str, source: str, properties: tuple[str, ...]) -> Check:
+    """The properties an edge carries, entered from its source's label: an
+    edge from elsewhere is `_edge_joins`'s finding."""
+    tests = [f"typeOf(r.{name}) = 'Null'" for name in properties]
+    tests.append(f"size(keys(r)) <> {len(properties)}")
+    return Check(
+        name=f"{kind}.properties",
+        rule=f"{kind} carries {', '.join(properties) or 'no properties'}",
+        cypher=(
+            f"MATCH (:{source.split('|')[0]})-[r:{kind}]->()\n"
+            f"WHERE {' OR '.join(tests)}\n"
+            "RETURN ID(r) AS edge, keys(r) AS keys"
+        ),
+    )
+
+
 def _edge_shape(
     kind: str, source: str, target: str, properties: tuple[str, ...] | None
-) -> Check:
+) -> tuple[Check, ...]:
     """The labels an edge joins, and the properties it carries."""
-    sources = " OR ".join(f"a:{label}" for label in source.split("|"))
-    tests = [f"NOT ({sources})", f"NOT b:{target}"]
-    rule = f"(:{source})-[:{kind}]->(:{target})"
-    if properties is not None:
-        tests += [f"typeOf(r.{name}) = 'Null'" for name in properties]
-        tests.append(f"size(keys(r)) <> {len(properties)}")
-        rule += f" carrying {', '.join(properties) or 'no properties'}"
+    joins = _edge_joins(kind, source, target)
+    if properties is None:
+        return (joins,)
+    return joins, *(
+        _edge_properties(kind, label, properties) for label in source.split("|")
+    )
+
+
+def _exactly_one(label: str, kind: str, rule: str) -> Check:
+    """Every node of a label has exactly one outgoing edge of a type. Counted:
+    when the distinct sources are all the nodes, each has one edge at least,
+    and when the edges are as many as the nodes, each has one at most.
+    `outdegree` would say it per node, but on 4.22 its cost grows with the
+    type's edges across the whole graph: a million descriptions never end."""
     return Check(
-        name=f"{kind}.shape",
+        name=f"{label}.{kind}",
         rule=rule,
         cypher=(
-            f"MATCH (a)-[r:{kind}]->(b)\n"
-            f"WHERE {' OR '.join(tests)}\n"
-            "RETURN ID(r) AS edge, labels(a) AS source, labels(b) AS target,\n"
-            "       keys(r) AS keys"
+            f"OPTIONAL MATCH (:{label})-[r:{kind}]->() WITH count(r) AS edges\n"
+            f"OPTIONAL MATCH (n:{label})-[:{kind}]->()\n"
+            "WITH edges, count(DISTINCT n) AS sources\n"
+            f"WHERE edges <> $nodes_{label} OR sources <> $nodes_{label}\n"
+            f"RETURN $nodes_{label} AS nodes, edges, sources"
         ),
     )
 
@@ -227,6 +276,15 @@ GROUPED = sorted([group, pmid] for pmid, group in read_groups().items())
 """`[group, pmid]` for every publication of `curation/publications.tsv`."""
 
 INVARIANTS: tuple[Check, ...] = (
+    # FalkorDB 6.0.0 dropped this WHERE, and returned every interaction: an
+    # engine that does is not one the graph can be queried on.
+    Check(
+        "engine.filters",
+        "the engine keeps the WHERE of a MATCH that a following MATCH extends",
+        "MATCH (i:Interaction) WHERE i.n_publications < 0\n"
+        "MATCH (i)-[:INVOLVES]->(p:Protein)\n"
+        "RETURN i.id AS id, i.n_publications AS n_publications",
+    ),
     Check(
         "graph.labels",
         "every node carries one of the labels schema.md defines",
@@ -241,14 +299,19 @@ INVARIANTS: tuple[Check, ...] = (
         "WHERE p.id <> toString(v.taxon_id) + ':' + p.name\n"
         "RETURN p.id AS id, v.taxon_id AS virus, p.name AS name",
     ),
+    # Counted, as in `_exactly_one`: each side reaching every interaction, and
+    # twice as many edges as interactions, leaves one edge per side.
     Check(
         "Interaction.slots",
         "two INVOLVES edges, one side 'a' and one side 'b'",
-        "MATCH (i:Interaction)\n"
-        "WHERE outdegree(i, 'INVOLVES') <> 2\n"
-        "   OR NOT (i)-[:INVOLVES {side: 'a'}]->()\n"
-        "   OR NOT (i)-[:INVOLVES {side: 'b'}]->()\n"
-        "RETURN i.id AS id, outdegree(i, 'INVOLVES') AS edges",
+        "OPTIONAL MATCH (i:Interaction)-[:INVOLVES {side: 'a'}]->()\n"
+        "WITH count(DISTINCT i) AS with_a\n"
+        "OPTIONAL MATCH (i:Interaction)-[:INVOLVES {side: 'b'}]->()\n"
+        "WITH with_a, count(DISTINCT i) AS with_b\n"
+        "WHERE $edges_INVOLVES <> 2 * $nodes_Interaction\n"
+        "   OR with_a <> $nodes_Interaction OR with_b <> $nodes_Interaction\n"
+        "RETURN $nodes_Interaction AS interactions, $edges_INVOLVES AS edges,\n"
+        "       with_a, with_b",
     ),
     Check(
         "Interaction.id",
@@ -273,14 +336,9 @@ INVARIANTS: tuple[Check, ...] = (
         "WHERE NOT a:Human OR NOT b:Human OR a.id > b.id\n"
         "RETURN i.id AS id, a.id AS side_a, b.id AS side_b",
     ),
-    Check(
-        "Description.evidence",
-        "one interaction and one publication behind every description",
-        "MATCH (d:Description)\n"
-        "WITH d, outdegree(d, 'SUPPORTS') AS claims,\n"
-        "        outdegree(d, 'REPORTED_IN') AS papers\n"
-        "WHERE claims <> 1 OR papers <> 1\n"
-        "RETURN d.id AS id, claims, papers",
+    _exactly_one("Description", "SUPPORTS", "one interaction behind every description"),
+    _exactly_one(
+        "Description", "REPORTED_IN", "one publication behind every description"
     ),
     Check(
         "Description.source",
@@ -293,17 +351,17 @@ INVARIANTS: tuple[Check, ...] = (
         "   OR (i:VH AND d.intact_id <> '')\n"
         "RETURN d.id AS id, d.intact_id AS intact_id, d.stable_ids AS stable_ids",
     ),
+    _exactly_one("Annotation", "ANNOTATES", "one protein behind every annotation"),
+    _exactly_one("Annotation", "OF_TERM", "one term behind every annotation"),
+    _exactly_one(
+        "Annotation", "REPORTED_IN", "one publication behind every annotation"
+    ),
     Check(
         "Annotation.evidence",
-        "one protein, one term and one publication behind every annotation, "
-        "on experimental evidence",
+        "an annotation stands on experimental evidence",
         "MATCH (a:Annotation)\n"
-        "WITH a, outdegree(a, 'ANNOTATES') AS proteins,\n"
-        "        outdegree(a, 'OF_TERM') AS terms,\n"
-        "        outdegree(a, 'REPORTED_IN') AS papers\n"
-        "WHERE proteins <> 1 OR terms <> 1 OR papers <> 1\n"
-        f"   OR NOT a.evidence_code IN {list(EXPERIMENTAL)}\n"
-        "RETURN a.id AS id, proteins, terms, papers, a.evidence_code AS code",
+        f"WHERE NOT a.evidence_code IN {list(EXPERIMENTAL)}\n"
+        "RETURN a.id AS id, a.evidence_code AS code",
     ),
     Check(
         "Annotation.functional",
@@ -387,9 +445,10 @@ INVARIANTS: tuple[Check, ...] = (
     Check(
         "Interaction.supported",
         "no interaction without a description behind it",
-        "MATCH (i:Interaction)\n"
-        "WHERE NOT (i)<-[:SUPPORTS]-(:Description)\n"
-        "RETURN i.id AS id",
+        "OPTIONAL MATCH (:Description)-[:SUPPORTS]->(i:Interaction)\n"
+        "WITH count(DISTINCT i) AS supported\n"
+        "WHERE supported <> $nodes_Interaction\n"
+        "RETURN $nodes_Interaction AS interactions, supported",
     ),
     Check(
         "Viral.taxon",
@@ -471,21 +530,47 @@ INVARIANTS: tuple[Check, ...] = (
 CHECKS: tuple[Check, ...] = (
     *(_node_shape(label, properties) for label, properties in NODE_PROPERTIES.items()),
     *(_sublabel(base, options) for base, options in SUBLABELS.items()),
-    *(_edge_shape(*relationship) for relationship in RELATIONSHIPS),
+    *(check for r in RELATIONSHIPS for check in _edge_shape(*r)),
     *INVARIANTS,
 )
 
 
-def audit(graph: Graph, examples: int = EXAMPLES) -> list[Finding]:
-    """Run every check. An empty list means the graph matches docs/schema.md."""
-    findings: list[Finding] = []
-    for check in CHECKS:
-        result = graph.ro_query(f"{check.cypher}\nLIMIT {examples}")
+COUNTED = ("Interaction", "Description", "Annotation")
+"""The labels whose node count a check compares against, as `$nodes_<label>`."""
+
+
+def totals(graph: Graph) -> dict[str, object]:
+    """`$edges_<type>` for every relationship and `$nodes_<label>` for the
+    labels counted. Each is a bare `RETURN count(x)`, which FalkorDB answers
+    from its own tally: the same count behind a `WITH` scans every node. The
+    edge must be bound and counted: 4.22 counts the rows of `()-[:T]->()` one
+    per pair of nodes, so a homodimer's two INVOLVES edges would count once."""
+
+    def count(pattern: str) -> int:
+        return int(graph.ro_query(f"MATCH {pattern} RETURN count(x)").result_set[0][0])
+
+    return {
+        **{f"edges_{kind}": count(f"()-[x:{kind}]->()") for kind, *_ in RELATIONSHIPS},
+        **{f"nodes_{label}": count(f"(x:{label})") for label in COUNTED},
+    }
+
+
+def audit(graph: Graph, examples: int = EXAMPLES, workers: int = 4) -> list[Finding]:
+    """Run every check, `workers` at a time: they only read, and the server
+    runs reads side by side on its threads. An empty list means the graph
+    matches docs/schema.md."""
+    params = totals(graph)
+
+    def run(check: Check) -> Finding | None:
+        result = graph.ro_query(f"{check.cypher}\nLIMIT {examples}", params)
         rows: list[list[object]] = result.result_set
-        if rows:
-            columns = [str(name) for _, name in result.header]
-            findings.append(Finding(check=check, columns=columns, examples=rows))
-    return findings
+        if not rows:
+            return None
+        columns = [str(name) for _, name in result.header]
+        return Finding(check=check, columns=columns, examples=rows)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        return [finding for finding in pool.map(run, CHECKS) if finding is not None]
 
 
 def format_findings(findings: Sequence[Finding], total: int) -> str:
@@ -504,6 +589,7 @@ def format_findings(findings: Sequence[Finding], total: int) -> str:
 
 def main() -> None:
     """Audit the live graph. Exits non-zero when anything fails."""
+    import os
     import sys
 
     from bpgraph.client import connect
@@ -511,8 +597,12 @@ def main() -> None:
 
     config = Config.from_env()
     db = connect(config)
-    if config.live_graph not in db.list_graphs():
+    # Not GRAPH.LIST: it once missed a graph swapped in over one 6.0 wrote.
+    if not db.connection.exists(config.live_graph):
         sys.exit(f"{config.live_graph}: not built yet")
-    findings = audit(db.select_graph(config.live_graph))
+    findings = audit(
+        db.select_graph(config.live_graph),
+        workers=int(os.environ.get("FALKORDB_THREADS", "4")),
+    )
     print(format_findings(findings, len(CHECKS)))
     sys.exit(1 if findings else 0)

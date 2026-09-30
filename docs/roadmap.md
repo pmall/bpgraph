@@ -42,10 +42,10 @@ What we curate by hand and hand over as-is: **peptides** reported sufficient for
 
 Consumers of the graph — the analysis skills and the reports — will move to repositories of their own, so that each has its own instructions. This repository keeps the ingestion and the servers:
 
-- an **internal query API**, not exposed, defining the queries consumers run: today's skill scripts, and more;
-- the **MCP server**, the only thing exposed, serving that API and read-only Cypher to consumers.
+- an **internal query API**, not exposed, with one endpoint per predefined query consumers run, fixed lookups into the vaults, and read-only Cypher;
+- the **MCP server**, the only thing exposed, serving each endpoint of that API as a tool.
 
-Queries written now go through `bpgraph.query` so they can move behind that API unchanged.
+The skills stay here, maintained with the endpoints they call, and are copied into the consuming repositories: a skill reaches the graph through MCP tools only.
 
 ## Order of work
 
@@ -60,10 +60,12 @@ Queries written now go through `bpgraph.query` so they can move behind that API 
 | 7    | ESM-C SAE features on host sequences, intra-host                          | later  |
 | 8    | A second host: labels move from `:Human` to a host label with its species | later  |
 | 9    | SAE features as the cross-host link                                       | later  |
-| 10   | Internal query API; MCP serves it; consumers move out                     | later  |
+| 10   | Internal query API; MCP serves it; consumers move out                     | doing  |
 
 Steps 1–5 are one build, described in [`build.md`](build.md); they replaced a pipeline that took everything from the curation export.
 
 Known gaps in what is done:
 
 - Only human is a host. `:Human`, `:HH` and the `9606` of the run layout are the places a second host touches (step 8).
+- The engine is pinned to FalkorDB 4.22, the C engine. 6.0 is a rewrite in Rust, fast on our audit but with a planner that dropped filters in its first release; it is worth moving to once a 6.x passes the audit, as [`development.md`](development.md) describes.
+- Step 10 is half done. The API and the MCP server serve the predefined queries, but the skills still point at `docs/` and `network-view` runs a script of this package, so they do not yet work once copied; and [`queries.md`](queries.md), the guide to exploring, is still here, waiting for a consuming repository.

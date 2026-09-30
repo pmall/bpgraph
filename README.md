@@ -8,8 +8,9 @@ This repository holds:
 
 - **the graph server** — FalkorDB and its browser UI, run with Docker Compose;
 - **the ingestion** — a Python package that turns public sources and an export of the curation database into a fresh, validated graph and its sequence vaults;
-- **the MCP server** — read-only tools through which agents explore the graph;
-- **the analyses** — skills in `skills` that pair an analysis's instructions with scripts.
+- **the query API** — internal, not exposed: one endpoint per predefined query over the graph and the vaults, and read-only Cypher;
+- **the MCP server** — the only thing consumers see: each API endpoint as a tool;
+- **the analysis skills** — in `skills`, maintained here with the endpoints they call, and copied into the repositories that consult the graph.
 
 Curation itself happens in a separate relational database. The graph is never edited in place: each run is built into a staging graph, checked, and swapped in whole. Where it is heading — many hosts, sequence and full-text vaults, protein language model features — is in [`docs/roadmap.md`](docs/roadmap.md).
 
@@ -27,6 +28,7 @@ uv sync
 | ------------------ | ---- | ------------------------------------------------------- |
 | `falkordb-server`  | 6379 | the graph; builds write here over RESP                  |
 | `falkordb-browser` | 3000 | UI; log in with host `falkordb-server`, not `localhost` |
+| `bpgraph-api`      | —    | query API, internal: only the MCP server reaches it     |
 | `bpgraph-mcp`      | 8080 | MCP at `http://localhost:8080/mcp`, read-only           |
 
 ## Building a graph
@@ -54,7 +56,7 @@ uv run bpgraph-audit   # check the live graph against the schema
 
 ## Querying
 
-The live graph is the only source of truth; `data/` holds build inputs. Agents query it through the MCP server, whose `query` tool runs read-only Cypher; `.mcp.json` registers it for Claude Code. The same query runs from a terminal. [`docs/queries.md`](docs/queries.md) has the rules, canonical queries and a worked example.
+The live graph is the only source of truth; `data/` holds build inputs. Consulting repositories query it through the MCP server, whose tools are the query API's endpoints: predefined queries, sequences from the vaults, the schema, and read-only Cypher. This repository registers no MCP server. The same query runs from a terminal. [`docs/queries.md`](docs/queries.md) has the rules, canonical queries and a worked example.
 
 ```sh
 uv run bpgraph-query "MATCH (v:Virus) RETURN v.name"

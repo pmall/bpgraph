@@ -8,7 +8,8 @@ def main() -> None:
     """Report what the live graph currently holds."""
     config = Config.from_env()
     db = connect(config)
-    if config.live_graph not in db.list_graphs():
+    # Not GRAPH.LIST: it once missed a graph swapped in over one 6.0 wrote.
+    if not db.connection.exists(config.live_graph):
         print(f"{config.live_graph}: not built yet")
         return
     graph = db.select_graph(config.live_graph)

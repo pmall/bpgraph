@@ -2,7 +2,7 @@
 
 A FalkorDB knowledge graph of protein–protein interactions, human–human and virus–human, rich in text: every interaction is backed by the publications that report it, titles and abstracts included, and proteins carry their UniProt function text and experimental GO annotations of what they do, each tied to its publications. A viral protein is a curated one, `HBx` of HBV, pooled over the strains and accessions it was observed on. Scripts do the deterministic work. The agent is the explorer: it reads that connected text and makes the connections a person would need years of reading to make.
 
-This repository both builds the graph and queries it.
+This repository builds the graph and serves it. It does not explore it: consulting repositories do, through the MCP server alone.
 
 ## The graph is the source of truth
 
@@ -14,7 +14,8 @@ The live graph `bpgraph` on the FalkorDB server is the only source of truth abou
 | ------------------ | ---- | ------------------------------------------------------- |
 | `falkordb-server`  | 6379 | the graph                                               |
 | `falkordb-browser` | 3000 | UI. Log in with host `falkordb-server`, not `localhost` |
-| `bpgraph-mcp`      | 8080 | MCP at `/mcp`: how agents query the graph, read-only    |
+| `bpgraph-api`      | —    | query API, internal: one endpoint per predefined query  |
+| `bpgraph-mcp`      | 8080 | MCP at `/mcp`: the API's endpoints as tools, read-only  |
 
 `bpgraph` is the live graph key, and `bpgraph_staging` is where a build writes. **Never write to `bpgraph` outside a build swap.** Experiment in a throwaway graph named `_probe` and delete it afterwards. Connection settings come from `.env`, which is gitignored. `.env.example` documents the variables.
 
@@ -22,11 +23,10 @@ The live graph `bpgraph` on the FalkorDB server is the only source of truth abou
 
 ## Read according to the task
 
-- **Exploring the graph**, answering a question or running an analysis skill: [`docs/queries.md`](docs/queries.md).
 - **Building a graph** or changing what it holds: [`docs/build.md`](docs/build.md) and [`docs/export.md`](docs/export.md).
-- **Writing code**, for the build or a skill's script: [`docs/development.md`](docs/development.md).
+- **Writing code**, for the build, a query API endpoint or a skill's script: [`docs/development.md`](docs/development.md).
 
-Analyses that recur are skills in `skills`. A skill says what to analyse and what to report, and a script gives it a standard entry point for the mechanical part.
+Analyses that recur are skills in `skills`, written and kept in sync with the code here, and copied into consulting repositories to be installed. A skill says what to analyse and what to report, and a script gives it a standard entry point for the mechanical part. A skill must work once copied: it reaches the graph through MCP tools only, never a path or a document of this repository.
 
 ## Git
 

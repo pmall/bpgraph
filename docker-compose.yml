@@ -5,15 +5,22 @@ name: bpgraph
 services:
   # Graph database. Speaks RESP on 6379.
   # Published to the host so local scripts (python) can connect on localhost:6379.
+  # Pinned: `latest` moved from the C engine to 6.0.0, a Rust rewrite whose
+  # planner dropped filters, and back again. A new version is a rebuild;
+  # docs/development.md says how to try one.
+  # A query stops after a minute unless its client asks for up to ten.
   falkordb-server:
-    image: falkordb/falkordb-server:latest
+    image: falkordb/falkordb-server:v4.22.0
     ports:
       - "6379:6379"
     environment:
       REDIS_ARGS: ${FALKORDB_PASSWORD:+--requirepass ${FALKORDB_PASSWORD}}
-      FALKORDB_ARGS: THREAD_COUNT ${FALKORDB_THREADS:-4}
+      FALKORDB_ARGS: >-
+        THREAD_COUNT ${FALKORDB_THREADS:-4}
+        TIMEOUT_DEFAULT 60000
+        TIMEOUT_MAX 600000
     volumes:
-      - falkordb_data:/data
+      - falkordb_data:/var/lib/falkordb/data
 
   # Browser UI. Published so you can open http://localhost:3000.
   # It connects to the server itself, over the compose network, so its
@@ -25,21 +32,40 @@ services:
     depends_on:
       - falkordb-server
 
-  # MCP server, built from this repository. Published so MCP clients reach
-  # http://localhost:8080/mcp. Reaches the database over the compose network.
-  # Its only tool runs read-only queries: builds write on 6379, never here.
+  # Query API, built from this repository. Not published: only the MCP server
+  # reaches it, over the compose network. The only service that reads the
+  # graph and the vaults a build publishes in data/vault; nothing it runs
+  # writes.
+  bpgraph-api:
+    build: .
+    command: ["uv", "run", "--no-sync", "bpgraph-api"]
+    expose:
+      - "8000"
+    environment:
+      FALKORDB_HOST: falkordb-server
+      FALKORDB_PORT: 6379
+      FALKORDB_PASSWORD: ${FALKORDB_PASSWORD:-}
+      BPGRAPH_VAULT: /vault
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+    volumes:
+      - ./data/vault:/vault:ro
+    depends_on:
+      - falkordb-server
+
+  # MCP server, built from this repository: the only thing consumers see.
+  # Published so MCP clients reach http://localhost:8080/mcp. Each tool
+  # forwards to the query API; it reaches neither the graph nor the vaults.
   bpgraph-mcp:
     build: .
     ports:
       - "8080:8080"
     environment:
-      FALKORDB_HOST: falkordb-server
-      FALKORDB_PORT: 6379
-      FALKORDB_PASSWORD: ${FALKORDB_PASSWORD:-}
+      BPGRAPH_API: http://bpgraph-api:8000
       MCP_HOST: 0.0.0.0
       MCP_PORT: 8080
     depends_on:
-      - falkordb-server
+      - bpgraph-api
 
 volumes:
   falkordb_data:

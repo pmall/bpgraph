@@ -1,4 +1,4 @@
-"""Running a build: prepare, write into staging, validate, swap, write vaults.
+"""Running a build: prepare, write into staging, validate, swap, publish vaults.
 
 The live graph is never written to. A run builds beside it and publishes with a
 single `RENAME`, so a bad export cannot land on something people are querying.
@@ -19,7 +19,6 @@ from pathlib import Path
 from falkordb import FalkorDB
 
 from bpgraph import files, schema, vault
-from bpgraph.api import annotations, interactions, proteins, taxonomy
 from bpgraph.client import BATCH_SIZE, GraphWriter, Row
 from bpgraph.config import Config
 from bpgraph.enums import GoRelation, InteractionKind, ProteinKind
@@ -37,6 +36,7 @@ from bpgraph.loaders.tsv import listed, rows
 from bpgraph.pubmed import AUTHOR_SEPARATOR
 from bpgraph.run import Run
 from bpgraph.schema import ConstraintRow
+from bpgraph.write import annotations, interactions, proteins, taxonomy
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,8 @@ class BuildReport:
 
 
 def _reset(db: FalkorDB, name: str) -> None:
-    if name in db.list_graphs():
+    # The key, not GRAPH.LIST, which once missed a graph that was there.
+    if db.connection.exists(name):
         db.select_graph(name).delete()
 
 
@@ -332,9 +333,9 @@ def main() -> None:
     what went in.
 
     `uv run bpgraph-build data/2026-09-09` prepares every silo of the run into
-    `build/`, builds the graph through staging, writes the vaults, removes
-    `build/`, and prints the counts and the release of every public dataset
-    the run was fetched from.
+    `build/`, builds the graph through staging, writes the vaults and publishes
+    them beside the live graph, removes `build/`, and prints the counts and the
+    release of every public dataset the run was fetched from.
     """
     import sys
 
@@ -354,7 +355,7 @@ def main() -> None:
         prepared = prepare(run, scratch)
         logger.info("writing %s", config.staging_graph)
         report = build(connect(config), prepared, config, scratch)
-        written = write_vaults(run, prepared)
+        written = vault.publish(write_vaults(run, prepared), config.vault)
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
     for name, count in report.counts.items():

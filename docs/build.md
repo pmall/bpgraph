@@ -45,7 +45,7 @@ uv run bpgraph-intact data/2026-09-09       # hosts/9606: IntAct, by curation/me
 uv run bpgraph-go data/2026-09-09           # hosts/9606: functional GO annotations, terms, edges
 uv run bpgraph-functions data/2026-09-09    # viral: UniProt text and protein names
 uv run bpgraph-pubmed data/2026-09-09       # both silos: PubMed metadata
-uv run bpgraph-build data/2026-09-09        # the graph and the vaults
+uv run bpgraph-build data/2026-09-09        # the graph and the vaults, published
 ```
 
 - **Taxonomy.** NCBI's `taxdmp.zip`, loaded into SQLite row by row with each taxon's parent; the zip is deleted once loaded. A taxon's ancestors are a walk up its parents.
@@ -78,8 +78,9 @@ Every fetch records its dataset in `sources.tsv`, prefixed by its silo: the URL,
     6. GO terms, their edges, and the annotations.
 10. **Gate.** The unique constraints are created and every one must settle on `OPERATIONAL`; one `FAILED` means a duplicate key, and staging is dropped.
 11. **Swap.** `RENAME bpgraph_staging bpgraph`. It overwrites its destination, so this is the whole deployment; old graphs are not kept. Staging exists so a bad export cannot land on the live graph — not for uptime.
-12. **Vaults.** `host-9606.sqlite` from `sequences.tsv`; `viral.sqlite` from the viral sites, their entries and the VH observations. Each is written beside where it goes, then moved there.
-13. **Cleanup.** `build/` is removed, whether the build succeeded or not.
+12. **Vaults.** `host-9606.sqlite` from `sequences.tsv`; `viral.sqlite` from the viral sites, their entries and the VH observations. Each is written beside where it goes in the run's `vault/`, then moved there.
+13. **Publish the vaults.** Each is copied to the live vault directory, `BPGRAPH_VAULT` (`data/vault/` by default), and replaces the one there whole. The query API reads them there, so the vaults it serves are the live graph's.
+14. **Cleanup.** `build/` is removed, whether the build succeeded or not.
 
 ## Writing
 

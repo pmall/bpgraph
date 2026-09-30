@@ -21,6 +21,8 @@ and every public dump a run reads is at least as recent as its export.
 from dataclasses import dataclass
 from pathlib import Path
 
+from bpgraph.vault import VIRAL_FILE, host_file
+
 HUMAN = 9606
 """The one host so far."""
 
@@ -73,7 +75,7 @@ class HostPaths:
     @property
     def vault(self) -> str:
         """The name of its sequence vault."""
-        return f"host-{self.taxon_id}.sqlite"
+        return host_file(self.taxon_id)
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,7 +101,7 @@ class ViralPaths:
 
     @property
     def vault(self) -> str:
-        return "viral.sqlite"
+        return VIRAL_FILE
 
 
 @dataclass(frozen=True, slots=True)
