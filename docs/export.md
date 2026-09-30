@@ -4,12 +4,12 @@ What to export from the relational database, as tab-separated files dropped in t
 
 The export carries only what our curation alone knows: our interactions, the viral proteins they name with their sequences, and the peptides they report. Everything a public source knows better comes from that source instead, fetched into the run beside the export — a protein's UniProt name and function, a method's name from PSI-MI, a publication's metadata from PubMed.
 
-| file                                                             | one row per                                        |
-| ---------------------------------------------------------------- | -------------------------------------------------- |
+| file                                                            | one row per                                        |
+| --------------------------------------------------------------- | -------------------------------------------------- |
 | [`descriptions_hh.tsv`](#descriptions_hhtsv-descriptions_vhtsv) | human–human observation — a pair, a pmid, a method |
 | [`descriptions_vh.tsv`](#descriptions_hhtsv-descriptions_vhtsv) | virus–human observation                            |
-| [`viral_proteins.tsv`](#viral_proteinstsv)                       | viral entry and span a VH row names                |
-| [`peptides.tsv`](#peptidestsv)                                   | peptide a description reports                      |
+| [`viral_proteins.tsv`](#viral_proteinstsv)                      | viral entry and span a VH row names                |
+| [`peptides.tsv`](#peptidestsv)                                  | peptide a description reports                      |
 
 All four are required; `peptides.tsv` may have no rows.
 
@@ -36,15 +36,15 @@ ______________________________________________________________________
 
 One row per description: one protein pair, one publication, one method. The file says the type: `descriptions_hh.tsv` is human–human, `descriptions_vh.tsv` virus–human. Both have the same columns, and a `stable_id` is unique across the two.
 
-| column                              | notes                                                         |
-| ----------------------------------- | ------------------------------------------------------------- |
-| `stable_id`                         | your identifier. Becomes the node's key, so it must be unique |
-| `pmid`                              | digits only                                                   |
-| `psimi_id`                          | a PSI-MI term, `MI:` followed by four digits                  |
-| `accession1`, `start1`, `stop1`     | the first partner — always human                              |
-| `name1`, `ncbi_taxon_id1`           | and how it is named                                           |
-| `accession2`, `start2`, `stop2`     | the second partner — viral in `descriptions_vh.tsv`           |
-| `name2`, `ncbi_taxon_id2`           | and how it is named                                           |
+| column                          | notes                                                         |
+| ------------------------------- | ------------------------------------------------------------- |
+| `stable_id`                     | your identifier. Becomes the node's key, so it must be unique |
+| `pmid`                          | digits only                                                   |
+| `psimi_id`                      | a PSI-MI term, `MI:` followed by four digits                  |
+| `accession1`, `start1`, `stop1` | the first partner — always human                              |
+| `name1`, `ncbi_taxon_id1`       | and how it is named                                           |
+| `accession2`, `start2`, `stop2` | the second partner — viral in `descriptions_vh.tsv`           |
+| `name2`, `ncbi_taxon_id2`       | and how it is named                                           |
 
 ```
 descriptions_vh.tsv
@@ -57,9 +57,9 @@ stable_id  pmid      psimi_id  accession1  start1  stop1  name1  ncbi_taxon_id1 
 D-00901    22222222  MI:0006   P36969      1       197    GPX4   9606            O60488      1       711    ACSL4  9606
 ```
 
-The two VH rows are the same pair by different methods. They become one `:Interaction` carrying two `:Description` nodes, and its counters record two descriptions, one publication and two method classes — which is what makes the counters a confidence signal rather than a row count.
+The two VH rows are the same pair by different methods. They become one `:Interaction` carrying two `:Description` nodes, and its counters record two descriptions and one publication.
 
-An `hh` row is our curation of the human interactome: it is merged onto IntAct's description of the same pair, pmid and method class when IntAct has one — see [`build.md`](build.md). A `vh` row is a description of its own.
+An `hh` row is our curation of the human interactome: it is merged onto IntAct's description of the same pair and pmid when IntAct has one — see [`build.md`](build.md). A `vh` row is a description of its own.
 
 **Slot 1 is always the human partner.** Nothing else says which side is viral: a `vh` row's second partner is the viral one, and every other partner is human. The build then puts the human protein on side `a` of the interaction regardless of the order it was given in.
 
@@ -83,11 +83,11 @@ Of a **human** partner only the accession is read: the rest comes from Swiss-Pro
 
 One row per viral entry and span a `vh` row names: the mature protein as curation holds it, and its residues. Every viral partner of `descriptions_vh.tsv` must have its row, under the same name and taxon, or the load fails. The sequences go to the viral vault, not the graph.
 
-| column                         | notes                                                   |
-| ------------------------------ | ------------------------------------------------------- |
-| `accession`, `start`, `stop`   | the entry and span, as the descriptions name them       |
-| `name`, `ncbi_taxon_id`        | as the descriptions name them                           |
-| `sequence`                     | the residues of that span, exactly `stop - start + 1`   |
+| column                       | notes                                                 |
+| ---------------------------- | ----------------------------------------------------- |
+| `accession`, `start`, `stop` | the entry and span, as the descriptions name them     |
+| `name`, `ncbi_taxon_id`      | as the descriptions name them                         |
+| `sequence`                   | the residues of that span, exactly `stop - start + 1` |
 
 ```
 accession  start  stop  name  ncbi_taxon_id  sequence

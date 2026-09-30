@@ -4,8 +4,6 @@
 Every check a curated row can fail happens here, before anything is written:
 
 - a `stable_id` is unique across both files;
-- every method has a curated class, or the build fails naming the terms;
-- a row coded `MI:0000`, which says nothing about the method, is dropped;
 - a row whose human partner is not a Swiss-Prot entry of the host is dropped,
   and the accessions are logged;
 - every viral taxon has a curated virus, or the build fails naming the taxa;
@@ -18,7 +16,7 @@ own: they are dropped with it rather than orphaned.
 
 import logging
 from collections import Counter
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO
@@ -27,9 +25,8 @@ from bpgraph import files
 from bpgraph.enums import InteractionKind
 from bpgraph.ids import viral_protein_id
 from bpgraph.loaders.export import ExportRow, export_rows, viral_proteins
-from bpgraph.loaders.records import ABSENT, KEPT, ROOT, Curated, Site, of
+from bpgraph.loaders.records import ABSENT, KEPT, Curated, Site, of
 from bpgraph.loaders.tsv import LoadError
-from bpgraph.methods import ROOT as ROOT_TERM
 from bpgraph.psimi import Ontology
 from bpgraph.taxonomy import TaxonomyUnavailable
 from bpgraph.viruses import CuratedViruses, UncuratedTaxa
@@ -47,15 +44,14 @@ class CuratedFiles:
     """Every row of `viral_proteins.tsv`, sorted by site."""
 
 
-def _curated(row: ExportRow, method_class: str) -> Curated:
+def _curated(row: ExportRow) -> Curated:
     second = row.second
     return Curated(
         stable_id=row.stable_id,
         kind=row.kind.value,
-        status=ROOT if row.psimi_id == ROOT_TERM else KEPT,
+        status=KEPT,
         pmid=row.pmid,
         psimi_id=row.psimi_id,
-        method_class=method_class,
         accession_1=row.first.accession,
         accession_2=second.accession,
         start_2=str(second.start),
@@ -73,19 +69,12 @@ def _curated(row: ExportRow, method_class: str) -> Curated:
 def _read(
     run_export: Path,
     ontology: Ontology,
-    class_of: Callable[[str], str | None],
-    uncurated: set[str],
     ids: TextIO,
 ) -> Iterator[list[str]]:
     """Every row, keyed by its first partner's accession."""
     for row in export_rows(run_export, ontology):
         ids.write(f"{row.stable_id}\t{row.cursor.path}\t{row.cursor.line}\n")
-        method_class = ""
-        if row.psimi_id != ROOT_TERM:
-            method_class = class_of(row.psimi_id) or ""
-            if not method_class:
-                uncurated.add(row.psimi_id)
-        curated = _curated(row, method_class)
+        curated = _curated(row)
         yield [curated.accession_1, *curated]
 
 
@@ -199,17 +188,14 @@ def load_curated(
     proteins: Path,
     scratch: Path,
     ontology: Ontology,
-    class_of: Callable[[str], str | None],
     viruses: CuratedViruses,
-) -> tuple[CuratedFiles, set[str]]:
-    """Read the export's description files. Returns the files, and the methods
-    no curated class covers, for the caller to fail on with IntAct's."""
-    uncurated_methods: set[str] = set()
+) -> CuratedFiles:
+    """Read the export's description files."""
     ids = scratch / "stable_ids"
     with ids.open("w", encoding="utf-8") as handle:
         by_first = files.sorted_file(
             scratch / "by_first",
-            _read(export, ontology, class_of, uncurated_methods, handle),
+            _read(export, ontology, handle),
         )
     _unique(ids)
 
@@ -249,8 +235,6 @@ def load_curated(
             exported = _viral_sites(by_site, export, scratch, out, observed)
 
     statuses = Counter(of(Curated, record).status for record in files.read(curated))
-    if statuses[ROOT]:
-        logger.warning("dropped %d curated rows coded %s", statuses[ROOT], ROOT_TERM)
     if statuses[ABSENT]:
         accessions = [r[0] for r in files.read(files.sort(absent, unique=True))]
         logger.warning(
@@ -258,4 +242,4 @@ def load_curated(
             statuses[ABSENT],
             ", ".join(accessions),
         )
-    return CuratedFiles(curated, sites, exported), uncurated_methods
+    return CuratedFiles(curated, sites, exported)

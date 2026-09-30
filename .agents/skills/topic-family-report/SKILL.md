@@ -17,7 +17,7 @@ Do not read or look for other reports, for any family, even ones sitting in the 
 
 - **Topic**, e.g. `ferroptosis`: its list of human proteins as Swiss-Prot accessions, with whatever it records on each, such as a role. The user provides it; ask if they haven't. The graph holds no topics: pass the accessions to queries as `$accessions`, and join the list's other columns, such as the role, to the results yourself.
 - **Viral family**, e.g. `Flaviviridae`.
-- **Evidence threshold.** The default is the **golden dataset**: an interaction backed by at least 2 distinct publications **or** at least 2 distinct detection methods.
+- **Evidence threshold.** The default is the **golden dataset**: an interaction backed by at least 2 distinct publications.
 - **Destination:** wherever the user asks. Ask if they haven't said.
 
 Query the live graph with the `query` tool of the `bpgraph` MCP server, as `docs/queries.md` describes, and nothing else. The schema is in `docs/schema.md`.
@@ -30,10 +30,10 @@ Draw on all of it. A report that uses only the interaction list is incomplete.
 - **VH interactions** between the family's viral proteins and human proteins, with counters for distinct publications, methods, descriptions and peptides.
 - **Descriptions.** Each one is a single observation: one pair, one publication, one detection method, and sometimes peptides with their direction.
 - **Publications**, with title, abstract, journal, year and authors. Abstracts are the main source for *what* an interaction does.
-- **Methods**, the PSI-MI detection method of each description (`method_name`), with its curated `method_class`. `n_methods` counts classes: two flavours of co-IP are one.
+- **Methods**, the PSI-MI detection method of each description (`method_name`).
 - **HH interactions** among the topic's proteins and around the targets: IntAct's and our own curation's, each description saying which (`intact_id`, `stable_ids`).
 - **UniProt** protein names and function text, for human and viral proteins alike.
-- **GO annotations**, on human proteins only, experimental only, each with the publication that showed it, and the full ancestor closure.
+- **GO annotations**, on human proteins only, experimental only, biological process and molecular function only (no cellular component, no `protein binding` subtree), each with the publication that showed it, and the full ancestor closure.
 - **Curated viruses** (`HBV`, `SARS-CoV-2`) and their NCBI family.
 - **The web**, to fill gaps: mechanisms an abstract leaves out, later papers, reviews, the family's biology.
 
@@ -45,7 +45,7 @@ Each of these is a decision to make for this family, not a fixed rule. State wha
 
 - Apply the threshold per interaction, meaning one viral protein with one human protein. A viral protein already pools its strains and accessions, so the counters are per curated protein; never sum evidence across viruses or viral proteins to push a pair over the bar.
 - Evidence below the threshold can matter. For example, a small family may have nothing golden, or a single-evidence interaction may complete a pattern the golden ones suggest. Include it if it helps, in its own clearly marked tier, and never mix it into the golden counts.
-- Two methods from a single high-throughput screen are weaker than two independent studies. Look at the publications and methods behind the counts.
+- Look at the publications and methods behind the counts.
 - The same human target hit by several viruses of the family suggests the interaction is conserved and functional. The same target hit by several unrelated viral proteins suggests convergence.
 
 **Bias and background**

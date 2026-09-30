@@ -173,7 +173,7 @@
   cy.on("tap", "edge", (e) => {
     const i = e.target.data();
     show(`${name(i.source)} – ${name(i.target)}`, [
-      ["publications", i.n_publications], ["methods", i.n_methods],
+      ["publications", i.n_publications],
     ]);
   });
   cy.on("tap", (e) => { if (e.target === cy) info.replaceChildren(); });

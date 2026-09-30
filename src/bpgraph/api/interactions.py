@@ -16,8 +16,7 @@ MATCH (publication:Publication {pmid: r.pmid})
 CREATE (description:Description {id: r.id, intact_id: r.intact_id,
                                  stable_ids: r.stable_ids,
                                  method_id: r.method_id,
-                                 method_name: r.method_name,
-                                 method_class: r.method_class})
+                                 method_name: r.method_name})
 CREATE (description)-[:SUPPORTS]->(interaction)
 CREATE (description)-[:REPORTED_IN]->(publication)"""
 
@@ -26,7 +25,7 @@ MATCH (peptide:Peptide {sequence: r.sequence})
 CREATE (description)-[:REPORTS {source_side: r.source_side}]->(peptide)"""
 
 COUNTERS = """n_descriptions: r.n_descriptions, n_publications: r.n_publications,
-n_methods: r.n_methods, n_peptides: r.n_peptides"""
+n_peptides: r.n_peptides"""
 
 
 def _interaction_statement(label: str) -> str:

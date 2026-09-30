@@ -15,6 +15,16 @@ read. Electronic and inferred annotations add no publication, and restate what
 other annotations say. A GOA row citing several pmids is one annotation per
 pmid, as an interaction observation is one description per publication.
 
+**Function only.** The layer says what a protein does, so two parts of GO stay
+out:
+
+- **`cellular_component`**, the whole namespace: where a protein sits is not
+  what it does, and much of it is proteomics listing every protein a purified
+  fraction held.
+- **`protein binding`** and every term below it: an annotation there says the
+  protein binds another protein, which is an interaction, and the interactions
+  say it better, naming the partner.
+
 - **`go-basic.obo`** is the release filtered to the relations annotations
   propagate over and guaranteed acyclic, which is exactly the traversal the
   schema promises. Of the relations it keeps, only `is_a` and `part_of` are
@@ -43,6 +53,7 @@ import tempfile
 from collections import Counter
 from collections.abc import Iterable, Iterator
 from enum import IntEnum
+from itertools import chain
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -59,6 +70,9 @@ ONTOLOGY_URL = "https://purl.obolibrary.org/obo/go/go-basic.obo"
 ANNOTATIONS_URL = "https://ftp.ebi.ac.uk/pub/databases/GO/goa/{0}/goa_{1}.gaf.gz"
 GOA_SPECIES = {HUMAN: ("HUMAN", "human")}
 """GOA's directory and file name for each host."""
+
+PROTEIN_BINDING = "GO:0005515"
+"""The term whose whole subtree is left out: interactions, restated."""
 
 EXPERIMENTAL = frozenset(
     {"EXP", "IDA", "IPI", "IMP", "IGI", "IEP", "HTP", "HDA", "HMP", "HGI", "HEP"}
@@ -163,6 +177,33 @@ def _ontology(scratch: Path) -> tuple[Path, Path, Path, str]:
     return terms, ids, edges, header.release
 
 
+def _excluded(terms: Path, edges: Path, scratch: Path) -> Path:
+    """The terms annotations may not use, as a sorted file of the term and
+    why: every `cellular_component` term, and `protein binding` with every
+    term below it. Below is the closure walked the other way, from the
+    subtree's root down the reversed edges."""
+    down = scratch / "down"
+    down.mkdir()
+    reversed_edges = files.sorted_file(
+        down / "reversed",
+        ([parent, child, relation] for child, parent, relation in files.read(edges)),
+    )
+    root = files.sorted_file(down / "root", [[PROTEIN_BINDING]])
+    below, _ = _closure(root, reversed_edges, down)
+    component = GoNamespace.CELLULAR_COMPONENT.value
+    return files.sorted_file(
+        scratch / "excluded",
+        chain(
+            (
+                [go_id, "cellular component"]
+                for go_id, _, namespace, _ in files.read(terms)
+                if namespace == component
+            ),
+            ([go_id, "protein binding"] for (go_id,) in files.read(below)),
+        ),
+    )
+
+
 def _candidates(lines: Iterable[str], dropped: Counter[str]) -> Iterator[list[str]]:
     """GOA rows that are experimental and cite PubMed, one per pmid, keyed by
     the term id as GOA gives it."""
@@ -196,10 +237,11 @@ def _candidates(lines: Iterable[str], dropped: Counter[str]) -> Iterator[list[st
 
 
 def _annotations(
-    host: HostPaths, ids: Path, scratch: Path, dropped: Counter[str]
+    host: HostPaths, ids: Path, excluded: Path, scratch: Path, dropped: Counter[str]
 ) -> tuple[Path, str]:
-    """The host's annotations, on current terms and Swiss-Prot entries,
-    distinct, as a sorted file keyed by accession. Returns it and the release."""
+    """The host's annotations, on current terms that are not excluded and on
+    Swiss-Prot entries, distinct, as a sorted file keyed by accession. Returns
+    it and the release."""
     url = ANNOTATIONS_URL.format(*GOA_SPECIES[host.taxon_id])
     logger.info("go: streaming %s", url)
     header = _Header(_lines(url), GENERATED)
@@ -216,10 +258,22 @@ def _annotations(
                 dropped["term not in the ontology"] += len(found)
                 continue
             primary = aliases[0][1]
-            for _, accession, *rest in found:
-                yield [accession, primary, *rest]
+            for _, *rest in found:
+                yield [primary, *rest]
 
-    by_accession = files.sorted_file(scratch / "by_accession", current())
+    by_current = files.sorted_file(scratch / "by_current", current())
+
+    def functional() -> Iterator[list[str]]:
+        for (go_id,), found, why in files.cogroup(
+            files.read(by_current), files.read(excluded), 1
+        ):
+            if why:
+                dropped[why[0][1]] += len(found)
+                continue
+            for _, accession, *rest in found:
+                yield [accession, go_id, *rest]
+
+    by_accession = files.sorted_file(scratch / "by_accession", functional())
     if unknown:
         logger.warning(
             "go: %d annotations name %d terms the ontology does not have (%s): "
@@ -300,7 +354,8 @@ def write_go(host: HostPaths, sources: Path) -> tuple[int, int, int, Counter[str
         scratch = Path(directory)
         logger.info("go: streaming %s", ONTOLOGY_URL)
         terms, ids, edges, go_release = _ontology(scratch)
-        annotations, goa_release = _annotations(host, ids, scratch, dropped)
+        excluded = _excluded(terms, edges, scratch)
+        annotations, goa_release = _annotations(host, ids, excluded, scratch, dropped)
         annotated = files.sorted_file(
             scratch / "annotated", ([r[1]] for r in files.read(annotations))
         )

@@ -1,10 +1,9 @@
 """The PSI-MI ontology: what a method's `psimi_id` is called, and what it is under.
 
 Every method name the graph holds comes from here, not from the export or
-IntAct, which each carry their own copy of the name. The hierarchy serves two
-readers: the IntAct filter, which drops a method or an interaction type by the
-branch it sits in, and the method classes of `bpgraph.methods`, which a term
-takes from the closest curated term above it.
+IntAct, which each carry their own copy of the name. The hierarchy tells
+`bpgraph.methods` which terms are detection methods, each of which must have a
+row in `curation/methods.tsv`.
 
 PSI-MI is a DAG over `is_a` alone; the file has no other relation. A retired
 term keeps its id and name but loses its parents, so it sits under nothing.

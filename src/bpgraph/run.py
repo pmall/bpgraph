@@ -45,12 +45,14 @@ class HostPaths:
 
     @property
     def intact(self) -> Path:
-        """IntAct's interactions of the host, filtered by `bpgraph.intact`."""
+        """IntAct's interactions of the host, filtered by `bpgraph.intact` on
+        `curation/methods.tsv` and `curation/publications.tsv`."""
         return self.directory / "intact.tsv"
 
     @property
     def go_annotations(self) -> Path:
-        """Its experimental GO annotations, cut from GOA by `bpgraph.go`."""
+        """Its experimental GO annotations of function, cut from GOA by
+        `bpgraph.go`."""
         return self.directory / "go_annotations.tsv"
 
     @property

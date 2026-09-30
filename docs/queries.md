@@ -26,10 +26,10 @@ uv run bpgraph-query --params '{"pid": "P36969"}' < query.cypher
 - **Topics** are not in the graph: a topic is a list of human proteins, kept by whoever asks, and a query takes its accessions as a parameter, `WHERE h.id IN $accessions`.
 - **Human proteins** are every Swiss-Prot human entry, about 20,000, including those no interaction names.
 - **Strains, accessions and sequences** are not in the graph. They are in the sequence vaults (`schema.md` §5), for verifying one protein, not for reasoning over many.
-- **Where a description comes from.** `d.intact_id <> ''` is IntAct's; `size(d.stable_ids) > 0` is our curation; both means IntAct and we recorded it independently. VH descriptions are always ours.
-- **GO.** Only human proteins are annotated, and only on experimental evidence. Each annotation is a node tied to its protein, its term and the publication showing it: roll up with `(h)<-[:ANNOTATES]-(a:Annotation)-[:OF_TERM]->(:GoTerm)-[:IS_A|PART_OF*0..]->(t)`, and read the experiment with `(a)-[:REPORTED_IN]->(b:Publication)`. A `qualifier` starting with `NOT|` negates the annotation, so always exclude it. `regulation of X` is not below `X`: match by name to include it. Term names are not indexed, but `toLower(g.name) CONTAINS 'ferroptosis'` is fast.
+- **Where a description comes from.** `d.intact_id <> ''` is IntAct's; `size(d.stable_ids) > 0` is our curation; both means IntAct and we recorded it independently. VH descriptions are always ours. IntAct's are only those whose detection method [`curation/methods.tsv`](../curation/methods.tsv) keeps — no light microscopy, ChIP or genetic assays; ours are all kept, whatever their method. A publication that re-reports an earlier one's experiment, listed in [`curation/publications.tsv`](../curation/publications.tsv), only adds the pairs the earlier one lacks: a pair BioPlex 2.0 and 3.0 both report has one BioPlex description, 2.0's, and counts one publication, not two.
+- **GO.** Only human proteins are annotated, only on experimental evidence, and only for what they do: biological process and molecular function, with no cellular component and no `protein binding` subtree. Each annotation is a node tied to its protein, its term and the publication showing it: roll up with `(h)<-[:ANNOTATES]-(a:Annotation)-[:OF_TERM]->(:GoTerm)-[:IS_A|PART_OF*0..]->(t)`, and read the experiment with `(a)-[:REPORTED_IN]->(b:Publication)`. A `qualifier` starting with `NOT|` negates the annotation, so always exclude it. `regulation of X` is not below `X`: match by name to include it. Term names are not indexed, but `toLower(g.name) CONTAINS 'ferroptosis'` is fast.
 - **Publications** back descriptions, annotations and function text alike: `(b)<-[:REPORTED_IN]-(d:Description)`, `(b)<-[:REPORTED_IN]-(a:Annotation)`, `(b)<-[:FUNCTION_CITES]-(p:Protein)`. They have a full-text index on `title` and `abstract`: `CALL db.idx.fulltext.queryNodes('Publication', 'hepatitis') YIELD node`.
-- **Evidence.** The counters on `:Interaction` are the confidence signal; there is no score. `n_methods` counts method **classes** (`d.method_class`), so two flavours of co-IP count once. A description carries its method as properties: `d.method_id`, `d.method_name`, `d.method_class`.
+- **Evidence.** The counters on `:Interaction` are the confidence signal; there is no score. A description carries its method as properties: `d.method_id`, `d.method_name`.
 
 ______________________________________________________________________
 
@@ -49,16 +49,15 @@ ______________________________________________________________________
     -[:PARENT]->   (:Taxon:Family {taxon_id:3700683, name:"Hepaciviridae"})
 
 (:Interaction:VH {id:"P36969|3052230:NS5A",
-                  n_descriptions:2, n_publications:1, n_methods:2, n_peptides:1})
+                  n_descriptions:2, n_publications:1, n_peptides:1})
     -[:INVOLVES {side:"a"}]-> (P36969)              <- human is always side a
     -[:INVOLVES {side:"b"}]-> (3052230:NS5A)
 
 (P36969)-[:INTERACTS_WITH {interaction_id:"P36969|3052230:NS5A", n_descriptions:2,
-                           n_publications:1, n_methods:2, n_peptides:1}]->(3052230:NS5A)
+                           n_publications:1, n_peptides:1}]->(3052230:NS5A)
 
 (:Description {id:"D-00417", intact_id:"", stable_ids:["D-00417"],
-               method_id:"MI:0018", method_name:"two hybrid",
-               method_class:"two hybrid"})
+               method_id:"MI:0018", method_name:"two hybrid"})
     -[:SUPPORTS]->     (:Interaction:VH {id:"P36969|3052230:NS5A"})
     -[:REPORTED_IN]->  (:Publication {pmid:"12345678", …})
     -[:REPORTS {source_side:"b"}]-> (:Peptide {sequence:"PSLKATC", length:7})
@@ -70,7 +69,7 @@ ______________________________________________________________________
     -[:REPORTED_IN]-> (:Publication {pmid:"24439385", …})
 ```
 
-`source_side: "b"` is what makes the peptide directed: side `b` is NS5A, so the peptide is *from* NS5A and *binds* GPX4. `D-00418` is the same pair by a second method, so it adds one `:Description`, bumps `n_descriptions` and `n_methods`, and reuses everything else. Had it observed NS5A on another HCV accession, it would still support the same interaction; which accession it used is in the viral vault.
+`source_side: "b"` is what makes the peptide directed: side `b` is NS5A, so the peptide is *from* NS5A and *binds* GPX4. `D-00418` is the same pair by a second method, so it adds one `:Description`, bumps `n_descriptions`, and reuses everything else. Had it observed NS5A on another HCV accession, it would still support the same interaction; which accession it used is in the viral vault.
 
 Publication 24439385 backs both GPX4's function text and its ferroptosis annotation: one node, reached from both.
 
@@ -145,8 +144,8 @@ MATCH (h)<-[:INVOLVES]-(i:VH)-[:INVOLVES]->(v:Viral)
 WHERE i.n_peptides = 0 AND i.n_publications >= 2
 MATCH (v)-[:IN_TAXON]->(virus:Virus)
 RETURN virus.name AS virus, v.name AS viral, h.name AS human,
-       i.n_publications, i.n_methods, i.n_descriptions
-ORDER BY i.n_publications DESC, i.n_methods DESC
+       i.n_publications, i.n_descriptions
+ORDER BY i.n_publications DESC, i.n_descriptions DESC
 ```
 
 ## Evidence behind a claim
@@ -194,7 +193,7 @@ RETURN b.title,
        [(b)<-[:FUNCTION_CITES]-(p:Protein) | p.name] AS functions
 ```
 
-Swap `namespace` to ask the same question along another axis: `molecular_function` for the activities a family engages, `cellular_component` for the compartments it reaches.
+Swap `namespace` to ask the same question along the other axis: `molecular_function` for the activities a family engages. Cellular component is not loaded, and neither is `protein binding` or anything below it: GO here is function only, and binding is what the interactions say.
 
 ## Human interactome context around a topic
 
