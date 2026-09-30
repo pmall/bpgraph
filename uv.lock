@@ -39,8 +39,11 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "falkordb" },
+    { name = "httpx2" },
     { name = "mcp" },
     { name = "pydantic" },
+    { name = "starlette" },
+    { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
@@ -56,8 +59,11 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "falkordb", specifier = ">=1.7.1" },
+    { name = "httpx2", specifier = ">=2.13.1" },
     { name = "mcp", specifier = ">=2.2.0" },
     { name = "pydantic", specifier = ">=2.13.5" },
+    { name = "starlette", specifier = ">=1.7.0" },
+    { name = "uvicorn", specifier = ">=0.54.0" },
 ]
 
 [package.metadata.requires-dev]

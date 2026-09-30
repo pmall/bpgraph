@@ -233,7 +233,7 @@ ______________________________________________________________________
 
 ## 4. DDL
 
-Verified against `falkordb/falkordb-server:latest` (graph module 4.20.6). A unique constraint needs a supporting index first, and is applied asynchronously: creating it answers `PENDING`, and `CALL db.constraints()` then reports it `UNDER CONSTRUCTION` until the scan finishes. Both mean *still building* — only `OPERATIONAL` and `FAILED` are verdicts. Applied after the data is loaded; see [`build.md`](build.md).
+Verified against `falkordb/falkordb-server:v4.22.0`, the version `docker-compose.yml` pins. A unique constraint needs a supporting index first, and is applied asynchronously: creating it answers `PENDING`, and `CALL db.constraints()` then reports it `UNDER CONSTRUCTION` until the scan finishes. Both mean *still building* — only `OPERATIONAL` and `FAILED` are verdicts. Applied after the data is loaded; see [`build.md`](build.md).
 
 ```cypher
 CREATE INDEX FOR (p:Protein)     ON (p.id);

@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "bpgraph": {
-      "type": "http",
-      "url": "http://localhost:8080/mcp"
-    }
-  }
-}

@@ -1,5 +1,8 @@
-"""The statements that write the graph, one module per part of the schema.
+"""The query API: the predefined queries consumers run, one endpoint each.
 
-Each function takes a stream of rows, already prepared, and hands them to a
-`GraphWriter`; nothing here reads a file or decides what a row holds.
+Every endpoint is a typed function taking the `Backend` first, then its
+parameters. `endpoints.ENDPOINTS` lists them; `app.py` serves each at its own
+path, and the MCP server mirrors each as a tool of the same name, signature
+and description. The API is the only thing that reaches the graph and the
+vaults; nothing it runs writes.
 """

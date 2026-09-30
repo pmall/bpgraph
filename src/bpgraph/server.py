@@ -1,53 +1,73 @@
-"""The MCP server: how agents explore the live graph.
+"""The MCP server, `bpgraph-mcp`: the only thing consumers see.
 
-`bpgraph-mcp` serves streamable HTTP at `/mcp`, on the host and port in
-`MCP_HOST` and `MCP_PORT`. Every tool is read-only: it runs through
-`bpgraph.query`, whose statements the database itself refuses to let write.
+Each endpoint of the query API is a tool of the same name, signature and
+description, which forwards its arguments to the API at `BPGRAPH_API` and
+hands back its answer. The server reaches neither the graph nor the vaults
+itself. It serves streamable HTTP at `/mcp`, on `MCP_HOST` and `MCP_PORT`.
 """
 
 import os
+from collections.abc import Awaitable, Callable
+from typing import Any
 
+import httpx2
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
-from redis.exceptions import ResponseError
 
-from bpgraph.query import Row, live_graph, rows
+from bpgraph.api.endpoints import ENDPOINTS, Endpoint
 
 INSTRUCTIONS = """\
-bpgraph is a FalkorDB knowledge graph of protein-protein interactions, \
-human-human and virus-human. Every interaction is backed by the publications \
-that report it, with their titles and abstracts; every human protein of \
-Swiss-Prot is there, with its UniProt function text and experimental GO \
-annotations of what it does (biological process and molecular function), \
-and each annotation and function text links to the publications \
-behind it; a viral protein is a curated one, such as HBx of HBV, pooled over \
-the strains it was observed on, and links to its curated virus and that \
-virus's family. \
-Query it in Cypher, read-only. The counters on an Interaction are its \
+bpgraph is a knowledge graph of protein-protein interactions, human-human \
+and virus-human. Every interaction is backed by the publications that report \
+it, with their titles and abstracts; every human protein of Swiss-Prot is \
+there, with its UniProt function text and experimental GO annotations of \
+what it does (biological process and molecular function), each tied to the \
+publication showing it; a viral protein is a curated one, such as HBx of HBV, \
+pooled over the strains it was observed on, under its curated virus and that \
+virus's family. Sequences are kept apart, one protein at a time. \
+Start with the predefined tools; they know the graph's pitfalls, such as \
+peptide direction and NOT annotations. Use `cypher` for what they do not \
+answer, after reading `schema`. The counters on an interaction are its \
 evidence, and the text is where the insight is: read abstracts and function \
 text once a question is narrowed down.\
 """
 
+API = os.environ.get("BPGRAPH_API", "http://127.0.0.1:8000")
+
 server = MCPServer(name="bpgraph", instructions=INSTRUCTIONS)
-graph = live_graph()
+client = httpx2.AsyncClient(base_url=API, timeout=300)
 
 
-@server.tool(annotations=ToolAnnotations(read_only_hint=True))
-def query(cypher: str, params: dict[str, object] | None = None) -> list[Row]:
-    """Run one read-only Cypher statement on the live graph.
+def _tool(endpoint: Endpoint) -> Callable[..., Awaitable[Any]]:
+    """A function with the endpoint's signature, calling it over HTTP."""
 
-    Pass values as `$name` placeholders with `params` rather than inlining
-    them. Each row is an object keyed by the returned columns; a node comes
-    back as its properties plus `_labels`, an edge as its properties plus
-    `_type`. Return the properties you need rather than whole nodes: protein
-    `function` and publication `abstract` are long.
-    """
-    try:
-        return rows(graph, cypher, params or {})
-    except ResponseError as error:
-        raise ToolError(str(error)) from error
+    async def call(**arguments: Any) -> Any:
+        parameters = endpoint.parameters.model_validate(arguments)
+        try:
+            response = await client.post(
+                f"/{endpoint.name}", content=parameters.model_dump_json()
+            )
+        except httpx2.HTTPError as error:
+            raise ToolError(f"the query API is unreachable: {error}") from error
+        if response.status_code != 200:
+            raise ToolError(response.json()["error"])
+        return endpoint.result.validate_json(response.content)
+
+    call.__name__ = endpoint.name
+    call.__doc__ = endpoint.description
+    call.__signature__ = endpoint.signature  # type: ignore[attr-defined]
+    return call
+
+
+for endpoint in ENDPOINTS.values():
+    server.add_tool(
+        _tool(endpoint),
+        name=endpoint.name,
+        description=endpoint.description,
+        annotations=ToolAnnotations(read_only_hint=True),
+    )
 
 
 def main() -> None:

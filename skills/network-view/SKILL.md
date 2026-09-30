@@ -19,7 +19,7 @@ Three steps:
 
 ## 1. The dataset
 
-Query the live graph with the `query` tool of the `bpgraph` MCP server, as `docs/queries.md` describes, and nothing else. The schema is in `docs/schema.md`. Then write:
+Query the live graph through the tools of the `bpgraph` MCP server, and nothing else: its predefined queries first, which handle the graph's pitfalls, and `cypher` for what they do not answer. Its `schema` tool describes the graph. Then write:
 
 ```json
 {
