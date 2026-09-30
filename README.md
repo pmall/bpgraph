@@ -9,7 +9,7 @@ This repository holds:
 - **the graph server** — FalkorDB and its browser UI, run with Docker Compose;
 - **the ingestion** — a Python package that turns public sources and an export of the curation database into a fresh, validated graph and its sequence vaults;
 - **the MCP server** — read-only tools through which agents explore the graph;
-- **the analyses** — skills in `.agents/skills` that pair an analysis's instructions with scripts.
+- **the analyses** — skills in `skills` that pair an analysis's instructions with scripts.
 
 Curation itself happens in a separate relational database. The graph is never edited in place: each run is built into a staging graph, checked, and swapped in whole. Where it is heading — many hosts, sequence and full-text vaults, protein language model features — is in [`docs/roadmap.md`](docs/roadmap.md).
 
@@ -60,7 +60,7 @@ The live graph is the only source of truth; `data/` holds build inputs. Agents q
 uv run bpgraph-query "MATCH (v:Virus) RETURN v.name"
 ```
 
-To draw a subnetwork, gather it into a `network.json` and render it; no database connection is needed. The `network-view` skill in `.agents/skills` describes the file:
+To draw a subnetwork, gather it into a `network.json` and render it; no database connection is needed. The `network-view` skill in `skills` describes the file:
 
 ```sh
 uv run bpgraph-network ferroptosis-flaviviridae.json   # -> ferroptosis-flaviviridae.cytoscape.html
