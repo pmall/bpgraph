@@ -80,7 +80,6 @@ The deduplicated claim that two proteins interact. Because a viral protein pools
 | `id`             | str  | **key**, derived (§3)                                         |
 | `n_descriptions` | int  | supporting descriptions                                       |
 | `n_publications` | int  | **distinct** publications                                     |
-| `n_methods`      | int  | **distinct** method **classes** of its descriptions           |
 | `n_peptides`     | int  | distinct peptides; `> 0` answers "do we have a peptide here?" |
 
 Slot ordering is fixed, carries no biological direction, and exists only to make the id deterministic:
@@ -96,24 +95,23 @@ Human-first generalizes: add a `:BH` later and queries entering from the human s
 
 One observation of an interaction: one protein pair, one publication, one method, and its peptides. Its method is three properties; everything else about it is its edges. Its type is its interaction's — `(d)-[:SUPPORTS]->(:VH)`.
 
-A human–human description comes from IntAct, from our curation, or from both. Our curated row **is** an IntAct description when both have the same pair, the same pmid and the same method class; it then adds its `stable_id` to IntAct's description rather than a description of its own. A virus–human description is always ours.
+A human–human description comes from IntAct, from our curation, or from both. Our curated row **is** an IntAct description when both have the same pair and the same pmid; it then adds its `stable_id` to IntAct's description rather than a description of its own. A virus–human description is always ours.
 
-| property       | type  | notes                                                                    |
-| -------------- | ----- | ------------------------------------------------------------------------ |
-| `id`           | str   | **key**, derived (§3)                                                    |
-| `intact_id`    | str   | IntAct's interaction id, `EBI-…`; `''` when IntAct does not have it      |
-| `stable_ids`   | [str] | our curated rows that are this observation; `[]` when none are           |
-| `method_id`    | str   | PSI-MI id of the detection method, e.g. `MI:0018`                        |
-| `method_name`  | str   | PSI-MI's name, e.g. `two hybrid`                                         |
-| `method_class` | str   | curated class of independent evidence, e.g. `two hybrid`                 |
+| property      | type  | notes                                                               |
+| ------------- | ----- | ------------------------------------------------------------------- |
+| `id`          | str   | **key**, derived (§3)                                               |
+| `intact_id`   | str   | IntAct's interaction id, `EBI-…`; `''` when IntAct does not have it |
+| `stable_ids`  | [str] | our curated rows that are this observation; `[]` when none are      |
+| `method_id`   | str   | PSI-MI id of the detection method, e.g. `MI:0018`                   |
+| `method_name` | str   | PSI-MI's name, e.g. `two hybrid`                                    |
 
-The method is a property because it joins nothing: a description has exactly one, and no query walks from a method to its descriptions. Methods too close to count as independent confirmation share a `method_class`: [`curation/methods.tsv`](../curation/methods.tsv), explained in [`curation/methods.md`](../curation/methods.md). A term takes the class of the closest curated term above it in PSI-MI.
+The method is a property because it joins nothing: a description has exactly one, and no query walks from a method to its descriptions.
 
 So `intact_id <> ''` is IntAct's, `size(stable_ids) > 0` is ours, and both is an observation IntAct and we recorded independently. One IntAct id may hold several descriptions: IntAct expands a complex into one row per pair.
 
 ### `:Annotation`
 
-One experimental GO annotation of a human protein, in one publication. It is a node for the reason a description is: it joins a protein, a term and a publication.
+One experimental GO annotation of a human protein, in one publication, saying what the protein does. It is a node for the reason a description is: it joins a protein, a term and a publication.
 
 | property        | type | notes                                                                                          |
 | --------------- | ---- | ---------------------------------------------------------------------------------------------- |
@@ -123,6 +121,8 @@ One experimental GO annotation of a human protein, in one publication. It is a n
 | `assigned_by`   | str  | the database that made it, e.g. `UniProt`                                                      |
 
 Electronic and inferred annotations are not loaded: they cite no publication. A GOA row citing several pmids is one annotation per pmid.
+
+**Function only.** Two parts of GO are not loaded. `cellular_component`, the whole namespace, because where a protein sits is not what it does, and much of it is proteomics listing everything a purified fraction held. And `protein binding` (`GO:0005515`) with every term below it — `identical protein binding`, `enzyme binding`, `ubiquitin protein ligase binding`… — because such an annotation says the protein binds another protein: an interaction, which `:Interaction` states better, naming the partner.
 
 ### `:Peptide`
 
@@ -137,16 +137,16 @@ A peptide is directed — derived *from* one partner, binding the other — but 
 
 ### `:GoTerm`
 
-| property    | type | notes                                                              |
-| ----------- | ---- | ------------------------------------------------------------------ |
-| `go_id`     | str  | **key**, e.g. `GO:0097707`                                         |
-| `name`      | str  |                                                                    |
-| `namespace` | str  | `biological_process` / `molecular_function` / `cellular_component` |
-| `obsolete`  | bool |                                                                    |
+| property    | type | notes                                       |
+| ----------- | ---- | ------------------------------------------- |
+| `go_id`     | str  | **key**, e.g. `GO:0097707`                  |
+| `name`      | str  |                                             |
+| `namespace` | str  | `biological_process` / `molecular_function` |
+| `obsolete`  | bool |                                             |
 
-Annotated terms **plus their full ancestor closure**, so rolling up to a coarse process is a traversal, not a lookup table. Only the three namespace roots have no parent; every other term sits under one. All three namespaces are loaded and a query cuts to the one it wants on `namespace` — `biological_process` is the process axis, `molecular_function` the mechanistic one, `cellular_component` the compartment one.
+Annotated terms **plus their full ancestor closure**, so rolling up to a coarse process is a traversal, not a lookup table. Only the two namespace roots have no parent; every other term sits under one. A query cuts to the namespace it wants — `biological_process` is the process axis, `molecular_function` the mechanistic one.
 
-GO is the structured functional layer; `description` and `function` on `:Protein` say the same thing in prose. Annotated terms are reached through `:Annotation`. UniProt's smaller controlled vocabularies — keywords, InterPro/Pfam — would each follow this pattern if a query ever wants them; subcellular location arrives as `cellular_component` already. None are modelled until then.
+GO is the structured functional layer; `description` and `function` on `:Protein` say the same thing in prose. Annotated terms are reached through `:Annotation`. UniProt's smaller controlled vocabularies — keywords, InterPro/Pfam — would each follow this pattern if a query ever wants them. None are modelled until then.
 
 **Only human proteins are annotated.** GOA annotates a whole accession, while a viral protein here is one mature chain of a polyprotein, and nothing in GOA says which chain a term belongs to.
 
@@ -182,13 +182,12 @@ Entering from a protein, compare that protein's own `INVOLVES.side` against `sou
 
 The shortcut from one partner of an interaction to the other, so a walk over the interactome is one hop instead of `Protein ← INVOLVES ← Interaction → INVOLVES → Protein` with a `side` to compare. One edge per `:Interaction`, always from side `a` to side `b` and always matched **undirected**: `(p)-[:INTERACTS_WITH]-(q)`. Whether it is human–human or virus–human is read from the endpoints' `:Human` and `:Viral` labels.
 
-| property         | type | notes                                                   |
-| ---------------- | ---- | ------------------------------------------------------- |
-| `interaction_id` | str  | the `:Interaction` it shortcuts, for the evidence       |
-| `n_descriptions` | int  | copied from the interaction, as are the three below     |
-| `n_publications` | int  |                                                         |
-| `n_methods`      | int  |                                                         |
-| `n_peptides`     | int  |                                                         |
+| property         | type | notes                                               |
+| ---------------- | ---- | --------------------------------------------------- |
+| `interaction_id` | str  | the `:Interaction` it shortcuts, for the evidence   |
+| `n_descriptions` | int  | copied from the interaction, as are the three below |
+| `n_publications` | int  |                                                     |
+| `n_peptides`     | int  |                                                     |
 
 `:Interaction` stays the source of truth: the evidence, the peptides and their direction are reached through it, and the audit checks that the edge agrees with it. A homodimer is a self-loop, so a query ranking partners still excludes it with `WHERE partner <> self`.
 
@@ -275,10 +274,10 @@ Sequences are not in the graph. A build writes them beside it, one SQLite file p
 
 **`viral.sqlite`**:
 
-| table         | key                                        | columns                                                                  |
-| ------------- | ------------------------------------------ | ------------------------------------------------------------------------ |
-| `entry`       | `accession`                                | `taxon_id`, `taxon_name` (the strain), `description`                     |
+| table         | key                                        | columns                                                                   |
+| ------------- | ------------------------------------------ | ------------------------------------------------------------------------- |
+| `entry`       | `accession`                                | `taxon_id`, `taxon_name` (the strain), `description`                      |
 | `mature`      | `protein_id`, `accession`, `start`, `stop` | where a viral protein sits on an entry, 1-based inclusive, and `sequence` |
-| `observation` | `description_id`                           | `accession`: the viral entry a VH description observed                   |
+| `observation` | `description_id`                           | `accession`: the viral entry a VH description observed                    |
 
 A viral protein's sequences are its `mature` rows, as curation recorded them: as many as places it was observed at. An entry's `description` is UniProt's protein name, empty for an entry UniProt has retired.

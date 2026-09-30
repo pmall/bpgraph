@@ -10,7 +10,9 @@ data/           one directory per run: export/ as the database wrote it, what
                 silo (hosts/9606/, viral/), and the vaults the build
                 writes. Gitignored
 curation/       viruses.tsv, the curated viruses; viruses.md, why;
-                methods.tsv, the method classes; methods.md, why
+                methods.tsv, the IntAct keep flag; methods.md, where it comes from;
+                publications.tsv, publications that repeat one experiment;
+                publications.md, how IntAct resolves them
 src/bpgraph/
   config.py     env-driven connection settings
   client.py     thin FalkorDB wrapper: batched, parameterized writes
@@ -24,11 +26,12 @@ src/bpgraph/
   taxonomy.py   the NCBI dump in SQLite, bpgraph-taxonomy; families
   viruses.py    curation/viruses.tsv, and placing a taxon under its virus
   psimi.py      the PSI-MI ontology, bpgraph-psimi
-  methods.py    curation/methods.tsv on PSI-MI, bpgraph-methods
+  methods.py    curation/methods.tsv, the IntAct keep flag, bpgraph-methods
+  publications.py  curation/publications.tsv, the repeating publication groups
   obo.py        the OBO format GO and PSI-MI share
   swissprot.py  a host's Swiss-Prot and sequences, bpgraph-swissprot
   intact.py     a host's IntAct, filtered, bpgraph-intact
-  go.py         a host's experimental GO annotations and their terms, bpgraph-go
+  go.py         a host's experimental, functional GO annotations, bpgraph-go
   uniprot.py    the viral silo's function text and protein names, bpgraph-functions
   pubmed.py     each silo's publication metadata, bpgraph-pubmed
   vault.py      the sequence vaults: writing them, reading one protein

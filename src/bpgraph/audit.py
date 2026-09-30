@@ -13,9 +13,15 @@ the point.** Deriving them from the loaders or the writers would only prove the
 code agrees with itself; written out separately, they disagree when either side
 drifts, and that disagreement is the finding.
 
+The curated lists are read, not restated: `curation/methods.tsv` says which
+methods IntAct's descriptions may carry, and `curation/publications.tsv` which
+publications repeat one experiment. They are the rules, not code.
+
 Every check is one read-only query that returns the rows *breaking* its rule,
 so an empty result is a pass. Queries end in `RETURN` — the runner appends the
-limit.
+limit. The audit must stay quick enough to run after every build: count a
+node's edges with `outdegree` or `indegree`, never a pattern comprehension,
+and never walk a variable-length path down the GO DAG, whose paths explode.
 """
 
 from collections.abc import Mapping, Sequence
@@ -23,12 +29,21 @@ from dataclasses import dataclass
 
 from falkordb.graph import Graph
 
+from bpgraph.methods import read_methods
+from bpgraph.publications import read_groups
+
 EXAMPLES = 5
 
-GO_ROOTS = ("GO:0008150", "GO:0003674", "GO:0005575")
-"""The three namespace roots: biological process, molecular function,
-cellular component. Nothing sits above them, so they are the one place the
-ancestor closure is allowed to stop."""
+GO_ROOTS = ("GO:0008150", "GO:0003674")
+"""The two namespace roots loaded: biological process and molecular function.
+Nothing sits above them, so they are the one place the ancestor closure is
+allowed to stop."""
+
+GO_NAMESPACES = ("biological_process", "molecular_function")
+"""What GO says about a protein's function; `cellular_component` is left out."""
+
+PROTEIN_BINDING = "GO:0005515"
+"""No annotation may sit at or below it: those are interactions, restated."""
 
 NODE_PROPERTIES: Mapping[str, Mapping[str, str]] = {
     "Protein": {
@@ -51,7 +66,6 @@ NODE_PROPERTIES: Mapping[str, Mapping[str, str]] = {
         "id": "String",
         "n_descriptions": "Integer",
         "n_publications": "Integer",
-        "n_methods": "Integer",
         "n_peptides": "Integer",
     },
     "Description": {
@@ -60,7 +74,6 @@ NODE_PROPERTIES: Mapping[str, Mapping[str, str]] = {
         "stable_ids": "List",
         "method_id": "String",
         "method_name": "String",
-        "method_class": "String",
     },
     "Annotation": {
         "id": "String",
@@ -105,7 +118,6 @@ RELATIONSHIPS: tuple[tuple[str, str, str, tuple[str, ...] | None], ...] = (
             "interaction_id",
             "n_descriptions",
             "n_publications",
-            "n_methods",
             "n_peptides",
         ),
     ),
@@ -207,6 +219,13 @@ def _edge_shape(
 
 KNOWN_LABELS = (*NODE_PROPERTIES, "Taxon")
 
+NOT_KEPT = sorted(m.psimi_id for m in read_methods() if not m.keep)
+"""The detection methods `curation/methods.tsv` flags `no`: no IntAct
+description carries one. Our curated descriptions may."""
+
+GROUPED = sorted([group, pmid] for pmid, group in read_groups().items())
+"""`[group, pmid]` for every publication of `curation/publications.tsv`."""
+
 INVARIANTS: tuple[Check, ...] = (
     Check(
         "graph.labels",
@@ -226,9 +245,10 @@ INVARIANTS: tuple[Check, ...] = (
         "Interaction.slots",
         "two INVOLVES edges, one side 'a' and one side 'b'",
         "MATCH (i:Interaction)\n"
-        "WITH i, [(i)-[r:INVOLVES]->() | r.side] AS sides\n"
-        "WHERE size(sides) <> 2 OR NOT 'a' IN sides OR NOT 'b' IN sides\n"
-        "RETURN i.id AS id, sides",
+        "WHERE outdegree(i, 'INVOLVES') <> 2\n"
+        "   OR NOT (i)-[:INVOLVES {side: 'a'}]->()\n"
+        "   OR NOT (i)-[:INVOLVES {side: 'b'}]->()\n"
+        "RETURN i.id AS id, outdegree(i, 'INVOLVES') AS edges",
     ),
     Check(
         "Interaction.id",
@@ -257,8 +277,8 @@ INVARIANTS: tuple[Check, ...] = (
         "Description.evidence",
         "one interaction and one publication behind every description",
         "MATCH (d:Description)\n"
-        "WITH d, size([(d)-[:SUPPORTS]->() | 1]) AS claims,\n"
-        "        size([(d)-[:REPORTED_IN]->() | 1]) AS papers\n"
+        "WITH d, outdegree(d, 'SUPPORTS') AS claims,\n"
+        "        outdegree(d, 'REPORTED_IN') AS papers\n"
         "WHERE claims <> 1 OR papers <> 1\n"
         "RETURN d.id AS id, claims, papers",
     ),
@@ -278,12 +298,21 @@ INVARIANTS: tuple[Check, ...] = (
         "one protein, one term and one publication behind every annotation, "
         "on experimental evidence",
         "MATCH (a:Annotation)\n"
-        "WITH a, size([(a)-[:ANNOTATES]->() | 1]) AS proteins,\n"
-        "        size([(a)-[:OF_TERM]->() | 1]) AS terms,\n"
-        "        size([(a)-[:REPORTED_IN]->() | 1]) AS papers\n"
+        "WITH a, outdegree(a, 'ANNOTATES') AS proteins,\n"
+        "        outdegree(a, 'OF_TERM') AS terms,\n"
+        "        outdegree(a, 'REPORTED_IN') AS papers\n"
         "WHERE proteins <> 1 OR terms <> 1 OR papers <> 1\n"
         f"   OR NOT a.evidence_code IN {list(EXPERIMENTAL)}\n"
         "RETURN a.id AS id, proteins, terms, papers, a.evidence_code AS code",
+    ),
+    Check(
+        "Annotation.functional",
+        "no annotation is to a cellular component, or at or below protein binding",
+        "MATCH (a:Annotation)-[:OF_TERM]->(g:GoTerm)\n"
+        f"WHERE NOT g.namespace IN {list(GO_NAMESPACES)}\n"
+        "   OR (g)-[:IS_A|PART_OF*0..]->(:GoTerm {go_id: "
+        f"'{PROTEIN_BINDING}'}})\n"
+        "RETURN a.id AS id, g.go_id AS go_id, g.name AS name",
     ),
     Check(
         "Annotation.id",
@@ -303,13 +332,31 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN d.id AS id, r.source_side AS source_side",
     ),
     Check(
+        "Description.method_kept",
+        "an IntAct description carries a method curation/methods.tsv keeps",
+        "MATCH (d:Description)\n"
+        f"WHERE d.intact_id <> '' AND d.method_id IN {NOT_KEPT}\n"
+        "RETURN d.id AS id, d.method_id AS method_id, d.method_name AS method_name",
+    ),
+    Check(
+        "Description.unrepeated",
+        "no interaction has IntAct descriptions from two publications of one "
+        "group of curation/publications.tsv",
+        f"UNWIND {GROUPED} AS grouped\n"
+        "MATCH (b:Publication {pmid: grouped[1]})<-[:REPORTED_IN]-(d:Description)\n"
+        "      -[:SUPPORTS]->(i:Interaction)\n"
+        "WHERE d.intact_id <> ''\n"
+        "WITH grouped[0] AS group, i, collect(DISTINCT b.pmid) AS pmids\n"
+        "WHERE size(pmids) > 1\n"
+        "RETURN group, i.id AS id, pmids",
+    ),
+    Check(
         "Description.method",
-        "a method id is a PSI-MI id, and its name and class are never empty",
+        "a method id is a PSI-MI id, and its name is never empty",
         "MATCH (d:Description)\n"
         "WHERE NOT d.method_id STARTS WITH 'MI:' OR size(d.method_id) <> 7\n"
         "   OR d.method_name = ''\n"
-        "   OR d.method_class = ''\n"
-        "RETURN d.id AS id, d.method_id AS method_id, d.method_class AS method_class",
+        "RETURN d.id AS id, d.method_id AS method_id, d.method_name AS method_name",
     ),
     Check(
         "Interaction.counters",
@@ -319,11 +366,10 @@ INVARIANTS: tuple[Check, ...] = (
         "OPTIONAL MATCH (d)-[:REPORTS]->(x:Peptide)\n"
         "WITH i, count(DISTINCT d) AS descriptions,\n"
         "        count(DISTINCT b) AS publications,\n"
-        "        count(DISTINCT d.method_class) AS methods,\n"
         "        count(DISTINCT x) AS peptides\n"
         "WHERE i.n_descriptions <> descriptions OR i.n_publications <> publications\n"
-        "   OR i.n_methods <> methods OR i.n_peptides <> peptides\n"
-        "RETURN i.id AS id, descriptions, publications, methods, peptides",
+        "   OR i.n_peptides <> peptides\n"
+        "RETURN i.id AS id, descriptions, publications, peptides",
     ),
     Check(
         "INTERACTS_WITH.shortcut",
@@ -335,7 +381,6 @@ INVARIANTS: tuple[Check, ...] = (
         "WHERE size(edges) <> 1\n"
         "   OR edges[0].n_descriptions <> i.n_descriptions\n"
         "   OR edges[0].n_publications <> i.n_publications\n"
-        "   OR edges[0].n_methods <> i.n_methods\n"
         "   OR edges[0].n_peptides <> i.n_peptides\n"
         "RETURN i.id AS id, size(edges) AS edges",
     ),
@@ -350,9 +395,8 @@ INVARIANTS: tuple[Check, ...] = (
         "Viral.taxon",
         "a viral protein has one IN_TAXON edge",
         "MATCH (p:Viral)\n"
-        "WITH p, [(p)-[:IN_TAXON]->(t) | t.taxon_id] AS taxa\n"
-        "WHERE size(taxa) <> 1\n"
-        "RETURN p.id AS id, taxa",
+        "WHERE outdegree(p, 'IN_TAXON') <> 1\n"
+        "RETURN p.id AS id, outdegree(p, 'IN_TAXON') AS taxa",
     ),
     Check(
         "Human.taxon",
@@ -363,9 +407,8 @@ INVARIANTS: tuple[Check, ...] = (
         "Taxon.parent",
         "a virus has at most one family",
         "MATCH (t:Virus)\n"
-        "WITH t, [(t)-[:PARENT]->(p) | p.taxon_id] AS parents\n"
-        "WHERE size(parents) > 1\n"
-        "RETURN t.taxon_id AS taxon_id, parents",
+        "WHERE outdegree(t, 'PARENT') > 1\n"
+        "RETURN t.taxon_id AS taxon_id, outdegree(t, 'PARENT') AS parents",
     ),
     Check(
         "Taxon.used",
@@ -376,6 +419,13 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN t.taxon_id AS taxon_id, t.name AS name",
     ),
     Check(
+        "GoTerm.namespace",
+        "every term is a biological process or a molecular function",
+        "MATCH (t:GoTerm)\n"
+        f"WHERE NOT t.namespace IN {list(GO_NAMESPACES)}\n"
+        "RETURN t.go_id AS go_id, t.namespace AS namespace",
+    ),
+    Check(
         "GoTerm.ancestors",
         "every term sits under a parent, up to a namespace root",
         "MATCH (t:GoTerm)\n"
@@ -384,11 +434,14 @@ INVARIANTS: tuple[Check, ...] = (
         f"  AND NOT t.go_id IN {list(GO_ROOTS)}\n"
         "RETURN t.go_id AS go_id, t.name AS name",
     ),
+    # One step at a time: a term that is not annotated but has a child leads,
+    # down acyclic edges, to one that is.
     Check(
         "GoTerm.reached",
         "every term is annotated, or lies above one that is",
         "MATCH (t:GoTerm)\n"
-        "WHERE NOT (t)<-[:IS_A|PART_OF*0..]-(:GoTerm)<-[:OF_TERM]-(:Annotation)\n"
+        "WHERE NOT (t)<-[:OF_TERM]-(:Annotation)\n"
+        "  AND NOT (t)<-[:IS_A|PART_OF]-(:GoTerm)\n"
         "RETURN t.go_id AS go_id, t.name AS name",
     ),
     Check(

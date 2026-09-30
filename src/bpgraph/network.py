@@ -40,7 +40,6 @@ class NetworkInteraction(Model):
     source: str
     target: str
     n_publications: int
-    n_methods: int
 
 
 class Network(Model):

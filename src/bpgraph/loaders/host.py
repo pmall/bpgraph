@@ -1,13 +1,15 @@
 """A host's interactions: IntAct's, with our curated rows merged onto them.
 
-A curated row *is* an IntAct description when both have the same pair, the
-same pmid and the same method class; it then adds its `stable_id` to that
-description rather than being a description of its own. One IntAct pmid may
-hold several descriptions of one pair in one class, and every curated row
-matching them goes to the one with the lowest IntAct id, so a build is
-deterministic. A curated row IntAct has not got is a description of its own.
+A curated row *is* an IntAct description when both have the same pair and
+the same pmid; it then adds its `stable_id` to that description rather than
+being a description of its own. The method is not compared: curators and IntAct
+code one experiment with different PSI-MI terms, `two hybrid` against `two
+hybrid array`. One IntAct pmid may hold several descriptions of one pair, and
+every curated row matching them goes to the one with the lowest IntAct id, so a
+build is deterministic. A curated row IntAct has not got is a description of
+its own.
 
-Both sources are written to one file keyed by pair, pmid and class, IntAct
+Both sources are written to one file keyed by pair and pmid, IntAct
 first and in IntAct order within a key, and sorted on disk: a key's rows then
 arrive together, and nothing else is held.
 
@@ -39,25 +41,15 @@ def _order(intact_id: str) -> str:
     return f"{int(digits):015d}" if digits.isdigit() else "9" * 15
 
 
-def _merge_keys(
-    host: HostPaths,
-    curated: Path,
-    class_of: Callable[[str], str | None],
-    uncurated: set[str],
-) -> Iterator[list[str]]:
-    """`[a, b, pmid, class, source, order, intact_id, psimi_id, stable_id]`."""
+def _merge_keys(host: HostPaths, curated: Path) -> Iterator[list[str]]:
+    """`[a, b, pmid, source, order, intact_id, psimi_id, stable_id]`."""
     for cursor, row in rows(host.intact):
         psimi_id = required(cursor, row, "psimi_id")
-        method_class = class_of(psimi_id)
-        if method_class is None:
-            uncurated.add(psimi_id)
-            continue
         intact_id = required(cursor, row, "intact_id")
         yield [
             required(cursor, row, "accession1"),
             required(cursor, row, "accession2"),
             required(cursor, row, "pmid"),
-            method_class,
             INTACT,
             _order(intact_id),
             intact_id,
@@ -73,7 +65,6 @@ def _merge_keys(
             a,
             b,
             row.pmid,
-            row.method_class,
             CURATED,
             "",
             "",
@@ -86,20 +77,15 @@ def hh_descriptions(
     host: HostPaths,
     curated: Path,
     scratch: Path,
-    class_of: Callable[[str], str | None],
     name_of: Callable[[str], str],
-    uncurated: set[str],
     out: TextIO,
 ) -> None:
-    """Write the host's descriptions. Methods with no curated class are added
-    to `uncurated`, for the caller to fail on."""
-    merged = files.sorted_file(
-        scratch / "hh_merge", _merge_keys(host, curated, class_of, uncurated)
-    )
+    """Write the host's descriptions."""
+    merged = files.sorted_file(scratch / "hh_merge", _merge_keys(host, curated))
     counts = {"intact": 0, "merged": 0, "own": 0}
 
     def description(
-        a: str, b: str, pmid: str, method_class: str, psimi_id: str, **ids: str
+        a: str, b: str, pmid: str, psimi_id: str, **ids: str
     ) -> Description:
         return Description(
             interaction_id=interaction_id(a, b),
@@ -109,22 +95,20 @@ def hh_descriptions(
             pmid=pmid,
             method_id=psimi_id,
             method_name=name_of(psimi_id),
-            method_class=method_class,
             **ids,
         )
 
-    for (a, b, pmid, method_class), found in files.groups(files.read(merged), 4):
-        intact = [r for r in found if r[4] == INTACT]
-        ours = [r[8] for r in found if r[4] == CURATED]
+    for (a, b, pmid), found in files.groups(files.read(merged), 3):
+        intact = [r for r in found if r[3] == INTACT]
+        ours = [r[7] for r in found if r[3] == CURATED]
         for position, record in enumerate(intact):
-            intact_id, psimi_id = record[6], record[7]
-            if position and intact_id == intact[position - 1][6]:
+            intact_id, psimi_id = record[5], record[6]
+            if position and intact_id == intact[position - 1][5]:
                 raise LoadError(f"intact.tsv: {intact_id} {a} {b} appears twice")
             row = description(
                 a,
                 b,
                 pmid,
-                method_class,
                 psimi_id,
                 id=intact_description_id(intact_id, a, b),
                 intact_id=intact_id,
@@ -136,16 +120,15 @@ def hh_descriptions(
             counts["merged"] += len(ours)
             continue
         counts["own"] += len(ours)
-        for record in (r for r in found if r[4] == CURATED):
+        for record in (r for r in found if r[3] == CURATED):
             row = description(
                 a,
                 b,
                 pmid,
-                method_class,
-                record[7],
-                id=record[8],
+                record[6],
+                id=record[7],
                 intact_id="",
-                stable_ids=record[8],
+                stable_ids=record[7],
             )
             out.write("\t".join(row) + "\n")
     logger.info(

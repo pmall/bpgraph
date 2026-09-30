@@ -1,77 +1,343 @@
-psimi_id	name	class
-MI:0232	transcriptional complementation assay	two hybrid
-MI:2412	membrane two hybrid	membrane two hybrid
-MI:0090	protein complementation assay	protein complementation assay
-MI:0809	bimolecular fluorescence complementation	protein complementation assay
-MI:2170	bimolecular luminiscence complementation	protein complementation assay
-MI:2219	gaussia luciferase protein tag	protein complementation assay
-MI:1215	bifc tag	protein complementation assay
-MI:0004	affinity chromatography technology	affinity purification
-MI:0225	chromatin immunoprecipitation array	affinity purification
-MI:0400	affinity technology	affinity purification
-MI:0946	miniaturized immunoprecipitation	affinity purification
-MI:0943	detection by mass spectrometry	affinity purification
-MI:1234	silac	affinity purification
-MI:0427	Identification by mass spectrometry	affinity purification
-MI:0082	peptide massfingerprinting	affinity purification
-MI:0032	de novo protein sequencing by mass spectrometry	affinity purification
-MI:0068	mass detection of residue modification	affinity purification
-MI:2223	inference by quantitative co-purification	affinity purification
-MI:0944	mass spectrometry study of hydrogen/deuterium exchange	biophysical
-MI:1246	ion mobility mass spectrometry of complexes	biophysical
-MI:0096	pull down	pull down
-MI:2437	holdup assay	pull down
-MI:0008	array technology	protein array
-MI:0921	surface plasmon resonance array	protein array
-MI:0892	solid phase assay	binding assay
-MI:0411	enzyme linked immunosorbent assay	binding assay
-MI:0405	competition binding	binding assay
-MI:0440	saturation binding	binding assay
-MI:0034	display technology	display technology
-MI:0115	yeast display	display technology
-MI:0813	proximity ligation assay	proximity ligation assay
-MI:0091	chromatography technology	cofractionation
-MI:0071	molecular sieving	cofractionation
-MI:0027	cosedimentation	cofractionation
-MI:0982	electrophoretic mobility-based method	cofractionation
-MI:0070	mobility shift	cofractionation
-MI:1232	aggregation assay	aggregation assay
-MI:0928	filter trap assay	aggregation assay
-MI:0953	polymerization	aggregation assay
-MI:1313	proximity labelling technology	proximity labelling
-MI:0030	cross-linking study	cross-linking
-MI:0415	enzymatic study	enzymatic assay
-MI:0420	kinase homogeneous time resolved fluorescence	enzymatic assay
-MI:0425	kinase scintillation proximity assay	enzymatic assay
-MI:1036	nucleotide exchange assay	enzymatic assay
-MI:0414	enzymatic reaction	enzymatic assay
-MI:0417	footprinting	footprinting
-MI:0013	biophysical	biophysical
-MI:0968	biosensor	biosensor
-MI:0107	surface plasmon resonance	biosensor
-MI:0114	x-ray crystallography	crystallography
-MI:0894	electron diffraction	crystallography
-MI:0077	nuclear magnetic resonance	nuclear magnetic resonance
-MI:0043	electron resonance	spectroscopy
-MI:0016	circular dichroism	spectroscopy
-MI:0964	infrared spectroscopy	spectroscopy
-MI:0966	ultraviolet-visible spectroscopy	spectroscopy
-MI:0065	isothermal titration calorimetry	calorimetry
-MI:1311	differential scanning calorimetry	calorimetry
-MI:0067	light scattering	scattering
-MI:0888	small angle neutron scattering	scattering
-MI:0051	fluorescence technology	fluorescence
-MI:0055	fluorescent resonance energy transfer	energy transfer
-MI:0012	bioluminescence resonance energy transfer	energy transfer
-MI:0510	homogeneous time resolved fluorescence	energy transfer
-MI:0905	amplified luminescent proximity homogeneous assay	energy transfer
-MI:2171	complemented donor-acceptor resonance energy transfer	energy transfer
-MI:0428	imaging technique	imaging
-MI:0040	electron microscopy	electron microscopy
-MI:0045	experimental interaction detection	unspecified
-MI:0401	biochemical	unspecified
-MI:0659	experimental feature detection	unspecified
-MI:0396	predetermined participant	unspecified
-MI:0190	interaction type	unspecified
-MI:0116	feature type	unspecified
-MI:0590	attribute name	unspecified
+psimi_id	name	keep
+MI:0001	interaction detection method	yes
+MI:0013	biophysical	yes
+MI:0024	confirmational text mining	no
+MI:0026	correlated mutations	no
+MI:0035	docking	no
+MI:0036	domain fusion	no
+MI:0037	domain profile pairs	no
+MI:0045	experimental interaction detection	yes
+MI:0046	experimental knowledge based	no
+MI:0051	fluorescence technology	yes
+MI:0057	gene neighbourhood	no
+MI:0058	genome based prediction	no
+MI:0063	interaction prediction	no
+MI:0064	interologs mapping	no
+MI:0085	phylogenetic profile	no
+MI:0087	predictive text mining	no
+MI:0091	chromatography technology	yes
+MI:0100	sequence based phylogenetic profile	no
+MI:0101	sequence based prediction	no
+MI:0105	structure based prediction	no
+MI:0110	text mining	no
+MI:0225	chromatin immunoprecipitation array	no
+MI:0254	genetic interference	no
+MI:0255	post transcriptional interference	no
+MI:0256	rna interference	no
+MI:0257	antisense rna	no
+MI:0362	inference	no
+MI:0363	inferred by author	no
+MI:0364	inferred by curator	no
+MI:0400	affinity technology	yes
+MI:0401	biochemical	no
+MI:0402	chromatin immunoprecipitation assay	no
+MI:0416	fluorescence microscopy	no
+MI:0426	light microscopy	no
+MI:0428	imaging technique	no
+MI:0430	nucleic acid uv cross-linking assay	no
+MI:0432	one hybrid	no
+MI:0438	rna three hybrid	no
+MI:0439	random spore analysis	no
+MI:0441	synthetic genetic analysis	no
+MI:0603	dimethylsulphate footprinting	no
+MI:0604	potassium permanganate footprinting	no
+MI:0606	DNase I footprinting	no
+MI:0657	systematic evolution of ligands by exponential enrichment	no
+MI:0663	confocal microscopy	no
+MI:0686	unspecified method	no
+MI:0827	x-ray tomography	no
+MI:0943	detection by mass spectrometry	no
+MI:1016	fluorescence recovery after photobleaching	no
+MI:1017	rna immunoprecipitation	no
+MI:1028	modified chromatin immunoprecipitation	no
+MI:1029	proteomics of isolated chromatin segments	no
+MI:1088	phenotype-based detection assay	no
+MI:1089	nuclear translocation assay	no
+MI:1176	sequence based prediction of gene regulatory region binding sites	no
+MI:1177	phylogenetic profiling of predicted gene regulatory region binding sites	no
+MI:1178	sequence based prediction of binding of transcription factor to transcribed gene regulatory elements	no
+MI:1183	nuclease footprinting	no
+MI:1184	dna adenine methyltransferase identification	no
+MI:1187	damip	no
+MI:1189	methylation interference assay	no
+MI:1192	antisense oligonucleotides	no
+MI:1211	liposome binding assay	no
+MI:1218	chromosome conformation capture assay	no
+MI:1352	uracil interference assay	no
+MI:2169	luminiscence technology	no
+MI:2188	par-clip	no
+MI:2191	clip	no
+MI:2192	clip-seq	no
+MI:2193	iclip	no
+MI:2194	crac	no
+MI:2195	clash	no
+MI:2197	probe interaction assay	no
+MI:2198	labelling assay	no
+MI:2213	super-resolution microscopy	no
+MI:2222	inference by socio-affinity scoring	no
+MI:2223	inference by quantitative co-purification	no
+MI:2224	chemical rna modification plus base pairing prediction	no
+MI:2231	coexpression	no
+MI:2283	southwestern blotting	no
+MI:2285	miRNA interference luciferase reporter assay	no
+MI:2288	DAP-seq	no
+MI:0004	affinity chromatography technology	yes
+MI:0006	anti bait coimmunoprecipitation	yes
+MI:0007	anti tag coimmunoprecipitation	yes
+MI:0008	array technology	yes
+MI:0009	bacterial display	yes
+MI:0010	beta galactosidase complementation	yes
+MI:0011	beta lactamase complementation	yes
+MI:0012	bioluminescence resonance energy transfer	yes
+MI:0014	adenylate cyclase complementation	yes
+MI:0016	circular dichroism	yes
+MI:0017	classical fluorescence spectroscopy	yes
+MI:0018	two hybrid	yes
+MI:0019	coimmunoprecipitation	yes
+MI:0020	transmission electron microscopy	yes
+MI:0027	cosedimentation	yes
+MI:0028	cosedimentation in solution	yes
+MI:0029	cosedimentation through density gradient	yes
+MI:0030	cross-linking study	yes
+MI:0031	protein cross-linking with a bifunctional reagent	yes
+MI:0034	display technology	yes
+MI:0038	dynamic light scattering	yes
+MI:0040	electron microscopy	yes
+MI:0041	electron nuclear double resonance	yes
+MI:0042	electron paramagnetic resonance	yes
+MI:0043	electron resonance	yes
+MI:0047	far western blotting	yes
+MI:0048	filamentous phage display	yes
+MI:0049	filter binding	yes
+MI:0052	fluorescence correlation spectroscopy	yes
+MI:0053	fluorescence polarization spectroscopy	yes
+MI:0054	fluorescence-activated cell sorting	yes
+MI:0055	fluorescent resonance energy transfer	yes
+MI:0065	isothermal titration calorimetry	yes
+MI:0066	lambda phage display	yes
+MI:0067	light scattering	yes
+MI:0069	mass spectrometry studies of complexes	yes
+MI:0071	molecular sieving	yes
+MI:0073	mrna display	yes
+MI:0077	nuclear magnetic resonance	yes
+MI:0081	peptide array	yes
+MI:0084	phage display	yes
+MI:0089	protein array	yes
+MI:0090	protein complementation assay	yes
+MI:0092	protein in situ array	yes
+MI:0095	proteinchip(r) on a surface-enhanced laser desorption/ionization	yes
+MI:0096	pull down	yes
+MI:0097	reverse ras recruitment system	yes
+MI:0098	ribosome display	yes
+MI:0099	scintillation proximity assay	yes
+MI:0104	static light scattering	yes
+MI:0107	surface plasmon resonance	yes
+MI:0108	t7 phage display	yes
+MI:0111	dihydrofolate reductase reconstruction	yes
+MI:0112	ubiquitin reconstruction	yes
+MI:0114	x-ray crystallography	yes
+MI:0115	yeast display	yes
+MI:0226	ion exchange chromatography	yes
+MI:0227	reverse phase chromatography	yes
+MI:0231	mammalian protein protein interaction trap	yes
+MI:0232	transcriptional complementation assay	yes
+MI:0276	blue native page	yes
+MI:0369	lex-a dimerization assay	yes
+MI:0370	tox-r dimerization assay	yes
+MI:0397	two hybrid array	yes
+MI:0398	two hybrid pooling approach	yes
+MI:0399	two hybrid fragment pooling approach	yes
+MI:0404	comigration in non denaturing gel electrophoresis	yes
+MI:0405	competition binding	yes
+MI:0406	deacetylase assay	yes
+MI:0410	3D electron microscopy	yes
+MI:0411	enzyme linked immunosorbent assay	yes
+MI:0412	electrophoretic mobility supershift assay	yes
+MI:0413	electrophoretic mobility shift assay	yes
+MI:0415	enzymatic study	yes
+MI:0417	footprinting	yes
+MI:0419	gtpase assay	yes
+MI:0420	kinase homogeneous time resolved fluorescence	yes
+MI:0423	in-gel kinase assay	yes
+MI:0424	protein kinase assay	yes
+MI:0425	kinase scintillation proximity assay	yes
+MI:0434	phosphatase assay	yes
+MI:0435	protease assay	yes
+MI:0437	protein three hybrid	yes
+MI:0440	saturation binding	yes
+MI:0508	deacetylase radiometric assay	yes
+MI:0509	phosphatase homogeneous time resolved fluorescence	yes
+MI:0510	homogeneous time resolved fluorescence	yes
+MI:0511	protease homogeneous time resolved fluorescence	yes
+MI:0512	zymography	yes
+MI:0513	collagen film assay	yes
+MI:0514	in gel phosphatase assay	yes
+MI:0515	methyltransferase assay	yes
+MI:0516	methyltransferase radiometric assay	yes
+MI:0588	three hybrid	yes
+MI:0602	chemical footprinting	yes
+MI:0605	enzymatic footprinting	yes
+MI:0655	lambda repressor two hybrid	yes
+MI:0676	tandem affinity purification	yes
+MI:0678	antibody array	yes
+MI:0695	sandwich immunoassay	yes
+MI:0696	polymerase assay	yes
+MI:0697	dna directed dna polymerase assay	yes
+MI:0698	dna directed rna polymerase assay	yes
+MI:0699	rna directed dna polymerase assay	yes
+MI:0700	rna directed rna polymerase assay	yes
+MI:0726	reverse two hybrid	yes
+MI:0727	lexa b52 complementation	yes
+MI:0728	gal4 vp16 complementation	yes
+MI:0729	luminescence based mammalian interactome mapping	yes
+MI:0807	comigration in gel electrophoresis	yes
+MI:0808	comigration in sds page	yes
+MI:0809	bimolecular fluorescence complementation	yes
+MI:0813	proximity ligation assay	yes
+MI:0814	protease accessibility laddering	yes
+MI:0824	x-ray powder diffraction	yes
+MI:0825	x-ray fiber diffraction	yes
+MI:0826	x ray scattering	yes
+MI:0841	phosphotransferase assay	yes
+MI:0858	immunodepleted coimmunoprecipitation	yes
+MI:0859	force spectroscopy	yes
+MI:0870	demethylase assay	yes
+MI:0872	atomic force microscopy	yes
+MI:0879	nucleoside triphosphatase assay	yes
+MI:0880	atpase assay	yes
+MI:0887	histone acetylase assay	yes
+MI:0888	small angle neutron scattering	yes
+MI:0889	acetylase assay	yes
+MI:0891	neutron fiber diffraction	yes
+MI:0892	solid phase assay	yes
+MI:0893	neutron diffraction	yes
+MI:0894	electron diffraction	yes
+MI:0895	protein kinase A complementation	yes
+MI:0899	p3 filamentous phage display	yes
+MI:0900	p8 filamentous phage display	yes
+MI:0901	isotope label footprinting	yes
+MI:0905	amplified luminescent proximity homogeneous assay	yes
+MI:0916	lexa vp16 complementation	yes
+MI:0920	ribonuclease assay	yes
+MI:0921	surface plasmon resonance array	yes
+MI:0928	filter trap assay	yes
+MI:0938	rheology measurement	yes
+MI:0944	mass spectrometry study of hydrogen/deuterium exchange	yes
+MI:0946	miniaturized immunoprecipitation	yes
+MI:0947	bead aggregation assay	yes
+MI:0949	gdp/gtp exchange assay	yes
+MI:0953	polymerization	yes
+MI:0963	interactome parallel affinity capture	yes
+MI:0964	infrared spectroscopy	yes
+MI:0965	2d-infrared spectrometry	yes
+MI:0966	ultraviolet-visible spectroscopy	yes
+MI:0968	biosensor	yes
+MI:0969	bio-layer interferometry	yes
+MI:0972	phosphopantetheinylase assay	yes
+MI:0976	total internal reflection fluorescence spectroscopy	yes
+MI:0979	oxidoreductase assay	yes
+MI:0982	electrophoretic mobility-based method	yes
+MI:0983	gemma	yes
+MI:0984	deamination assay	yes
+MI:0989	amidase assay	yes
+MI:0990	cleavage assay	yes
+MI:0991	lipoprotein cleavage assay	yes
+MI:0992	defarnesylase assay	yes
+MI:0993	degeranylase assay	yes
+MI:0994	demyristoylase assay	yes
+MI:0995	depalmitoylase assay	yes
+MI:0996	deformylase assay	yes
+MI:0997	ubiquitinase assay	yes
+MI:0998	deubiquitinase assay	yes
+MI:0999	formylase assay	yes
+MI:1000	hydroxylase assay	yes
+MI:1001	lipidase assay	yes
+MI:1002	myristoylase assay	yes
+MI:1003	geranylgeranylase assay	yes
+MI:1004	palmitoylase assay	yes
+MI:1005	adp ribosylase assay	yes
+MI:1006	deglycosylase assay	yes
+MI:1007	glycosylase assay	yes
+MI:1008	sumoylase assay	yes
+MI:1009	desumoylase assay	yes
+MI:1010	neddylase assay	yes
+MI:1011	deneddylase assay	yes
+MI:1019	protein phosphatase assay	yes
+MI:1022	field flow fractionation	yes
+MI:1024	scanning electron microscopy	yes
+MI:1026	diphtamidase assay	yes
+MI:1030	excimer fluorescence	yes
+MI:1031	protein folding/unfolding	yes
+MI:1034	nuclease assay	yes
+MI:1035	deoxyribonuclease assay	yes
+MI:1036	nucleotide exchange assay	yes
+MI:1037	Split renilla luciferase complementation	yes
+MI:1038	silicon nanowire field-effect transistor	yes
+MI:1086	equilibrium dialysis	yes
+MI:1087	monoclonal antibody blockade	yes
+MI:1103	solution state nmr	yes
+MI:1104	solid state nmr	yes
+MI:1111	two hybrid bait or prey pooling approach	yes
+MI:1112	two hybrid prey pooling approach	yes
+MI:1113	two hybrid bait and prey pooling approach	yes
+MI:1137	carboxylation assay	yes
+MI:1138	decarboxylation assay	yes
+MI:1142	aminoacylation assay	yes
+MI:1145	phospholipase assay	yes
+MI:1147	ampylation assay	yes
+MI:1190	hydroxy radical footprinting	yes
+MI:1191	ultraviolet (uv) footprinting	yes
+MI:1203	split luciferase complementation	yes
+MI:1204	split firefly luciferase complementation	yes
+MI:1219	enzyme-mediated activation of radical sources	yes
+MI:1229	uridylation assay	yes
+MI:1232	aggregation assay	yes
+MI:1235	thermal shift binding	yes
+MI:1236	proline isomerase assay	yes
+MI:1238	mass spectrometry studies of subunit exchange	yes
+MI:1246	ion mobility mass spectrometry of complexes	yes
+MI:1247	microscale thermophoresis	yes
+MI:1249	isomerase assay	yes
+MI:1252	methylmalonyl-CoA isomerase asf say	yes
+MI:1309	de-ADP-ribosylation assay	yes
+MI:1311	differential scanning calorimetry	yes
+MI:1312	aut-page	yes
+MI:1313	proximity labelling technology	yes
+MI:1314	proximity-dependent biotin identification	yes
+MI:1320	membrane yeast two hybrid	yes
+MI:1321	ire1 reconstruction	yes
+MI:1325	sulfurtransferase assay	yes
+MI:1342	qcmd	yes
+MI:1354	lipase assay	yes
+MI:1356	validated two hybrid	yes
+MI:2167	kinetic exclusion assay	yes
+MI:2168	conditional site labelling	yes
+MI:2170	bimolecular luminiscence complementation	yes
+MI:2171	complemented donor-acceptor resonance energy transfer	yes
+MI:2189	avexis	yes
+MI:2196	quartz crystal microbalance	yes
+MI:2199	specific site-labelling technology	yes
+MI:2215	barcode fusion genetics two hybrid	yes
+MI:2216	deampylation assay	yes
+MI:2277	Cr-two hybrid	yes
+MI:2281	deamidation assay	yes
+MI:2289	virotrap	yes
+MI:2290	optical tweezers	yes
+MI:2291	atomic force microscopy cantilevers	yes
+MI:2292	magnetic tweezers	yes
+MI:2318	force measurement	yes
+MI:2319	surface force measurement	yes
+MI:2323	kiss	yes
+MI:2329	hydrophobic interaction chromatography	yes
+MI:2338	electron tomography	yes
+MI:2339	electron microscopy 3D single particle reconstruction	yes
+MI:2340	electron microscopy 3D helical reconstruction	yes
+MI:2348	sequential bret-fret	yes
+MI:2355	adp deribosylase assay	yes
+MI:2361	Split Intein-Mediated Protein Ligation	yes
+MI:2365	fluorescent protein-protein interaction-visualization	yes
+MI:2404	oxidase assay	yes
+MI:2412	membrane two hybrid	yes
+MI:2413	mammalian membrane two hybrid	yes
+MI:2422	mass photometry	yes
+MI:2437	holdup assay	yes

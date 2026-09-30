@@ -1,14 +1,13 @@
 """Preparing a run: every file a build writes from, checked, in `build/`.
 
 Nothing is written to the graph until this is done, so every error a run can
-hold — a malformed row, a method or a viral taxon nobody curated, a peptide on
+hold — a malformed row, a viral taxon nobody curated, a peptide on
 no row, a cited pmid with no metadata — fails here, with the file and line.
 
 What the silos share is joined here, and nowhere else:
 
-- **Methods.** Every PSI-MI term a description uses must have a curated class.
-  A method is named from PSI-MI, not from whatever copy of the name a source
-  carries.
+- **Methods.** A method is named from PSI-MI, not from whatever copy of the
+  name a source carries.
 - **Publications.** A pmid two silos cite is one publication, taken from the
   first silo that has it. Only pmids something cites are kept.
 """
@@ -26,7 +25,6 @@ from bpgraph.loaders.peptides import reports
 from bpgraph.loaders.records import Description, ViralProtein, of
 from bpgraph.loaders.tsv import LoadError, listed, rows
 from bpgraph.loaders.viral import vh_descriptions, viral_proteins
-from bpgraph.methods import MethodClasses
 from bpgraph.psimi import read_ontology
 from bpgraph.pubmed import COLUMNS as PUBLICATION_COLUMNS
 from bpgraph.run import HUMAN, HostPaths, Run
@@ -114,8 +112,6 @@ def _publications(run: Run, host: HostPaths, cited: Path, scratch: Path) -> Path
 def prepare(run: Run, scratch: Path) -> Prepared:
     """Read and check every silo of a run into `scratch`."""
     psimi = read_ontology(run.psimi)
-    classes = MethodClasses.load(psimi)
-    class_of = cache(classes.class_of)
 
     @cache
     def name_of(psimi_id: str) -> str:
@@ -128,9 +124,7 @@ def prepare(run: Run, scratch: Path) -> Prepared:
     proteins = files.sorted_file(
         scratch / "swissprot", ([row["accession"]] for _, row in rows(host.swissprot))
     )
-    curated, uncurated = load_curated(
-        run.export, proteins, scratch, psimi, class_of, viruses
-    )
+    curated = load_curated(run.export, proteins, scratch, psimi, viruses)
 
     descriptions = scratch / "descriptions"
     observations = scratch / "observations"
@@ -138,12 +132,8 @@ def prepare(run: Run, scratch: Path) -> Prepared:
         descriptions.open("w", encoding="utf-8") as out,
         observations.open("w", encoding="utf-8") as observed,
     ):
-        hh_descriptions(
-            host, curated.curated, scratch, class_of, name_of, uncurated, out
-        )
+        hh_descriptions(host, curated.curated, scratch, name_of, out)
         vh_descriptions(curated.curated, name_of, out, observed)
-    if uncurated:
-        classes.resolve(uncurated)
     files.sort(descriptions)
 
     viral = viral_proteins(run.viral, curated.sites, curated.exported, scratch)

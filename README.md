@@ -1,6 +1,6 @@
 # bpgraph
 
-A [FalkorDB](https://www.falkordb.com/) knowledge graph of protein–protein interactions, human–human and virus–human, and the tooling that builds and explores it. The human interactome is IntAct's experimental interactions with our own curation merged on top; the virus–human interactions are ours. Every interaction carries the publications, detection methods and peptides behind it, abstracts included. Every Swiss-Prot human protein is in, with its UniProt function text and experimental GO annotations, each tied to the publications behind it. A viral protein is a curated one — `HBx` of HBV, `NS5A` of HCV — pooled over every strain and UniProt accession it was observed on, so its evidence is counted once rather than scattered. Viruses are grouped by a curated list and rolled up to their NCBI family, and curated topics — lists of human proteins involved in a subject such as ferroptosis — make it possible to ask how viral families act on a biological process. Sequences live in SQLite vaults beside the graph.
+A [FalkorDB](https://www.falkordb.com/) knowledge graph of protein–protein interactions, human–human and virus–human, and the tooling that builds and explores it. The human interactome is IntAct's interactions, kept by detection method as [`curation/methods.tsv`](curation/methods.tsv) flags it, with our own curation merged on top; the virus–human interactions are ours. Every interaction carries the publications, detection methods and peptides behind it, abstracts included. Every Swiss-Prot human protein is in, with its UniProt function text and experimental GO annotations of what it does — biological process and molecular function — each tied to the publications behind it. A viral protein is a curated one — `HBx` of HBV, `NS5A` of HCV — pooled over every strain and UniProt accession it was observed on, so its evidence is counted once rather than scattered. Viruses are grouped by a curated list and rolled up to their NCBI family, and curated topics — lists of human proteins involved in a subject such as ferroptosis — make it possible to ask how viral families act on a biological process. Sequences live in SQLite vaults beside the graph.
 
 The graph is built to be explored by an agent. Scripts do the deterministic work; the agent reads the connected text — function descriptions, GO annotations, abstracts — and draws the connections a person would need years of reading to make.
 
@@ -31,20 +31,21 @@ uv sync
 
 ## Building a graph
 
-A run lives in its own directory, `data/<date>/` (gitignored): the TSV files the curation database exports go in `export/`, and everything else is fetched beside it, one directory per silo — `hosts/9606/` for human, `viral/` for our virus–host interactions — each fetch recording its release in `sources.tsv`. Viruses are curated in [`curation/viruses.tsv`](curation/viruses.tsv) and method classes in [`curation/methods.tsv`](curation/methods.tsv), each with a document explaining the choices.
+A run lives in its own directory, `data/<date>/` (gitignored): the TSV files the curation database exports go in `export/`, and everything else is fetched beside it, one directory per silo — `hosts/9606/` for human, `viral/` for our virus–host interactions — each fetch recording its release in `sources.tsv`. Viruses are curated in [`curation/viruses.tsv`](curation/viruses.tsv), the IntAct keep flag of each detection method in [`curation/methods.tsv`](curation/methods.tsv), and the publications that re-report one experiment, such as BioPlex 2.0 and 3.0, in [`curation/publications.tsv`](curation/publications.tsv), each with a document explaining the choices.
 
 ```sh
 uv run bpgraph-taxonomy data/2026-09-09     # NCBI taxonomy
 uv run bpgraph-psimi data/2026-09-09        # PSI-MI
+uv run bpgraph-methods data/2026-09-09      # check curation/methods.tsv against PSI-MI
 uv run bpgraph-swissprot data/2026-09-09    # Swiss-Prot human and sequences
-uv run bpgraph-intact data/2026-09-09       # IntAct human
-uv run bpgraph-go data/2026-09-09           # GO and experimental annotations
+uv run bpgraph-intact data/2026-09-09       # IntAct human, filtered by curation/methods.tsv
+uv run bpgraph-go data/2026-09-09           # GO and experimental, functional annotations
 uv run bpgraph-functions data/2026-09-09    # viral UniProt text and protein names
 uv run bpgraph-pubmed data/2026-09-09       # PubMed metadata, per silo
 uv run bpgraph-build data/2026-09-09        # build and publish the graph, write the vaults
 ```
 
-The build streams every silo through files sorted on disk, never holding one in memory, writes the result to `bpgraph_staging` in batches, adds the unique constraints as a validation gate, and renames the result to the live graph `bpgraph`. A malformed export, a viral taxon with no curated virus or a method with no class fails before anything is written. See [`docs/build.md`](docs/build.md) for the full sequence and [`docs/export.md`](docs/export.md) for the export format.
+The build streams every silo through files sorted on disk, never holding one in memory, writes the result to `bpgraph_staging` in batches, adds the unique constraints as a validation gate, and renames the result to the live graph `bpgraph`. A malformed export or a viral taxon with no curated virus fails before anything is written, and an IntAct detection method with no row in `curation/methods.tsv` fails the IntAct fetch. See [`docs/build.md`](docs/build.md) for the full sequence and [`docs/export.md`](docs/export.md) for the export format.
 
 ```sh
 uv run bpgraph         # what the live graph holds
