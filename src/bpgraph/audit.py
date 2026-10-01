@@ -71,6 +71,7 @@ NODE_PROPERTIES: Mapping[str, Mapping[str, str]] = {
         "id": "String",
         "n_descriptions": "Integer",
         "n_publications": "Integer",
+        "n_methods": "Integer",
         "n_peptides": "Integer",
     },
     "Description": {
@@ -123,6 +124,7 @@ RELATIONSHIPS: tuple[tuple[str, str, str, tuple[str, ...] | None], ...] = (
             "interaction_id",
             "n_descriptions",
             "n_publications",
+            "n_methods",
             "n_peptides",
         ),
     ),
@@ -424,10 +426,11 @@ INVARIANTS: tuple[Check, ...] = (
         "OPTIONAL MATCH (d)-[:REPORTS]->(x:Peptide)\n"
         "WITH i, count(DISTINCT d) AS descriptions,\n"
         "        count(DISTINCT b) AS publications,\n"
+        "        count(DISTINCT d.method_id) AS methods,\n"
         "        count(DISTINCT x) AS peptides\n"
         "WHERE i.n_descriptions <> descriptions OR i.n_publications <> publications\n"
-        "   OR i.n_peptides <> peptides\n"
-        "RETURN i.id AS id, descriptions, publications, peptides",
+        "   OR i.n_methods <> methods OR i.n_peptides <> peptides\n"
+        "RETURN i.id AS id, descriptions, publications, methods, peptides",
     ),
     Check(
         "INTERACTS_WITH.shortcut",
@@ -439,6 +442,7 @@ INVARIANTS: tuple[Check, ...] = (
         "WHERE size(edges) <> 1\n"
         "   OR edges[0].n_descriptions <> i.n_descriptions\n"
         "   OR edges[0].n_publications <> i.n_publications\n"
+        "   OR edges[0].n_methods <> i.n_methods\n"
         "   OR edges[0].n_peptides <> i.n_peptides\n"
         "RETURN i.id AS id, size(edges) AS edges",
     ),

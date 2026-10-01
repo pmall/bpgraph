@@ -73,13 +73,14 @@ A PubMed article, whatever cites it: a description, an annotation, a protein's f
 
 ### `:Interaction` + `:HH` | `:VH`
 
-The deduplicated claim that two proteins interact. Because a viral protein pools its strains, so does the claim: every description of HBx binding a human protein supports one interaction, whichever HBV accession it was observed on. No provenance of its own — that hangs off `:Description`. The counters are the confidence signal; there is no score. `:HH` and `:VH` appear on no other label, so `MATCH (i:VH)` is unambiguous.
+The deduplicated claim that two proteins interact. Because a viral protein pools its strains, so does the claim: every description of HBx binding a human protein supports one interaction, whichever HBV accession it was observed on. No provenance of its own — that hangs off `:Description`. The counters are the confidence signal; there is no score. The **golden dataset** is the interactions backed by at least 2 distinct publications **or** at least 2 distinct detection methods. `:HH` and `:VH` appear on no other label, so `MATCH (i:VH)` is unambiguous.
 
 | property         | type | notes                                                         |
 | ---------------- | ---- | ------------------------------------------------------------- |
 | `id`             | str  | **key**, derived (§3)                                         |
 | `n_descriptions` | int  | supporting descriptions                                       |
 | `n_publications` | int  | **distinct** publications                                     |
+| `n_methods`      | int  | **distinct** detection methods, by `method_id`                |
 | `n_peptides`     | int  | distinct peptides; `> 0` answers "do we have a peptide here?" |
 
 Slot ordering is fixed, carries no biological direction, and exists only to make the id deterministic:
@@ -185,8 +186,9 @@ The shortcut from one partner of an interaction to the other, so a walk over the
 | property         | type | notes                                               |
 | ---------------- | ---- | --------------------------------------------------- |
 | `interaction_id` | str  | the `:Interaction` it shortcuts, for the evidence   |
-| `n_descriptions` | int  | copied from the interaction, as are the three below |
+| `n_descriptions` | int  | copied from the interaction, as are the four below  |
 | `n_publications` | int  |                                                     |
+| `n_methods`      | int  |                                                     |
 | `n_peptides`     | int  |                                                     |
 
 `:Interaction` stays the source of truth: the evidence, the peptides and their direction are reached through it, and the audit checks that the edge agrees with it. A homodimer is a self-loop, so a query ranking partners still excludes it with `WHERE partner <> self`.

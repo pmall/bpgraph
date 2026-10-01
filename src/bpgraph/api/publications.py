@@ -4,7 +4,8 @@ from typing import Annotated
 
 from pydantic import Field
 
-from bpgraph.api.base import Backend, Limit, Record
+from bpgraph.api.base import Backend, Limit, Record, Rows, paged, whole
+from bpgraph.api.names import check_pmids
 
 Pmids = Annotated[list[str], Field(min_length=1, description="PubMed ids.")]
 
@@ -24,21 +25,24 @@ def publications(
     abstracts: Annotated[
         bool, Field(description="Include the abstracts, which are long.")
     ] = True,
-) -> list[Publication]:
+) -> Rows[Publication]:
     """Publications' title, journal, year, authors and, unless left out,
     abstract. The abstract is where a paper says what an interaction does.
     A pmid PubMed did not return has empty text and year 0."""
-    return [
-        Publication.model_validate(row)
-        for row in backend.rows(
-            """MATCH (b:Publication) WHERE b.pmid IN $pmids
+    check_pmids(backend, pmids)
+    return whole(
+        [
+            Publication.model_validate(row)
+            for row in backend.rows(
+                """MATCH (b:Publication) WHERE b.pmid IN $pmids
             RETURN b.pmid AS pmid, b.title AS title,
                    CASE WHEN $abstracts THEN b.abstract END AS abstract,
                    b.journal AS journal, b.year AS year, b.authors AS authors""",
-            pmids=pmids,
-            abstracts=abstracts,
-        )
-    ]
+                pmids=pmids,
+                abstracts=abstracts,
+            )
+        ]
+    )
 
 
 class Described(Record):
@@ -82,13 +86,12 @@ def publication_content(
     described, the GO annotations it showed and the proteins whose UniProt
     function text cites it. Each list is cut at `limit`, beside its full
     count: a screen such as BioPlex describes tens of thousands of pairs."""
+    check_pmids(backend, [pmid])
     head = backend.rows(
         """MATCH (b:Publication {pmid: $pmid})
         RETURN b.pmid AS pmid, b.title AS title""",
         pmid=pmid,
     )
-    if not head:
-        raise ValueError(f"no publication {pmid}")
     counts = backend.rows(
         """MATCH (b:Publication {pmid: $pmid})
         OPTIONAL MATCH (b)<-[:REPORTED_IN]-(d:Description)
@@ -162,19 +165,18 @@ def search_publications(
         ),
     ],
     limit: Limit = 100,
-) -> list[Hit]:
+) -> Rows[Hit]:
     """Full-text search over the titles and abstracts of every publication in
     the graph, best match first. Every publication here backs an interaction,
     a GO annotation or a function text: `publication_content` says which."""
-    return [
-        Hit.model_validate(row)
-        for row in backend.rows(
-            """CALL db.idx.fulltext.queryNodes('Publication', $text) YIELD node, score
-            RETURN node.pmid AS pmid, node.title AS title, node.journal AS journal,
-                   node.year AS year, score
-            ORDER BY score DESC, year DESC
-            LIMIT $limit""",
-            text=text,
-            limit=limit,
-        )
-    ]
+    found = paged(
+        backend,
+        """CALL db.idx.fulltext.queryNodes('Publication', $text) YIELD node, score""",
+        """RETURN node.pmid AS pmid, node.title AS title, node.journal AS journal,
+               node.year AS year, score
+        ORDER BY score DESC, year DESC""",
+        "node",
+        limit,
+        text=text,
+    )
+    return Rows(rows=[Hit.model_validate(r) for r in found.rows], total=found.total)
