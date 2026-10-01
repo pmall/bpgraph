@@ -1,37 +1,51 @@
 ---
 name: network-view
-description: Draw a subnetwork of the bpgraph protein–protein interaction graph as an interactive HTML page — e.g. one viral family's interactions with a topic such as ferroptosis, at a chosen evidence level. Use when asked to visualize, draw, plot or show a network, subnetwork or interactome from the graph.
+description: Draw a subnetwork of the bpgraph protein–protein interaction graph as an interactive HTML page — e.g. one viral family's interactions with a topic such as ferroptosis, at a chosen evidence level. Use when asked to visualize, draw, plot or show a network, subnetwork or interactome from the graph. Analysing a family on a topic is the topic-family-report skill; comparing families is the topic-synthesis skill.
 ---
 
 # Network view
 
-Three steps:
+You draw a subnetwork of the graph as an interactive page, in three steps:
 
 1. **Gather the dataset.** Query the graph, choose what the network holds, and write it to `<name>.json`. This is your judgment.
-2. **Render it.** Run `uv run <this skill's folder>/render.py <name>.json`. It writes a standard page, `<name>.cytoscape.html`, beside the JSON, from the `cytoscape.html` template next to the script. The script never touches the database, and you never write a page from scratch. Every network starts from the same look, so networks can be compared.
-3. **Adjust the page**, if the network calls for it. Change colours, labels, shapes or layout in the page's `adjust` block, and nowhere else.
+2. **Render it.** Run `uv run <this skill's folder>/render.py <name>.json`. It writes a standard page, `<name>.cytoscape.html`, beside the JSON, from the `cytoscape.html` template next to the script. Every network goes through that template, so networks share one look and compare directly.
+3. **Adjust the page**, if the network calls for it: colours, labels, shapes or layout, in the page's `adjust` block and nowhere else.
 
 ## Inputs
 
 - **What to draw**, e.g. ferroptosis × Flaviviridae. Ask if it is unclear.
-- **Evidence level.** The default is the **golden dataset**: an interaction backed by at least 2 distinct publications or at least 2 distinct detection methods, which the predefined queries take as `min_publications: 2, min_methods: 2, combine: "or"`. Apply it to each interaction on its own, meaning one viral protein with one human protein. Never add up evidence across proteins to get over the bar.
-- **Destination:** wherever the user asks. Ask if they haven't said. Name the files after the network, e.g. `ferroptosis-flaviviridae.json`.
+- **Topic**, if the network is drawn around one, e.g. `ferroptosis`: a list of human proteins in a file or knowledge base on your side, which the user points to; ask where it is if they haven't said. Read its Swiss-Prot accessions and whatever it records on each protein, such as a `role`. Pass the accessions to tools as `accessions`, and join the list's other columns to the results yourself; `find_proteins` turns gene symbols into accessions. The list decides every count, so name the file and its date in what you write.
+- **Viral family**, if the network is drawn around one, e.g. `Flaviviridae`, as `viruses` names it.
+- **Evidence level.** The default is the **golden dataset**: interactions backed by at least 2 distinct publications or at least 2 distinct detection methods, passed to tools as `min_publications: 2, min_methods: 2, combine: "or"`. Apply it to each interaction on its own, one viral protein with one human protein or two human proteins, and never add counters across proteins or viruses to get over the bar. Interactions below it form the **all** tier, drawn only when asked for, and said so in the description.
+- **Destination**: wherever the user asks; ask if they haven't said. Name the files after the network, `<topic>-<family>.json` for a topic × family network, e.g. `ferroptosis-flaviviridae.json`.
+
+## The graph
+
+Reach the live graph through the tools of the `bpgraph` MCP server, and nothing else. If it lacks something, say so rather than filling the gap from memory.
+
+- **Predefined tools first.** Each answers a recurring question and handles the graph's pitfalls; its description says what it returns. Use `cypher` for the rest, after reading `schema`: the structure itself, such as partners within a set, shared partners or short paths, is a graph query away.
+- **Results.** A list comes back as `rows` and `total`: when `total` is larger, `limit` cut the rows, so count from `total` or raise `limit`. A result over `max_tokens` is refused with its size: narrow the question, or raise `max_tokens`. An unknown name is an error naming the closest known ones.
+- **Viral proteins are curated.** `NS5A` of HCV is one protein, id `<virus taxon id>:<name>`, pooled over every strain and accession it was observed on. A viral protein's function comes from its UniProt text and the literature; GO annotates human proteins.
+- **The counters are the evidence**: `n_publications`, `n_methods` (distinct PSI-MI detection methods), `n_descriptions` (observations) and `n_peptides`. A description is one observation: one pair, one publication, one method.
+- **The text is where the meaning is**: abstracts, UniProt function text, and GO annotations each with the publication showing it. Read it once a question is narrowed down.
+
+The tools a network leans on, for a topic × family network:
+
+| for                                                                | tools                                                        |
+| ------------------------------------------------------------------ | ------------------------------------------------------------ |
+| the VH edges, each with its viral protein, virus and counters      | `vh_interactions` with the family and the topic's accessions |
+| the HH edges among the topic's proteins and the targets outside it | `hh_interactions` with those accessions                      |
+| each human protein's description                                   | `proteins`                                                   |
+| anything else the network should hold, such as one-hop partners    | `neighbours`, `indirect_reach`, `cypher`                     |
+
+A network's edges are compact, so raising `max_tokens` is usually fine here.
 
 ## 1. The dataset
-
-Query the live graph through the tools of the `bpgraph` MCP server, and nothing else: its predefined queries first, which handle the graph's pitfalls, and `cypher` for what they do not answer. Its `schema` tool describes the graph. For a topic × family network, for example:
-
-- `vh_interactions` with the family and the topic's accessions gives the VH edges, each with its viral protein, virus and counters.
-- `hh_interactions` with the topic's accessions, plus the human targets if they lie outside it, gives the HH edges among them.
-- `proteins` gives each protein's description; a viral protein's virus is already in the VH rows.
-- `find_proteins` turns gene symbols from the user's list into accessions.
-
-A list tool returns `rows` and `total`: when `total` is larger than the rows, `limit` cut them, so raise it or narrow the question. A result over `max_tokens` is refused with its size; a network's edges are compact, so raising `max_tokens` is usually fine here. Then write:
 
 ```json
 {
   "title": "Ferroptosis × Flaviviridae (golden)",
-  "description": "One or two sentences: what is drawn, and the evidence rule applied.",
+  "description": "One or two sentences: what is drawn, and the evidence level applied.",
   "proteins": [
     {"id": "P36969", "name": "GPX4", "kind": "human",
      "description": "Phospholipid hydroperoxide glutathione peroxidase",
@@ -46,15 +60,15 @@ A list tool returns `rows` and `total`: when `total` is larger than the rows, `l
 }
 ```
 
-- `id` is the graph's protein `id`. `kind` is `human` or `viral`, taken from the protein's label.
-- `taxon_name` is the virus's `name` from `(:Viral)-[:IN_TAXON]->(:Virus)` for a viral protein (`HCV`, `SARS-CoV-2`), and `Homo sapiens` for a human one.
-- `attributes` is optional. Use it for anything else worth showing or styling by, such as the `role` the topic's list gives a protein, or the viral family. The graph holds no topics: take the list from the user. It appears when a protein is clicked, and the page can style by it.
+- `id` is the graph's protein id. `kind` is `human` or `viral`.
+- `taxon_name` is the virus's name for a viral protein (`HCV`, `SARS-CoV-2`), as the tools give it, and `Homo sapiens` for a human one.
+- `attributes` is optional: anything else worth showing or styling by, such as the `role` the topic's list gives a protein, or the viral family. It appears when a protein is clicked, and the page can style by it.
 - An interaction connects two listed proteins, and each pair appears once. `n_publications` and `n_methods` are the interaction's counters, as the tools return them.
 - The renderer refuses a file that breaks these rules.
 
-Write the `description` for a reader who has not seen how the data was gathered. Name the topic, the family, the evidence rule, and anything included beyond the direct interactions, such as HH edges, untargeted topic proteins or one-hop partners.
+Write the `description` for a reader who has not seen how the data was gathered. Name the topic, the family, the evidence level, and anything included beyond the direct interactions, such as HH edges, untargeted topic proteins or one-hop partners.
 
-**Keep it readable.** A few hundred proteins is plenty to look at. If the data runs to thousands, tighten the evidence level or the scope and say so in the description, unless the user asked for the whole thing. Proteins no virus reaches show coverage, but they swamp a small network, so include them when coverage is the point.
+**Keep it readable.** A few hundred proteins is plenty to look at. If the data runs to thousands, raise the evidence level or narrow the scope and say so in the description, unless the user asked for the whole thing. Proteins no virus reaches show coverage, but they swamp a small network, so include them when coverage is the point.
 
 ## 2. The standard page
 
@@ -101,4 +115,4 @@ Open `http://127.0.0.1:8765/<name>.cytoscape.html` and take a screenshot. Read t
 
 ## Report back
 
-Give the path of the page, the protein and interaction counts, the evidence rule in one line, and any adjustments made.
+Give the path of the page, the protein and interaction counts, the evidence level in one line, and any adjustments made.
