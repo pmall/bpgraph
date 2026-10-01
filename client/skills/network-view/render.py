@@ -1,3 +1,7 @@
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["pydantic>=2.11"]
+# ///
 """Draw a network: a `network.json` in, a fixed page out.
 
 Choosing what a network holds is judgment, and belongs to whoever gathers it —
@@ -6,15 +10,16 @@ Drawing it is not: every network goes through the same file format and
 the same renderer, so two networks made a month apart look alike and compare
 directly. Rendering needs no database, only the file.
 
-`bpgraph-network <name>.json` writes `<name>.cytoscape.html` beside it. The
-page is a standard starting point: its `adjust` block is where colours, labels,
-shapes and layout get changed afterwards, leaving the rest of the page alone.
+`uv run render.py <name>.json` writes `<name>.cytoscape.html` beside it, from
+the `cytoscape.html` template beside this script: the skill's folder is all it
+needs. The page is a standard starting point: its `adjust` block is where
+colours, labels, shapes and layout get changed afterwards, leaving the rest of
+the page alone.
 """
 
 import html
 import sys
 from collections.abc import Mapping, Sequence
-from importlib.resources import files
 from pathlib import Path
 from typing import Literal, Self
 
@@ -40,6 +45,7 @@ class NetworkInteraction(Model):
     source: str
     target: str
     n_publications: int
+    n_methods: int
 
 
 class Network(Model):
@@ -77,15 +83,19 @@ def render(network: Network, template: str) -> str:
 
 
 def main() -> None:
-    """`bpgraph-network <network.json>`: draw it with Cytoscape."""
+    """`render.py <network.json>`: draw it with Cytoscape."""
     if len(sys.argv) != 2:
-        sys.exit("usage: bpgraph-network <network.json>")
+        sys.exit("usage: uv run render.py <network.json>")
     path = Path(sys.argv[1])
     network = Network.model_validate_json(path.read_text())
-    template = files("bpgraph").joinpath("templates/cytoscape.html").read_text()
+    template = Path(__file__).with_name("cytoscape.html").read_text()
     page = path.with_name(f"{path.stem}.cytoscape.html")
     page.write_text(render(network, template))
     print(
         f"{len(network.proteins)} proteins, {len(network.interactions)} interactions\n"
         f"{page}"
     )
+
+
+if __name__ == "__main__":
+    main()

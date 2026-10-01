@@ -2,7 +2,7 @@
 
 FalkorDB is schemaless; **this document is the schema**. Nothing is written to the graph that is not described here. Graph key: `bpgraph`.
 
-Companion documents, load when relevant: [`build.md`](build.md) (how a run builds and validates a graph), [`queries.md`](queries.md) (canonical queries and a worked example), [`roadmap.md`](roadmap.md) (where the schema is going).
+Companion documents, load when relevant: [`build.md`](build.md) (how a run builds and validates a graph), [`queries.md`](../client/queries.md) (canonical queries and a worked example), [`roadmap.md`](roadmap.md) (where the schema is going).
 
 ## Principles
 
@@ -177,19 +177,19 @@ ______________________________________________________________________
 
 `:REPORTS` carries `source_side`, naming the side of *this description's* interaction the peptide came from. The description points at one interaction, whose partners are tagged `side: 'a'` and `side: 'b'`, so one property pins down both source and target — however many of each the peptide accumulates across the graph.
 
-Entering from a protein, compare that protein's own `INVOLVES.side` against `source_side`: equal means the protein is the peptide's **source**, different means it is the **target**. Omitting the comparison silently mixes the two. Worked queries are in [`queries.md`](queries.md).
+Entering from a protein, compare that protein's own `INVOLVES.side` against `source_side`: equal means the protein is the peptide's **source**, different means it is the **target**. Omitting the comparison silently mixes the two. Worked queries are in [`queries.md`](../client/queries.md).
 
 ### `:INTERACTS_WITH`
 
 The shortcut from one partner of an interaction to the other, so a walk over the interactome is one hop instead of `Protein ← INVOLVES ← Interaction → INVOLVES → Protein` with a `side` to compare. One edge per `:Interaction`, always from side `a` to side `b` and always matched **undirected**: `(p)-[:INTERACTS_WITH]-(q)`. Whether it is human–human or virus–human is read from the endpoints' `:Human` and `:Viral` labels.
 
-| property         | type | notes                                               |
-| ---------------- | ---- | --------------------------------------------------- |
-| `interaction_id` | str  | the `:Interaction` it shortcuts, for the evidence   |
-| `n_descriptions` | int  | copied from the interaction, as are the four below  |
-| `n_publications` | int  |                                                     |
-| `n_methods`      | int  |                                                     |
-| `n_peptides`     | int  |                                                     |
+| property         | type | notes                                              |
+| ---------------- | ---- | -------------------------------------------------- |
+| `interaction_id` | str  | the `:Interaction` it shortcuts, for the evidence  |
+| `n_descriptions` | int  | copied from the interaction, as are the four below |
+| `n_publications` | int  |                                                    |
+| `n_methods`      | int  |                                                    |
+| `n_peptides`     | int  |                                                    |
 
 `:Interaction` stays the source of truth: the evidence, the peptides and their direction are reached through it, and the audit checks that the edge agrees with it. A homodimer is a self-loop, so a query ranking partners still excludes it with `WHERE partner <> self`.
 
