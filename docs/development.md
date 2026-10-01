@@ -38,10 +38,14 @@ src/bpgraph/
   vault.py      the sequence vaults: writing, publishing, reading one protein
   schema.py     index and constraint DDL, and the validation gate
   build.py      run a full build: prepare, write, gate, swap, vaults
-  audit.py      check a built graph against docs/schema.md
+  shape.py      the graph's labels, properties and relationships, as data
+  audit.py      check a built graph against docs/schema.md and shape.py
   write/        the write statements, one module per area
   api/          the query API, bpgraph-api: endpoints.py lists them, one
-                module per area, base.py what they share, app.py serves
+                module per area, base.py what they share, names.py checks
+                names, text.py renders results, app.py serves
+  guide/        what consumers read: server.md, the MCP server's
+                instructions; cypher.md, the rules `schema` appends
   loaders/      a run's files -> the files the graph is written from, checked:
                 export.py reads the export, curated.py our rows, host.py the
                 IntAct merge, viral.py the viral proteins, peptides.py, and
@@ -50,7 +54,6 @@ src/bpgraph/
 client/         what consumers of the graph need, copied into consulting repos:
   instructions.md
                 how a consulting repo's agent works; becomes its AGENTS.md
-  queries.md    the guide to exploring the graph
   skills/       the analysis skills, each self-contained with its scripts;
                 .agents/skills and .claude/skills link here
 ```
@@ -88,9 +91,10 @@ Consumers see the MCP server only, and it reaches nothing itself: each of its to
 
 - **The signature is the contract.** Annotate every parameter with a `Field` description, and write the docstring for an agent that has not read the schema: what comes back, which pitfall the query handles for it, what to call next.
 - **An endpoint is a question analyses keep asking**, not a query one analysis needed. It stays bounded: a scope parameter it cannot run without, and a `limit`.
-- **A list comes back as `Rows`**: its `rows` and `total`, how many the question has whatever `limit` kept. `base.page` runs the query cut at `limit` and, only when the page is full, counts the distinct rows it would have given.
+- **Every token an agent reads is one it cannot spend exploring.** A result is text, rendered by `text.py`: a list is a table, a line counting its rows, a header and one tab-separated line per row, without the columns no row fills. An endpoint returns `Rows`, its `rows` and `total`, how many the question has whatever `limit` kept; `base.page` runs the query cut at `limit` and, only when the page is full, counts the distinct rows it would have given. Defaults are lean: `limit` is 100, and long fields such as abstracts or method lists come when asked for. The MCP server sends parameter schemas without titles or null branches, and declares no structured output, so a result reaches the agent once.
 - **An unknown name is an error**, never an empty answer that reads as an absence: an endpoint checks every family, virus, protein, GO term, pmid, interaction or peptide it is given with `names.py` before querying, and the error names the closest known ones. A filter that keeps everything, such as `or` with a threshold of 1, is refused the same way.
-- **Size is the caller's call.** Serving adds `max_tokens` to every endpoint, 25,000 by default, estimated at three characters of JSON per token: a larger result is refused with its size, its rows and its total, never cut. `cypher` runs as written, under the same rule.
+- **Size is the caller's call.** Serving adds `max_tokens` to every endpoint, 25,000 by default, estimated at three characters of text per token: a larger result is refused with its size, its rows and its total, never cut. `cypher` runs as written, under the same rule.
+- **What every query needs travels with the server.** Its instructions, `guide/server.md`, reach every agent, subagents included, but Claude Code keeps only their first 2,048 characters: the essentials, first. What interpreting one tool's result takes goes in that tool's description. `schema` is generated from `shape.py`, the tables the audit checks, then appends `guide/cypher.md`, so an agent reads the Cypher rules only when it is about to write Cypher.
 - **Vaults answer one protein at a time**, through fixed lookups; there is no SQL endpoint.
 - **Enter through an indexed label, then close with `WITH`**: `MATCH (p:Protein) WHERE p.id IN $ids WITH p MATCH (p)-…`. Only `:Protein`, not `:Human` or `:Viral`, has the `id` index. A filtered `MATCH` is closed with `WITH` before the next one extends it, and a `WITH … WHERE` carries every variable its `WHERE` reads: FalkorDB 6.0.0 dropped a filter that a following `MATCH` extended, and 4.22 refuses a `WHERE` on a variable its `WITH` left behind.
 - **Check an endpoint against an independent query** before relying on it, and time it on the live graph: every one answers in well under a second.

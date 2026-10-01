@@ -79,33 +79,26 @@ Limit = Annotated[
     Field(
         ge=1,
         le=5000,
-        description="At most this many rows. A result exactly this long was cut.",
+        description="At most this many rows.",
     ),
 ]
 MinPublications = Annotated[
     int,
     Field(
         ge=1,
-        description="Keep interactions backed by at least this many distinct "
-        "publications; `combine` joins it to `min_methods`. The golden dataset "
-        "is 2 publications or 2 methods.",
+        description="At least this many distinct publications.",
     ),
 ]
 MinMethods = Annotated[
     int,
     Field(
         ge=1,
-        description="Keep interactions observed by at least this many distinct "
-        "detection methods; `combine` joins it to `min_publications`.",
+        description="At least this many distinct detection methods.",
     ),
 ]
 Combine = Annotated[
     Literal["and", "or"],
-    Field(
-        description="Whether an interaction must reach both `min_publications` "
-        "and `min_methods`, or either. The golden dataset is `min_publications` "
-        "2, `min_methods` 2, `or`."
-    ),
+    Field(description="Both thresholds, or either. Golden: 2, 2, `or`."),
 ]
 Accessions = Annotated[
     list[str],

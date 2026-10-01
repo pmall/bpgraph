@@ -40,7 +40,7 @@ def _handler(
             return JSONResponse({"error": str(error)}, status_code=400)
         except FileNotFoundError as error:
             return JSONResponse({"error": str(error)}, status_code=503)
-        return Response(answer, media_type="application/json")
+        return Response(answer, media_type="text/plain; charset=utf-8")
 
     return handle
 

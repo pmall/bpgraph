@@ -10,7 +10,7 @@ This repository holds:
 - **the ingestion** — a Python package that turns public sources and an export of the curation database into a fresh, validated graph and its sequence vaults;
 - **the query API** — internal, not exposed: one endpoint per predefined query over the graph and the vaults, and read-only Cypher;
 - **the MCP server** — the only thing consumers see: each API endpoint as a tool;
-- **the client side** — in `client`: the instructions a consulting repository's agent works by, the guide to exploring and the analysis skills, maintained here with the endpoints they call, and copied into the repositories that consult the graph.
+- **the client side** — in `client`: the instructions a consulting repository's agent works by and the analysis skills, maintained here with the endpoints they call, and copied into the repositories that consult the graph.
 
 Curation itself happens in a separate relational database. The graph is never edited in place: each run is built into a staging graph, checked, and swapped in whole. Where it is heading — many hosts, sequence and full-text vaults, protein language model features — is in [`docs/roadmap.md`](docs/roadmap.md).
 
@@ -56,7 +56,7 @@ uv run bpgraph-audit   # check the live graph against the schema
 
 ## Querying
 
-The live graph is the only source of truth; `data/` holds build inputs. Consulting repositories query it through the MCP server, whose tools are the query API's endpoints: predefined queries, sequences from the vaults, the schema, and read-only Cypher. This repository registers no MCP server. The same query runs from a terminal. [`client/queries.md`](client/queries.md) has the rules, canonical queries and a worked example.
+The live graph is the only source of truth; `data/` holds build inputs. Consulting repositories query it through the MCP server, whose tools are the query API's endpoints: predefined queries, sequences from the vaults, the schema, and read-only Cypher. This repository registers no MCP server. The same query runs from a terminal. What a query needs to know travels with the MCP server: its instructions, its tool descriptions, and its `schema` tool, with the rules for Cypher and worked queries.
 
 ```sh
 uv run bpgraph-query "MATCH (v:Virus) RETURN v.name"
@@ -74,6 +74,6 @@ uv run client/skills/network-view/render.py ferroptosis-flaviviridae.json   # ->
 - [`docs/export.md`](docs/export.md) — the TSV files the curation database exports.
 - [`docs/roadmap.md`](docs/roadmap.md) — where the graph is going: many hosts, vaults, language-model features.
 - [`docs/build.md`](docs/build.md) — building, validating, swapping and auditing a graph.
-- [`client/queries.md`](client/queries.md) — exploring the graph: access, rules, canonical queries.
+- [`client/instructions.md`](client/instructions.md) — how a consulting repository's agent works with the graph.
 - [`docs/development.md`](docs/development.md) — code layout, conventions and verification.
 - [`AGENTS.md`](AGENTS.md) — conventions for working on this repository.

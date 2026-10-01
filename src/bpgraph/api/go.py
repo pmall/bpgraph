@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field
 
-from bpgraph.api.base import Accessions, Backend, Limit, Record, Rows, page, whole
+from bpgraph.api.base import Accessions, Backend, Limit, Record, Rows, page
 from bpgraph.api.names import check_go_ids, check_proteins
 
 type Namespace = Literal["biological_process", "molecular_function"]
@@ -44,6 +44,7 @@ def go_annotations(
     include_negated: Annotated[
         bool, Field(description="Also the `NOT` annotations.")
     ] = False,
+    limit: Limit = 100,
 ) -> Rows[GoAnnotation]:
     """Human proteins' experimental GO annotations, each with its most
     specific term and the publication showing it. High-throughput codes
@@ -59,25 +60,24 @@ def go_annotations(
         if wanted
     ]
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-    return whole(
-        [
-            GoAnnotation.model_validate(row)
-            for row in backend.rows(
-                f"""MATCH (h:Protein) WHERE h.id IN $accessions AND h:Human
-            WITH h
-            MATCH (h)<-[:ANNOTATES]-(n:Annotation)
-            MATCH (n)-[:OF_TERM]->(g:GoTerm)
-            MATCH (n)-[:REPORTED_IN]->(b:Publication)
-            WITH h, n, g, b {where}
-            RETURN h.id AS protein_id, h.name AS protein_name, g.go_id AS go_id,
-                   g.name AS term, g.namespace AS namespace,
-                   n.qualifier AS qualifier, n.evidence_code AS evidence_code,
-                   n.assigned_by AS assigned_by, b.pmid AS pmid
-            ORDER BY protein_name, namespace, term, pmid""",
-                accessions=accessions,
-                namespace=namespace,
-            )
-        ]
+    return page(
+        backend,
+        GoAnnotation,
+        f"""MATCH (h:Protein) WHERE h.id IN $accessions AND h:Human
+        WITH h
+        MATCH (h)<-[:ANNOTATES]-(n:Annotation)
+        MATCH (n)-[:OF_TERM]->(g:GoTerm)
+        MATCH (n)-[:REPORTED_IN]->(b:Publication)
+        WITH h, n, g, b {where}""",
+        """RETURN h.id AS protein_id, h.name AS protein_name, g.go_id AS go_id,
+               g.name AS term, g.namespace AS namespace,
+               n.qualifier AS qualifier, n.evidence_code AS evidence_code,
+               n.assigned_by AS assigned_by, b.pmid AS pmid
+        ORDER BY protein_name, namespace, term, pmid""",
+        "n",
+        limit,
+        accessions=accessions,
+        namespace=namespace,
     )
 
 
@@ -113,7 +113,7 @@ def go_rollup(
     min_proteins: Annotated[
         int, Field(ge=1, description="Keep terms reaching at least this many.")
     ] = 1,
-    limit: Limit = 200,
+    limit: Limit = 100,
 ) -> Rows[Rollup]:
     """Roll a set of human proteins up the ontology: every term they or their
     annotated terms sit under, with the proteins it gathers, most first. The
@@ -214,7 +214,7 @@ def go_term_proteins(
     descendants: Annotated[
         bool, Field(description="Also the proteins annotated to terms below.")
     ] = True,
-    limit: Limit = 1000,
+    limit: Limit = 100,
 ) -> Rows[TermProtein]:
     """Human proteins annotated to GO terms, or to any term below them: a way
     to draft a topic from GO, or to find proteins a topic's list misses. Each
