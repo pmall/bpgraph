@@ -27,6 +27,48 @@ class Record(BaseModel):
     model_config = ConfigDict(frozen=True)
 
 
+class Rows[R](BaseModel):
+    """What a list endpoint returns: its `rows`, and `total`, how many rows
+    the question has, which is more than `rows` when `limit` cut them."""
+
+    model_config = ConfigDict(frozen=True)
+
+    rows: list[R]
+    total: int
+
+
+def whole[R](rows: list[R]) -> Rows[R]:
+    """Rows nothing cut."""
+    return Rows(rows=rows, total=len(rows))
+
+
+def paged(
+    backend: Backend, body: str, returns: str, grain: str, limit: int, **params: object
+) -> Rows[Row]:
+    """Run `body`, the query up to its `RETURN`, with `returns`, its `RETURN`
+    and `ORDER BY`, cut at `limit`. When `limit` filled the page, `total`
+    counts the distinct `grain`, the expression one row is one of."""
+    found = backend.rows(f"{body}\n{returns}\nLIMIT $limit", limit=limit, **params)
+    if len(found) < limit:
+        return whole(found)
+    counted = backend.rows(f"{body}\nRETURN count(DISTINCT {grain}) AS total", **params)
+    return Rows(rows=found, total=int(str(counted[0]["total"])))
+
+
+def page[R: Record](
+    backend: Backend,
+    model: type[R],
+    body: str,
+    returns: str,
+    grain: str,
+    limit: int,
+    **params: object,
+) -> Rows[R]:
+    """`paged`, each row read as a `model`."""
+    found = paged(backend, body, returns, grain, limit, **params)
+    return Rows(rows=[model.model_validate(r) for r in found.rows], total=found.total)
+
+
 type ProteinKind = Literal["human", "viral"]
 
 KIND = "CASE WHEN {0}:Human THEN 'human' ELSE 'viral' END"
@@ -45,7 +87,24 @@ MinPublications = Annotated[
     Field(
         ge=1,
         description="Keep interactions backed by at least this many distinct "
-        "publications. 2 is the golden dataset.",
+        "publications; `combine` joins it to `min_methods`. The golden dataset "
+        "is 2 publications or 2 methods.",
+    ),
+]
+MinMethods = Annotated[
+    int,
+    Field(
+        ge=1,
+        description="Keep interactions observed by at least this many distinct "
+        "detection methods; `combine` joins it to `min_publications`.",
+    ),
+]
+Combine = Annotated[
+    Literal["and", "or"],
+    Field(
+        description="Whether an interaction must reach both `min_publications` "
+        "and `min_methods`, or either. The golden dataset is `min_publications` "
+        "2, `min_methods` 2, `or`."
     ),
 ]
 Accessions = Annotated[
@@ -99,3 +158,23 @@ def require_viral_scope(
 ) -> None:
     if family is None and virus is None and viral_ids is None:
         raise ValueError("give a family, a virus or viral protein ids")
+
+
+def evidence_level(
+    variable: str, min_publications: int, min_methods: int, combine: str
+) -> str:
+    """The Cypher condition keeping the interaction or shortcut edge
+    `variable` at the evidence level. Its parameters are `$min_publications`
+    and `$min_methods`. Under `or`, a threshold left at 1 is reached by every
+    interaction, so the other would filter nothing: that is refused."""
+    if combine == "or" and min(min_publications, min_methods) == 1 < max(
+        min_publications, min_methods
+    ):
+        raise ValueError(
+            "under `or`, a threshold of 1 keeps every interaction: raise both, "
+            "or use `and`"
+        )
+    return (
+        f"({variable}.n_publications >= $min_publications {combine.upper()} "
+        f"{variable}.n_methods >= $min_methods)"
+    )

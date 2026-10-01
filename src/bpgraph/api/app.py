@@ -18,7 +18,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 from bpgraph.api.base import Backend
-from bpgraph.api.endpoints import ENDPOINTS, Endpoint
+from bpgraph.api.endpoints import ENDPOINTS, Endpoint, TooLarge
 from bpgraph.client import connect
 from bpgraph.config import Config
 
@@ -33,16 +33,14 @@ def _handler(
         except ValidationError as error:
             return JSONResponse({"error": str(error)}, status_code=422)
         try:
-            result = await run_in_threadpool(
-                endpoint.function, backend, **dict(parameters)
-            )
+            answer = await run_in_threadpool(endpoint.answer, backend, parameters)
+        except TooLarge as error:
+            return JSONResponse({"error": str(error)}, status_code=413)
         except (ResponseError, ValueError) as error:
             return JSONResponse({"error": str(error)}, status_code=400)
         except FileNotFoundError as error:
             return JSONResponse({"error": str(error)}, status_code=503)
-        return Response(
-            endpoint.result.dump_json(result), media_type="application/json"
-        )
+        return Response(answer, media_type="application/json")
 
     return handle
 

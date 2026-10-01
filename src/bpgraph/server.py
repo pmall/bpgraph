@@ -14,7 +14,8 @@ import httpx2
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
-from mcp.types import ToolAnnotations
+from mcp.types import CallToolResult, TextContent, ToolAnnotations
+from pydantic import BaseModel
 
 from bpgraph.api.endpoints import ENDPOINTS, Endpoint
 
@@ -31,7 +32,13 @@ Start with the predefined tools; they know the graph's pitfalls, such as \
 peptide direction and NOT annotations. Use `cypher` for what they do not \
 answer, after reading `schema`. The counters on an interaction are its \
 evidence, and the text is where the insight is: read abstracts and function \
-text once a question is narrowed down.\
+text once a question is narrowed down. \
+A list comes back as `rows` and `total`, how many rows the question has \
+whatever `limit` kept. A result larger than `max_tokens` (25,000 by default, \
+estimated at three characters of JSON per token) is refused with its size \
+and row counts, never cut: narrow the question, lower `limit` or raise \
+`max_tokens`. An unknown family, virus, protein, GO term, pmid, interaction \
+or peptide is an error naming the closest known ones.\
 """
 
 API = os.environ.get("BPGRAPH_API", "http://127.0.0.1:8000")
@@ -41,9 +48,12 @@ client = httpx2.AsyncClient(base_url=API, timeout=300)
 
 
 def _tool(endpoint: Endpoint) -> Callable[..., Awaitable[Any]]:
-    """A function with the endpoint's signature, calling it over HTTP."""
+    """A function with the endpoint's signature, calling it over HTTP. Its
+    text is the API's compact JSON, the size `max_tokens` was checked against,
+    rather than the indented JSON the SDK would write; the same value is its
+    structured content."""
 
-    async def call(**arguments: Any) -> Any:
+    async def call(**arguments: Any) -> CallToolResult:
         parameters = endpoint.parameters.model_validate(arguments)
         try:
             response = await client.post(
@@ -53,7 +63,16 @@ def _tool(endpoint: Endpoint) -> Callable[..., Awaitable[Any]]:
             raise ToolError(f"the query API is unreachable: {error}") from error
         if response.status_code != 200:
             raise ToolError(response.json()["error"])
-        return endpoint.result.validate_json(response.content)
+        value = endpoint.result.validate_json(response.content)
+        if isinstance(value, BaseModel):
+            return CallToolResult(
+                content=[TextContent(type="text", text=response.text)],
+                structured_content=value.model_dump(mode="json"),
+            )
+        return CallToolResult(
+            content=[TextContent(type="text", text=str(value))],
+            structured_content={"result": value},
+        )
 
     call.__name__ = endpoint.name
     call.__doc__ = endpoint.description

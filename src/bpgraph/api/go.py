@@ -6,7 +6,8 @@ from typing import Annotated, Literal
 
 from pydantic import Field
 
-from bpgraph.api.base import Accessions, Backend, Limit, Record
+from bpgraph.api.base import Accessions, Backend, Limit, Record, Rows, page, whole
+from bpgraph.api.names import check_go_ids, check_proteins
 
 type Namespace = Literal["biological_process", "molecular_function"]
 
@@ -43,11 +44,12 @@ def go_annotations(
     include_negated: Annotated[
         bool, Field(description="Also the `NOT` annotations.")
     ] = False,
-) -> list[GoAnnotation]:
+) -> Rows[GoAnnotation]:
     """Human proteins' experimental GO annotations, each with its most
     specific term and the publication showing it. High-throughput codes
     (`HTP`, `HDA`, `HMP`, `HGI`, `HEP`) weigh less than a focused experiment.
     Viral proteins have none."""
+    check_proteins(backend, accessions, "human")
     conditions = [
         condition
         for wanted, condition in (
@@ -57,10 +59,11 @@ def go_annotations(
         if wanted
     ]
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-    return [
-        GoAnnotation.model_validate(row)
-        for row in backend.rows(
-            f"""MATCH (h:Protein) WHERE h.id IN $accessions AND h:Human
+    return whole(
+        [
+            GoAnnotation.model_validate(row)
+            for row in backend.rows(
+                f"""MATCH (h:Protein) WHERE h.id IN $accessions AND h:Human
             WITH h
             MATCH (h)<-[:ANNOTATES]-(n:Annotation)
             MATCH (n)-[:OF_TERM]->(g:GoTerm)
@@ -71,10 +74,11 @@ def go_annotations(
                    n.qualifier AS qualifier, n.evidence_code AS evidence_code,
                    n.assigned_by AS assigned_by, b.pmid AS pmid
             ORDER BY protein_name, namespace, term, pmid""",
-            accessions=accessions,
-            namespace=namespace,
-        )
-    ]
+                accessions=accessions,
+                namespace=namespace,
+            )
+        ]
+    )
 
 
 class Rollup(Record):
@@ -110,13 +114,16 @@ def go_rollup(
         int, Field(ge=1, description="Keep terms reaching at least this many.")
     ] = 1,
     limit: Limit = 200,
-) -> list[Rollup]:
+) -> Rows[Rollup]:
     """Roll a set of human proteins up the ontology: every term they or their
     annotated terms sit under, with the proteins it gathers, most first. The
     namespace root comes first, and its `n_proteins` is how many of the set
     are annotated at all. With a background, `n_background` is how many of
     it each term gathers, and the root's is how many are annotated: what an
     exact test needs. `regulation of X` is not under `X`."""
+    check_proteins(backend, accessions, "human")
+    if background is not None:
+        check_proteins(backend, background, "human")
     counts = (
         {t.go_id: len(t.proteins) for t in _gathered(backend, background, namespace)}
         if background is not None
@@ -136,7 +143,7 @@ def go_rollup(
         ),
         key=lambda rollup: (-rollup.n_proteins, rollup.term),
     )
-    return ranked[:limit]
+    return Rows(rows=ranked[:limit], total=len(ranked))
 
 
 class _Gathered(Record):
@@ -170,27 +177,26 @@ def search_go_terms(
         Namespace | None, Field(description="Keep one namespace only.")
     ] = None,
     limit: Limit = 100,
-) -> list[Term]:
+) -> Rows[Term]:
     """GO terms whose name contains a text, with how many human proteins are
     annotated to exactly that term. Obsolete terms are left out. A term with
     no protein of its own may still gather many below it: `go_term_proteins`."""
     keep = "AND g.namespace = $namespace" if namespace is not None else ""
-    return [
-        Term.model_validate(row)
-        for row in backend.rows(
-            f"""MATCH (g:GoTerm)
-            WHERE toLower(g.name) CONTAINS toLower($text) AND NOT g.obsolete {keep}
-            OPTIONAL MATCH (g)<-[:OF_TERM]-(n:Annotation)-[:ANNOTATES]->(h:Human)
-            WHERE NOT n.qualifier STARTS WITH 'NOT'
-            RETURN g.go_id AS go_id, g.name AS name, g.namespace AS namespace,
-                   count(DISTINCT h) AS n_proteins
-            ORDER BY n_proteins DESC, name
-            LIMIT $limit""",
-            text=text,
-            namespace=namespace,
-            limit=limit,
-        )
-    ]
+    return page(
+        backend,
+        Term,
+        f"""MATCH (g:GoTerm)
+        WHERE toLower(g.name) CONTAINS toLower($text) AND NOT g.obsolete {keep}""",
+        """OPTIONAL MATCH (g)<-[:OF_TERM]-(n:Annotation)-[:ANNOTATES]->(h:Human)
+        WHERE NOT n.qualifier STARTS WITH 'NOT'
+        RETURN g.go_id AS go_id, g.name AS name, g.namespace AS namespace,
+               count(DISTINCT h) AS n_proteins
+        ORDER BY n_proteins DESC, name""",
+        "g",
+        limit,
+        text=text,
+        namespace=namespace,
+    )
 
 
 class TermProtein(Record):
@@ -209,29 +215,29 @@ def go_term_proteins(
         bool, Field(description="Also the proteins annotated to terms below.")
     ] = True,
     limit: Limit = 1000,
-) -> list[TermProtein]:
+) -> Rows[TermProtein]:
     """Human proteins annotated to GO terms, or to any term below them: a way
     to draft a topic from GO, or to find proteins a topic's list misses. Each
     comes with the terms that matched, the evidence codes and the
     publications. `NOT` annotations are left out."""
     depth = "*0.." if descendants else "*0"
-    return [
-        TermProtein.model_validate(row)
-        for row in backend.rows(
-            f"""MATCH (g:GoTerm) WHERE g.go_id IN $go_ids
-            WITH g
-            MATCH (g)<-[:IS_A|PART_OF{depth}]-(d:GoTerm)
-            WITH DISTINCT d
-            MATCH (d)<-[:OF_TERM]-(n:Annotation)-[:ANNOTATES]->(h:Human)
-            MATCH (n)-[:REPORTED_IN]->(b:Publication)
-            WITH d, n, h, b WHERE NOT n.qualifier STARTS WITH 'NOT'
-            RETURN h.id AS id, h.name AS name, h.description AS description,
-                   collect(DISTINCT d.name) AS terms,
-                   collect(DISTINCT n.evidence_code) AS evidence_codes,
-                   collect(DISTINCT b.pmid) AS pmids
-            ORDER BY size(pmids) DESC, name
-            LIMIT $limit""",
-            go_ids=go_ids,
-            limit=limit,
-        )
-    ]
+    check_go_ids(backend, go_ids)
+    return page(
+        backend,
+        TermProtein,
+        f"""MATCH (g:GoTerm) WHERE g.go_id IN $go_ids
+        WITH g
+        MATCH (g)<-[:IS_A|PART_OF{depth}]-(d:GoTerm)
+        WITH DISTINCT d
+        MATCH (d)<-[:OF_TERM]-(n:Annotation)-[:ANNOTATES]->(h:Human)
+        MATCH (n)-[:REPORTED_IN]->(b:Publication)
+        WITH d, n, h, b WHERE NOT n.qualifier STARTS WITH 'NOT'""",
+        """RETURN h.id AS id, h.name AS name, h.description AS description,
+               collect(DISTINCT d.name) AS terms,
+               collect(DISTINCT n.evidence_code) AS evidence_codes,
+               collect(DISTINCT b.pmid) AS pmids
+        ORDER BY size(pmids) DESC, name""",
+        "h",
+        limit,
+        go_ids=go_ids,
+    )

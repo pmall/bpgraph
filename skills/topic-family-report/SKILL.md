@@ -17,7 +17,7 @@ Do not read or look for other reports, for any family, even ones sitting in the 
 
 - **Topic**, e.g. `ferroptosis`: its list of human proteins as Swiss-Prot accessions, with whatever it records on each, such as a role. The user provides it; ask if they haven't. The graph holds no topics: pass the accessions to queries as `$accessions`, and join the list's other columns, such as the role, to the results yourself.
 - **Viral family**, e.g. `Flaviviridae`.
-- **Evidence threshold.** The default is the **golden dataset**: an interaction backed by at least 2 distinct publications.
+- **Evidence threshold.** The default is the **golden dataset**: an interaction backed by at least 2 distinct publications or at least 2 distinct detection methods, which the predefined queries take as `min_publications: 2, min_methods: 2, combine: "or"`.
 - **Destination:** wherever the user asks. Ask if they haven't said.
 
 Query the live graph through the tools of the `bpgraph` MCP server, and nothing else: its predefined queries first, which handle the graph's pitfalls, and `cypher` for what they do not answer. Its `schema` tool describes the graph.

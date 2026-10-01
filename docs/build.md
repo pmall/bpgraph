@@ -121,7 +121,7 @@ Step 10 is therefore a hard gate: `FAILED` means the run violated a key, and the
 
 ## Counters
 
-`Interaction.n_descriptions` / `n_publications` / `n_peptides` are counted while the interaction is written, from the group of its descriptions and peptides: descriptions, distinct pmids, distinct peptide sequences. The `:INTERACTS_WITH` edge is written in the same statement and carries the same three.
+`Interaction.n_descriptions` / `n_publications` / `n_methods` / `n_peptides` are counted while the interaction is written, from the group of its descriptions and peptides: descriptions, distinct pmids, distinct method ids, distinct peptide sequences. The `:INTERACTS_WITH` edge is written in the same statement and carries the same four.
 
 ## Auditing what was built
 
