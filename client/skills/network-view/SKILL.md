@@ -8,7 +8,7 @@ description: Draw a subnetwork of the bpgraph protein–protein interaction grap
 Three steps:
 
 1. **Gather the dataset.** Query the graph, choose what the network holds, and write it to `<name>.json`. This is your judgment.
-2. **Render it.** Run `uv run bpgraph-network <name>.json`. It writes a standard page, `<name>.cytoscape.html`, beside the JSON. The script never touches the database, and you never write a page from scratch. Every network starts from the same look, so networks can be compared.
+2. **Render it.** Run `uv run <this skill's folder>/render.py <name>.json`. It writes a standard page, `<name>.cytoscape.html`, beside the JSON, from the `cytoscape.html` template next to the script. The script never touches the database, and you never write a page from scratch. Every network starts from the same look, so networks can be compared.
 3. **Adjust the page**, if the network calls for it. Change colours, labels, shapes or layout in the page's `adjust` block, and nowhere else.
 
 ## Inputs
@@ -19,7 +19,14 @@ Three steps:
 
 ## 1. The dataset
 
-Query the live graph through the tools of the `bpgraph` MCP server, and nothing else: its predefined queries first, which handle the graph's pitfalls, and `cypher` for what they do not answer. Its `schema` tool describes the graph. Then write:
+Query the live graph through the tools of the `bpgraph` MCP server, and nothing else: its predefined queries first, which handle the graph's pitfalls, and `cypher` for what they do not answer. Its `schema` tool describes the graph. For a topic × family network, for example:
+
+- `vh_interactions` with the family and the topic's accessions gives the VH edges, each with its viral protein, virus and counters.
+- `hh_interactions` with the topic's accessions, plus the human targets if they lie outside it, gives the HH edges among them.
+- `proteins` gives each protein's description; a viral protein's virus is already in the VH rows.
+- `find_proteins` turns gene symbols from the user's list into accessions.
+
+A list tool returns `rows` and `total`: when `total` is larger than the rows, `limit` cut them, so raise it or narrow the question. A result over `max_tokens` is refused with its size; a network's edges are compact, so raising `max_tokens` is usually fine here. Then write:
 
 ```json
 {
@@ -33,7 +40,8 @@ Query the live graph through the tools of the `bpgraph` MCP server, and nothing 
      "description": "Genome polyprotein", "taxon_name": "HCV"}
   ],
   "interactions": [
-    {"source": "P36969", "target": "3052230:NS5A", "n_publications": 2}
+    {"source": "P36969", "target": "3052230:NS5A", "n_publications": 2,
+     "n_methods": 3}
   ]
 }
 ```
@@ -41,7 +49,7 @@ Query the live graph through the tools of the `bpgraph` MCP server, and nothing 
 - `id` is the graph's protein `id`. `kind` is `human` or `viral`, taken from the protein's label.
 - `taxon_name` is the virus's `name` from `(:Viral)-[:IN_TAXON]->(:Virus)` for a viral protein (`HCV`, `SARS-CoV-2`), and `Homo sapiens` for a human one.
 - `attributes` is optional. Use it for anything else worth showing or styling by, such as the `role` the topic's list gives a protein, or the viral family. The graph holds no topics: take the list from the user. It appears when a protein is clicked, and the page can style by it.
-- An interaction connects two listed proteins, and each pair appears once. The counters come from the graph's `:Interaction`.
+- An interaction connects two listed proteins, and each pair appears once. `n_publications` and `n_methods` are the interaction's counters, as the tools return them.
 - The renderer refuses a file that breaks these rules.
 
 Write the `description` for a reader who has not seen how the data was gathered. Name the topic, the family, the evidence rule, and anything included beyond the direct interactions, such as HH edges, untargeted topic proteins or one-hop partners.
@@ -56,7 +64,7 @@ Write the `description` for a reader who has not seen how the data was gathered.
   - **Blue:** human proteins with at least one viral partner.
   - **Grey:** human proteins with only human partners, or none.
 - Edge width follows `n_publications`.
-- Clicking a protein or an interaction shows its details.
+- Clicking a protein or an interaction shows its details, an interaction's publications and methods included.
 - Proteins can be dragged. **Save PNG** saves the whole network as it stands, dragged positions included, at 3× resolution, as `<name>.png`.
 
 ## 3. Adjusting the page

@@ -26,7 +26,7 @@ The live graph `bpgraph` on the FalkorDB server is the only source of truth abou
 - **Building a graph** or changing what it holds: [`docs/build.md`](docs/build.md) and [`docs/export.md`](docs/export.md).
 - **Writing code**, for the build, a query API endpoint or a skill's script: [`docs/development.md`](docs/development.md).
 
-Analyses that recur are skills in `skills`, written and kept in sync with the code here, and copied into consulting repositories to be installed. A skill says what to analyse and what to report, and a script gives it a standard entry point for the mechanical part. A skill must work once copied: it reaches the graph through MCP tools only, never a path or a document of this repository.
+Everything a consumer of the graph needs lives in `client`: the guide to exploring, `queries.md`, and the skills in `client/skills`, which `.agents/skills` and `.claude/skills` link to. Analyses that recur are skills, written and kept in sync with the code here, and copied into consulting repositories to be installed. A skill says what to analyse and what to report, and a script gives it a standard entry point for the mechanical part. A skill must work once copied: it reaches the graph through MCP tools only, never a path or a document of this repository.
 
 ## Git
 
