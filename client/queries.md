@@ -29,7 +29,7 @@ Start with the predefined tools. Each answers a question analyses keep asking, a
 
 - **A list comes back as `rows` and `total`**, how many rows the question has whatever `limit` kept. When `total` is larger than the rows, raise `limit` or narrow the question; count from `total`, never from a cut list.
 - **Size is your call.** A result larger than `max_tokens`, 25,000 by default and estimated at three characters of JSON per token, is refused with its size, its row count and its total, never cut. Narrow the question, lower `limit`, or raise `max_tokens` when your context can take it. `cypher` runs your statement as written, under the same rule.
-- **An unknown name is an error** naming the closest known ones: a family, virus, protein, GO term, pmid, interaction or peptide the graph does not hold is never an empty answer. A gene symbol given where an id is expected is answered with its id.
+- **An unknown name is an error** naming the closest known ones, whether a family, virus, protein, GO term, pmid, interaction or peptide. A gene symbol given where an id is expected is answered with its id.
 - **Evidence levels.** Tools that filter interactions take `min_publications`, `min_methods` and `combine`. The **golden dataset** is an interaction backed by at least 2 distinct publications or at least 2 distinct detection methods: `min_publications: 2, min_methods: 2, combine: "or"`. An `or` with a threshold of 1 keeps every interaction, and is refused.
 
 ## What the data means
@@ -39,9 +39,9 @@ Start with the predefined tools. Each answers a question analyses keep asking, a
 - **The counters are the evidence**, and there is no score: `n_publications` distinct publications, `n_methods` distinct PSI-MI detection methods, `n_descriptions` observations, `n_peptides` distinct peptides. Every distinct PSI-MI method counts, close variants included: `coimmunoprecipitation` and `anti tag coimmunoprecipitation` are two.
 - **A description is one observation**: one pair, one publication, one detection method, and its peptides. It comes from IntAct, from our curation, or from both independently (`evidence` says which). VH descriptions are all ours. IntAct's are kept only when an experiment observed a real interaction in a publication, by a method that shows one: no light microscopy, ChIP or genetic assays. Ours are all kept.
 - **Re-reported experiments count once.** A publication that re-analyses an earlier one's experiment only adds the pairs the earlier one lacks: a pair BioPlex 2.0 and BioPlex 3.0 both report counts one publication, BioPlex 2.0. MuSIC, over BioPlex 3.0, is treated the same way.
-- **Topics are not in the graph.** A topic is a list of human proteins kept by whoever asks, passed to tools as `accessions`, with whatever else the list records, such as a role, joined to the results by you.
-- **Human proteins** are every Swiss-Prot human entry, about 20,000, including those no interaction names. Viral proteins have no GO annotations.
-- **GO is function only**: experimental annotations of biological process and molecular function, with no cellular component and nothing at or below `protein binding`, since binding is what the interactions say. High-throughput evidence codes (`HTP`, `HDA`, `HMP`, `HGI`, `HEP`) weigh less than a focused experiment. A `NOT` annotation states what a protein is not involved in; the tools leave it out unless asked. `regulation of X` is not below `X` in the ontology: search for it by name.
+- **Topics** are lists of human proteins kept on the client side, in a file or knowledge base, passed to tools as `accessions`, with whatever else the list records, such as a role, joined to the results by you.
+- **Human proteins** are every Swiss-Prot human entry, about 20,000, including those no interaction names.
+- **GO is function only**: experimental annotations of human proteins, for biological process and molecular function, with no cellular component and nothing at or below `protein binding`, since binding is what the interactions say. High-throughput evidence codes (`HTP`, `HDA`, `HMP`, `HGI`, `HEP`) weigh less than a focused experiment. A `NOT` annotation states what a protein is not involved in; the tools leave it out unless asked. `regulation of X` is not below `X` in the ontology: search for it by name.
 - **Peptides are directed**: each comes from one partner of an interaction and binds the other. A peptide sequence is one node, shared by every pair it was reported for, so its evidence belongs to one source and target at a time; `peptides` and `peptide` keep them apart.
 - **Taxa are current**: a virus's taxon id is NCBI's current one, even where the literature uses a retired id.
 
@@ -110,7 +110,7 @@ ORDER BY name
 - **A family on a topic.** `coverage` places the family among the others, against its overall reach. `vh_interactions` with the family and the topic's accessions gives the interactions, `evidence` the observations behind the ones that matter, and `publications` their abstracts. `hh_interactions` with `around` and `neighbours` show the human context; `indirect_reach` adds the targets reached through one protein in between.
 - **What a family's targets do.** Take the human proteins of `vh_interactions` for the family, and pass them to `go_rollup` with a reference set as `background`, such as the topic or every human protein the family's virus reaches: each term comes with the counts an exact test needs.
 - **From a word to the graph.** `search_publications` finds the papers, `publication_content` what each backs: interactions, GO annotations, function texts.
-- **Drafting a topic.** `search_go_terms` finds the terms, `go_term_proteins` the proteins under them, `neighbours` the candidates the list misses.
+- **Drafting a topic.** `search_go_terms` finds the terms, `go_term_proteins` the proteins under them, `neighbours` the candidates the list misses. The draft goes to the user, who curates it into the topic's file.
 
 ## Worked example
 
