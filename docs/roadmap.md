@@ -68,4 +68,4 @@ Known gaps in what is done:
 
 - Only human is a host. `:Human`, `:HH` and the `9606` of the run layout are the places a second host touches (step 8).
 - The engine is pinned to FalkorDB 4.22, the C engine. 6.0 is a rewrite in Rust, fast on our audit but with a planner that dropped filters in its first release; it is worth moving to once a 6.x passes the audit, as [`development.md`](development.md) describes.
-- Step 10 is nearly done. The API and the MCP server serve the predefined queries; `client/` holds what a consuming repository needs, the skills and the guide to exploring, [`queries.md`](../client/queries.md), all reaching the graph through MCP tools only. What is left is the consuming repositories themselves.
+- Step 10 is nearly done. The API and the MCP server serve the predefined queries; `client/` holds what a consuming repository needs, its agent's instructions, the skills and the guide to exploring, [`queries.md`](../client/queries.md), all reaching the graph through MCP tools only. What is left is the consuming repositories themselves.

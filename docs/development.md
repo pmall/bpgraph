@@ -48,6 +48,8 @@ src/bpgraph/
                 run.py puts them together; tsv.py parses, records.py the
                 intermediate records
 client/         what consumers of the graph need, copied into consulting repos:
+  instructions.md
+                how a consulting repo's agent works; becomes its AGENTS.md
   queries.md    the guide to exploring the graph
   skills/       the analysis skills, each self-contained with its scripts;
                 .agents/skills and .claude/skills link here
