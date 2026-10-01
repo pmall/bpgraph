@@ -10,7 +10,7 @@ This repository holds:
 - **the ingestion** — a Python package that turns public sources and an export of the curation database into a fresh, validated graph and its sequence vaults;
 - **the query API** — internal, not exposed: one endpoint per predefined query over the graph and the vaults, and read-only Cypher;
 - **the MCP server** — the only thing consumers see: each API endpoint as a tool;
-- **the client side** — in `client`: the analysis skills and the guide to exploring, maintained here with the endpoints they call, and copied into the repositories that consult the graph.
+- **the client side** — in `client`: the instructions a consulting repository's agent works by, the guide to exploring and the analysis skills, maintained here with the endpoints they call, and copied into the repositories that consult the graph.
 
 Curation itself happens in a separate relational database. The graph is never edited in place: each run is built into a staging graph, checked, and swapped in whole. Where it is heading — many hosts, sequence and full-text vaults, protein language model features — is in [`docs/roadmap.md`](docs/roadmap.md).
 
