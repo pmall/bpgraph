@@ -56,7 +56,7 @@ def partners(
     min_publications: MinPublications = 1,
     min_methods: MinMethods = 1,
     combine: Combine = "and",
-    limit: Limit = 500,
+    limit: Limit = 100,
 ) -> Rows[Partner]:
     """A protein's interaction partners, best supported first, with the
     counters of each interaction: distinct publications and detection
@@ -98,7 +98,7 @@ class VHInteraction(Record):
     n_methods: int
     n_descriptions: int
     n_peptides: int
-    methods: list[str]
+    methods: list[str] | None
 
 
 def vh_interactions(
@@ -113,11 +113,14 @@ def vh_interactions(
     min_publications: MinPublications = 1,
     min_methods: MinMethods = 1,
     combine: Combine = "and",
-    limit: Limit = 1000,
+    methods: Annotated[
+        bool, Field(description="Also each interaction's detection methods.")
+    ] = False,
+    limit: Limit = 100,
 ) -> Rows[VHInteraction]:
     """Virus–human interactions, narrowed by human proteins, by viral family,
     virus or viral proteins, or any combination; at least one is needed. Each
-    comes with its counters and the distinct detection methods behind it.
+    comes with its counters and, if asked, its distinct detection methods.
     Evidence is per curated viral protein: never add counters across viral
     proteins or viruses to push a pair over a threshold."""
     if accessions is None:
@@ -136,13 +139,14 @@ def vh_interactions(
         MATCH (v)<-[:INVOLVES]-(i:VH)-[:INVOLVES]->(h:Human)
         WITH v, t, f, i, h {human}
         WITH v, t, f, i, h WHERE {level}""",
-        """MATCH (i)<-[:SUPPORTS]-(d:Description)
+        """OPTIONAL MATCH (i)<-[:SUPPORTS]-(d:Description) WHERE $methods
         RETURN i.id AS interaction_id, h.id AS human_id, h.name AS human_name,
                v.id AS viral_id, v.name AS viral_name, t.name AS virus,
                f.name AS family, i.n_publications AS n_publications,
                i.n_methods AS n_methods, i.n_descriptions AS n_descriptions,
                i.n_peptides AS n_peptides,
-               collect(DISTINCT d.method_name) AS methods
+               CASE WHEN $methods THEN collect(DISTINCT d.method_name) END
+                   AS methods
         ORDER BY n_publications DESC, n_methods DESC, n_descriptions DESC,
                  interaction_id""",
         "i",
@@ -153,6 +157,7 @@ def vh_interactions(
         viral_ids=viral_ids,
         min_publications=min_publications,
         min_methods=min_methods,
+        methods=methods,
     )
 
 
@@ -180,7 +185,7 @@ def hh_interactions(
     min_publications: MinPublications = 1,
     min_methods: MinMethods = 1,
     combine: Combine = "and",
-    limit: Limit = 1000,
+    limit: Limit = 100,
 ) -> Rows[HHInteraction]:
     """Human–human interactions within a set of human proteins, such as a
     topic, or around it too. Side `a` is always in the set. Homodimers are
@@ -228,7 +233,7 @@ def neighbours(
     min_publications: MinPublications = 1,
     min_methods: MinMethods = 1,
     combine: Combine = "and",
-    limit: Limit = 200,
+    limit: Limit = 100,
 ) -> Rows[Neighbour]:
     """Human proteins outside a set that interact with it, ranked by how many
     of the set's proteins they bind, then by their best support. The first
@@ -283,7 +288,7 @@ def indirect_reach(
     min_publications: MinPublications = 1,
     min_methods: MinMethods = 1,
     combine: Combine = "and",
-    limit: Limit = 1000,
+    limit: Limit = 100,
 ) -> Rows[IndirectReach]:
     """Viral proteins reaching a set of human proteins through one human
     protein outside it: viral → via (VH) and via → target (HH), each hop at
@@ -351,6 +356,7 @@ def coverage(
     than its overall reach predicts. Only groups reaching the set are
     returned. Grouped by family, viruses with no family fall out."""
     group = "f.name" if by == "family" else "t.name"
+    family = "null" if by == "family" else "f.name"
     keep = "WHERE f IS NOT NULL" if by == "family" else ""
     level = evidence_level("e", min_publications, min_methods, combine)
     check_proteins(backend, accessions, "human")
@@ -362,7 +368,7 @@ def coverage(
                 OPTIONAL MATCH (t)-[:PARENT]->(f:Family)
                 WITH v, t, f {keep}
                 MATCH (v)-[e:INTERACTS_WITH]-(h:Human)
-                WITH {group} AS group, f.name AS family, v, e, h,
+                WITH {group} AS group, {family} AS family, v, e, h,
                      h.id IN $accessions AS in_set
                 WHERE {level}
                 WITH group, family,
@@ -383,23 +389,14 @@ def coverage(
     )
 
 
-class Peptide(Record):
-    sequence: str
-    source_id: str
-
-
 class Evidence(Record):
     interaction_id: str
-    description_id: str
     pmid: str
     year: int
     title: str
-    method_id: str
     method_name: str
     source: Literal["intact", "curated", "both"]
-    intact_id: str
-    stable_ids: list[str]
-    peptides: list[Peptide]
+    peptides: list[str]
     viral_accession: str | None
 
 
@@ -409,13 +406,17 @@ def evidence(
         list[str],
         Field(min_length=1, description="Interaction ids, e.g. `P36969|3052230:NS5A`."),
     ],
-    limit: Limit = 1000,
+    limit: Limit = 100,
 ) -> Rows[Evidence]:
     """The descriptions behind interactions, newest first: each is one
     observation, with its publication, detection method, where it comes from
     (IntAct, our curation, or both independently), its peptides with the
     protein each came from, and for a VH description the viral UniProt entry
-    it observed. Read the abstracts with `publications`."""
+    it observed. IntAct's descriptions are experiments in a publication by a
+    method that shows an interaction, never light microscopy, ChIP or a
+    genetic assay; ours are all kept. A publication re-reporting an earlier
+    experiment, such as BioPlex 3.0 over 2.0, adds only the pairs the earlier
+    one lacks. Read the abstracts with `publications`."""
     check_interactions(backend, interaction_ids)
     found = paged(
         backend,
@@ -427,15 +428,14 @@ def evidence(
         OPTIONAL MATCH (i)-[s:INVOLVES]->(source:Protein)
         WHERE s.side = r.source_side
         WITH i, d, b, collect(CASE WHEN x IS NULL THEN NULL
-                                   ELSE {sequence: x.sequence, source_id: source.id}
+                                   ELSE x.sequence + ' from ' + source.id
                               END) AS peptides
         RETURN i.id AS interaction_id, d.id AS description_id, b.pmid AS pmid,
-               b.year AS year, b.title AS title, d.method_id AS method_id,
-               d.method_name AS method_name,
+               b.year AS year, b.title AS title, d.method_name AS method_name,
                CASE WHEN d.intact_id = '' THEN 'curated'
                     WHEN size(d.stable_ids) = 0 THEN 'intact'
                     ELSE 'both' END AS source,
-               d.intact_id AS intact_id, d.stable_ids AS stable_ids, peptides
+               peptides
         ORDER BY interaction_id, year DESC, pmid""",
         "d",
         limit,

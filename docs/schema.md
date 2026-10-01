@@ -2,7 +2,7 @@
 
 FalkorDB is schemaless; **this document is the schema**. Nothing is written to the graph that is not described here. Graph key: `bpgraph`.
 
-Companion documents, load when relevant: [`build.md`](build.md) (how a run builds and validates a graph), [`queries.md`](../client/queries.md) (canonical queries and a worked example), [`roadmap.md`](roadmap.md) (where the schema is going).
+Companion documents, load when relevant: [`build.md`](build.md) (how a run builds and validates a graph), [`roadmap.md`](roadmap.md) (where the schema is going).
 
 ## Principles
 
@@ -177,7 +177,7 @@ ______________________________________________________________________
 
 `:REPORTS` carries `source_side`, naming the side of *this description's* interaction the peptide came from. The description points at one interaction, whose partners are tagged `side: 'a'` and `side: 'b'`, so one property pins down both source and target — however many of each the peptide accumulates across the graph.
 
-Entering from a protein, compare that protein's own `INVOLVES.side` against `source_side`: equal means the protein is the peptide's **source**, different means it is the **target**. Omitting the comparison silently mixes the two. Worked queries are in [`queries.md`](../client/queries.md).
+Entering from a protein, compare that protein's own `INVOLVES.side` against `source_side`: equal means the protein is the peptide's **source**, different means it is the **target**. Omitting the comparison silently mixes the two.
 
 ### `:INTERACTS_WITH`
 
