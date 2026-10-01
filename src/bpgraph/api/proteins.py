@@ -7,14 +7,20 @@ from pydantic import Field
 from bpgraph.api.base import (
     KIND,
     Backend,
+    Combine,
     Family,
+    MinMethods,
     MinPublications,
     ProteinIds,
     ProteinKind,
     Record,
+    Rows,
     Virus,
+    evidence_level,
     viral_scope,
+    whole,
 )
+from bpgraph.api.names import check_proteins, check_scope
 
 LABELS = (
     "Human",
@@ -36,19 +42,21 @@ class LabelCount(Record):
     count: int
 
 
-def overview(backend: Backend) -> list[LabelCount]:
+def overview(backend: Backend) -> Rows[LabelCount]:
     """How many nodes of each kind the live graph holds: human and viral
     proteins, viruses and families, HH and VH interactions, descriptions,
     publications, GO annotations and terms, peptides."""
-    return [
-        LabelCount.model_validate(
-            {
-                "label": label,
-                **backend.rows(f"MATCH (n:{label}) RETURN count(n) AS count")[0],
-            }
-        )
-        for label in LABELS
-    ]
+    return whole(
+        [
+            LabelCount.model_validate(
+                {
+                    "label": label,
+                    **backend.rows(f"MATCH (n:{label}) RETURN count(n) AS count")[0],
+                }
+            )
+            for label in LABELS
+        ]
+    )
 
 
 class VirusRecord(Record):
@@ -62,32 +70,41 @@ class VirusRecord(Record):
 
 
 def viruses(
-    backend: Backend, family: Family = None, min_publications: MinPublications = 1
-) -> list[VirusRecord]:
+    backend: Backend,
+    family: Family = None,
+    min_publications: MinPublications = 1,
+    min_methods: MinMethods = 1,
+    combine: Combine = "and",
+) -> Rows[VirusRecord]:
     """The curated viruses, with their family and how much of the human
     interactome they reach at the evidence level: viral proteins, VH
     interactions and distinct human targets. A virus with no family has
     `family` null. The counts are the background a topic's coverage is
     read against: a much-studied virus reaches more of everything."""
     keep = "WHERE f.name = $family" if family is not None else ""
-    return [
-        VirusRecord.model_validate(row)
-        for row in backend.rows(
-            f"""MATCH (t:Virus)
+    level = evidence_level("e", min_publications, min_methods, combine)
+    check_scope(backend, family, None, None)
+    return whole(
+        [
+            VirusRecord.model_validate(row)
+            for row in backend.rows(
+                f"""MATCH (t:Virus)
             OPTIONAL MATCH (t)-[:PARENT]->(f:Family)
             WITH t, f {keep}
             OPTIONAL MATCH (t)<-[:IN_TAXON]-(v:Viral)
             OPTIONAL MATCH (v)-[e:INTERACTS_WITH]-(h:Human)
-            WHERE e.n_publications >= $min_publications
+            WHERE {level}
             RETURN t.taxon_id AS taxon_id, t.name AS name, t.full_name AS full_name,
                    f.name AS family, count(DISTINCT v) AS n_proteins,
                    count(DISTINCT e.interaction_id) AS n_interactions,
                    count(DISTINCT h) AS n_human_targets
             ORDER BY n_interactions DESC, name""",
-            family=family,
-            min_publications=min_publications,
-        )
-    ]
+                family=family,
+                min_publications=min_publications,
+                min_methods=min_methods,
+            )
+        ]
+    )
 
 
 class ProteinRecord(Record):
@@ -122,12 +139,13 @@ def find_proteins(
         ),
     ],
     virus: Virus = None,
-) -> list[ProteinMatch]:
+) -> Rows[ProteinMatch]:
     """Resolve names to proteins, each match with the `query` it answers. A
     name matches a protein's `name` or its `id` exactly, and case matters:
     EBV has both `BARF1` and `BaRF1`. A viral name such as `NS5A` is shared by
     many viruses; give `virus` to keep one. A query with no row matched
     nothing."""
+    check_scope(backend, None, virus, None)
     rows = backend.rows(
         """UNWIND $names AS query
         MATCH (p:Protein {name: query})
@@ -156,7 +174,7 @@ def find_proteins(
         )
         for row in rows
     )
-    return [match for match in matches if virus is None or match.virus == virus]
+    return whole([m for m in matches if virus is None or m.virus == virus])
 
 
 class ProteinCard(ProteinRecord):
@@ -167,16 +185,18 @@ class ProteinCard(ProteinRecord):
     homodimer: bool
 
 
-def proteins(backend: Backend, protein_ids: ProteinIds) -> list[ProteinCard]:
+def proteins(backend: Backend, protein_ids: ProteinIds) -> Rows[ProteinCard]:
     """Everything about proteins but their interactions and GO: UniProt's
     name and function text with the publications it cites, the virus and
     family of a viral protein, how many human and viral partners it has, and
     whether it binds itself. `function` is long, and is where UniProt says
     what the protein does."""
-    return [
-        ProteinCard.model_validate(row)
-        for row in backend.rows(
-            f"""MATCH (p:Protein) WHERE p.id IN $ids
+    check_proteins(backend, protein_ids)
+    return whole(
+        [
+            ProteinCard.model_validate(row)
+            for row in backend.rows(
+                f"""MATCH (p:Protein) WHERE p.id IN $ids
             WITH p
             OPTIONAL MATCH (p)-[:FUNCTION_CITES]->(b:Publication)
             WITH p, collect(b.pmid) AS function_pmids
@@ -192,9 +212,10 @@ def proteins(backend: Backend, protein_ids: ProteinIds) -> list[ProteinCard]:
                    p.function AS function, function_pmids,
                    n_human AS n_human_partners, n_viral AS n_viral_partners,
                    homodimer""",
-            ids=protein_ids,
-        )
-    ]
+                ids=protein_ids,
+            )
+        ]
+    )
 
 
 class ViralProtein(ProteinRecord):
@@ -206,27 +227,34 @@ def viral_proteins(
     family: Family = None,
     virus: Virus = None,
     min_publications: MinPublications = 1,
-) -> list[ViralProtein]:
+    min_methods: MinMethods = 1,
+    combine: Combine = "and",
+) -> Rows[ViralProtein]:
     """The viral proteins of a family or a virus, each with how many human
     proteins it targets at the evidence level. A viral protein is curated:
     one mature protein of one virus, pooled over every strain and accession
     it was observed on."""
     if family is None and virus is None:
         raise ValueError("give a family or a virus")
-    return [
-        ViralProtein.model_validate(row)
-        for row in backend.rows(
-            f"""MATCH (v:Viral)-[:IN_TAXON]->(t:Virus)
+    level = evidence_level("e", min_publications, min_methods, combine)
+    check_scope(backend, family, virus, None)
+    return whole(
+        [
+            ViralProtein.model_validate(row)
+            for row in backend.rows(
+                f"""MATCH (v:Viral)-[:IN_TAXON]->(t:Virus)
             OPTIONAL MATCH (t)-[:PARENT]->(f:Family)
             WITH v, t, f WHERE {viral_scope(family, virus, None)}
             OPTIONAL MATCH (v)-[e:INTERACTS_WITH]-(h:Human)
-            WHERE e.n_publications >= $min_publications
+            WHERE {level}
             RETURN v.id AS id, v.name AS name, v.description AS description,
                    'viral' AS kind, t.name AS virus, f.name AS family,
                    count(DISTINCT h) AS n_human_targets
             ORDER BY virus, n_human_targets DESC""",
-            family=family,
-            virus=virus,
-            min_publications=min_publications,
-        )
-    ]
+                family=family,
+                virus=virus,
+                min_publications=min_publications,
+                min_methods=min_methods,
+            )
+        ]
+    )

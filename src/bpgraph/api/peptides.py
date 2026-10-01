@@ -5,7 +5,8 @@ from typing import Annotated, Literal
 
 from pydantic import Field
 
-from bpgraph.api.base import Backend, Limit, ProteinIds, Record
+from bpgraph.api.base import Backend, Limit, ProteinIds, Record, Rows, page, whole
+from bpgraph.api.names import check_peptide, check_proteins
 
 
 class PeptideEvidence(Record):
@@ -31,7 +32,7 @@ def peptides(
         ),
     ] = "targeting",
     limit: Limit = 1000,
-) -> list[PeptideEvidence]:
+) -> Rows[PeptideEvidence]:
     """Peptides against proteins, or from them, each with its source and
     target protein and the publications and methods reporting it; best
     supported first, then shortest. A peptide is one node whatever it binds:
@@ -40,31 +41,31 @@ def peptides(
     # These proteins are `p`, their partners `o`: which is the source is known
     # before the query runs.
     source, target = ("o", "p") if direction == "targeting" else ("p", "o")
-    return [
-        PeptideEvidence.model_validate(row)
-        for row in backend.rows(
-            f"""MATCH (p:Protein) WHERE p.id IN $ids
-            WITH p
-            MATCH (p)<-[pv:INVOLVES]-(i:Interaction)
-            MATCH (i)<-[:SUPPORTS]-(d:Description)-[r:REPORTS]->(x:Peptide)
-            WITH p, pv, i, d, r, x WHERE pv.side {compare} r.source_side
-            MATCH (i)-[ov:INVOLVES]->(o:Protein)
-            WITH p, pv, d, x, o, ov WHERE ov.side <> pv.side
-            WITH x, d, {source} AS source, {target} AS target
-            MATCH (d)-[:REPORTED_IN]->(b:Publication)
-            OPTIONAL MATCH (source)-[:IN_TAXON]->(t:Virus)
-            WITH x, source, target, t, collect(DISTINCT b.pmid) AS pmids,
-                 collect(DISTINCT d.method_name) AS methods
-            RETURN x.sequence AS sequence, x.length AS length,
-                   source.id AS source_id, source.name AS source_name,
-                   t.name AS source_virus, target.id AS target_id,
-                   target.name AS target_name, pmids, methods
-            ORDER BY size(pmids) DESC, length, sequence
-            LIMIT $limit""",
-            ids=protein_ids,
-            limit=limit,
-        )
-    ]
+    check_proteins(backend, protein_ids)
+    return page(
+        backend,
+        PeptideEvidence,
+        f"""MATCH (p:Protein) WHERE p.id IN $ids
+        WITH p
+        MATCH (p)<-[pv:INVOLVES]-(i:Interaction)
+        MATCH (i)<-[:SUPPORTS]-(d:Description)-[r:REPORTS]->(x:Peptide)
+        WITH p, pv, i, d, r, x WHERE pv.side {compare} r.source_side
+        MATCH (i)-[ov:INVOLVES]->(o:Protein)
+        WITH p, pv, d, x, o, ov WHERE ov.side <> pv.side
+        WITH x, d, {source} AS source, {target} AS target""",
+        """MATCH (d)-[:REPORTED_IN]->(b:Publication)
+        OPTIONAL MATCH (source)-[:IN_TAXON]->(t:Virus)
+        WITH x, source, target, t, collect(DISTINCT b.pmid) AS pmids,
+             collect(DISTINCT d.method_name) AS methods
+        RETURN x.sequence AS sequence, x.length AS length,
+               source.id AS source_id, source.name AS source_name,
+               t.name AS source_virus, target.id AS target_id,
+               target.name AS target_name, pmids, methods
+        ORDER BY size(pmids) DESC, length, sequence""",
+        "[x.sequence, source.id, target.id]",
+        limit,
+        ids=protein_ids,
+    )
 
 
 class PeptideReport(Record):
@@ -84,15 +85,17 @@ def peptide(
     sequence: Annotated[
         str, Field(min_length=1, description="The peptide's residues.")
     ],
-) -> list[PeptideReport]:
+) -> Rows[PeptideReport]:
     """Every report of one peptide: which protein it came from, which it
     binds, in which publication and by which method, newest first. The same
     sequence seen in two proteins is one peptide, so it may have several
     sources and targets."""
-    return [
-        PeptideReport.model_validate(row)
-        for row in backend.rows(
-            """MATCH (x:Peptide {sequence: $sequence})<-[r:REPORTS]-(d:Description)
+    check_peptide(backend, sequence)
+    return whole(
+        [
+            PeptideReport.model_validate(row)
+            for row in backend.rows(
+                """MATCH (x:Peptide {sequence: $sequence})<-[r:REPORTS]-(d:Description)
             MATCH (d)-[:SUPPORTS]->(i:Interaction)
             MATCH (i)-[sv:INVOLVES]->(s:Protein)
             WITH r, d, i, s, sv WHERE sv.side = r.source_side
@@ -104,6 +107,7 @@ def peptide(
                    d.id AS description_id, b.pmid AS pmid, b.year AS year,
                    d.method_name AS method_name
             ORDER BY year DESC, pmid""",
-            sequence=sequence,
-        )
-    ]
+                sequence=sequence,
+            )
+        ]
+    )

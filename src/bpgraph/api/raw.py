@@ -5,7 +5,7 @@ from typing import Annotated
 
 from pydantic import Field
 
-from bpgraph.api.base import Backend
+from bpgraph.api.base import Backend, Rows, whole
 from bpgraph.query import Row
 
 SCHEMA = Path(__file__).parents[3] / "docs" / "schema.md"
@@ -29,7 +29,7 @@ def cypher(
     params: Annotated[
         dict[str, object] | None, Field(description="The values of `$name`.")
     ] = None,
-) -> list[Row]:
+) -> Rows[Row]:
     """Run one read-only Cypher statement on the live graph, for what no
     predefined query answers. Pass values with `params` rather than inlining
     them. A node comes back as its properties plus `_labels`, an edge as its
@@ -37,4 +37,4 @@ def cypher(
     `function` and publication `abstract` are long. Enter proteins through
     `:Protein`, the label whose `id` is indexed: `MATCH (p:Protein) WHERE
     p.id IN $ids WITH p MATCH (p)-…`."""
-    return backend.rows(query, **(params or {}))
+    return whole(backend.rows(query, **(params or {})))
