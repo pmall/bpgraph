@@ -10,7 +10,7 @@ This repository holds:
 - **the ingestion** — a Python package that turns public sources and an export of the curation database into a fresh, validated graph and its sequence vaults;
 - **the query API** — internal, not exposed: one endpoint per predefined query over the graph and the vaults, and read-only Cypher;
 - **the MCP server** — the only thing consumers see: each API endpoint as a tool;
-- **the analysis skills** — in `skills`, maintained here with the endpoints they call, and copied into the repositories that consult the graph.
+- **the client side** — in `client`: the analysis skills and the guide to exploring, maintained here with the endpoints they call, and copied into the repositories that consult the graph.
 
 Curation itself happens in a separate relational database. The graph is never edited in place: each run is built into a staging graph, checked, and swapped in whole. Where it is heading — many hosts, sequence and full-text vaults, protein language model features — is in [`docs/roadmap.md`](docs/roadmap.md).
 
@@ -56,16 +56,16 @@ uv run bpgraph-audit   # check the live graph against the schema
 
 ## Querying
 
-The live graph is the only source of truth; `data/` holds build inputs. Consulting repositories query it through the MCP server, whose tools are the query API's endpoints: predefined queries, sequences from the vaults, the schema, and read-only Cypher. This repository registers no MCP server. The same query runs from a terminal. [`docs/queries.md`](docs/queries.md) has the rules, canonical queries and a worked example.
+The live graph is the only source of truth; `data/` holds build inputs. Consulting repositories query it through the MCP server, whose tools are the query API's endpoints: predefined queries, sequences from the vaults, the schema, and read-only Cypher. This repository registers no MCP server. The same query runs from a terminal. [`client/queries.md`](client/queries.md) has the rules, canonical queries and a worked example.
 
 ```sh
 uv run bpgraph-query "MATCH (v:Virus) RETURN v.name"
 ```
 
-To draw a subnetwork, gather it into a `network.json` and render it; no database connection is needed. The `network-view` skill in `skills` describes the file:
+To draw a subnetwork, gather it into a `network.json` and render it with the `network-view` skill's own script; no database connection is needed. The skill describes the file:
 
 ```sh
-uv run bpgraph-network ferroptosis-flaviviridae.json   # -> ferroptosis-flaviviridae.cytoscape.html
+uv run client/skills/network-view/render.py ferroptosis-flaviviridae.json   # -> ferroptosis-flaviviridae.cytoscape.html
 ```
 
 ## Documentation
@@ -74,6 +74,6 @@ uv run bpgraph-network ferroptosis-flaviviridae.json   # -> ferroptosis-flavivir
 - [`docs/export.md`](docs/export.md) — the TSV files the curation database exports.
 - [`docs/roadmap.md`](docs/roadmap.md) — where the graph is going: many hosts, vaults, language-model features.
 - [`docs/build.md`](docs/build.md) — building, validating, swapping and auditing a graph.
-- [`docs/queries.md`](docs/queries.md) — exploring the graph: access, rules, canonical queries.
+- [`client/queries.md`](client/queries.md) — exploring the graph: access, rules, canonical queries.
 - [`docs/development.md`](docs/development.md) — code layout, conventions and verification.
 - [`AGENTS.md`](AGENTS.md) — conventions for working on this repository.
