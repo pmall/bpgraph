@@ -31,7 +31,7 @@ def peptides(
             "from their partners. `derived`: peptides cut from these proteins."
         ),
     ] = "targeting",
-    limit: Limit = 1000,
+    limit: Limit = 100,
 ) -> Rows[PeptideEvidence]:
     """Peptides against proteins, or from them, each with its source and
     target protein and the publications and methods reporting it; best
@@ -74,7 +74,6 @@ class PeptideReport(Record):
     target_id: str
     target_name: str
     interaction_id: str
-    description_id: str
     pmid: str
     year: int
     method_name: str

@@ -45,7 +45,7 @@ Consumers of the graph — the analysis skills and the reports — will move to 
 - an **internal query API**, not exposed, with one endpoint per predefined query consumers run, fixed lookups into the vaults, and read-only Cypher;
 - the **MCP server**, the only thing exposed, serving each endpoint of that API as a tool.
 
-The client side stays here, in `client/`, maintained with the endpoints it calls: the skills and the guide to exploring are copied into the consuming repositories, and a skill reaches the graph through MCP tools only.
+The client side stays here, in `client/`, maintained with the endpoints it calls: its agent's instructions and the skills are copied into the consuming repositories, and a skill reaches the graph through MCP tools only.
 
 ## Order of work
 
@@ -68,4 +68,4 @@ Known gaps in what is done:
 
 - Only human is a host. `:Human`, `:HH` and the `9606` of the run layout are the places a second host touches (step 8).
 - The engine is pinned to FalkorDB 4.22, the C engine. 6.0 is a rewrite in Rust, fast on our audit but with a planner that dropped filters in its first release; it is worth moving to once a 6.x passes the audit, as [`development.md`](development.md) describes.
-- Step 10 is nearly done. The API and the MCP server serve the predefined queries; `client/` holds what a consuming repository needs, its agent's instructions, the skills and the guide to exploring, [`queries.md`](../client/queries.md), all reaching the graph through MCP tools only. What is left is the consuming repositories themselves.
+- Step 10 is nearly done. The API and the MCP server serve the predefined queries; `client/` holds what a consuming repository needs, its agent's instructions and the skills, all reaching the graph through MCP tools only; what a query needs to know travels with the MCP server. What is left is the consuming repositories themselves.

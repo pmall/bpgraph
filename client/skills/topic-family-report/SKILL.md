@@ -20,13 +20,7 @@ This is an analysis, not a data dump. Explore widely, weigh the evidence, then r
 
 ## The graph
 
-Reach the live graph through the tools of the `bpgraph` MCP server, and nothing else. If it lacks something, say so rather than filling the gap from memory.
-
-- **Predefined tools first.** Each answers a recurring question and handles the graph's pitfalls; its description says what it returns. Use `cypher` for the rest, after reading `schema`: the structure itself, such as partners within a set, shared partners or short paths, is a graph query away.
-- **Results.** A list comes back as `rows` and `total`: when `total` is larger, `limit` cut the rows, so count from `total` or raise `limit`. A result over `max_tokens` is refused with its size: narrow the question, or raise `max_tokens`. An unknown name is an error naming the closest known ones.
-- **Viral proteins are curated.** `NS5A` of HCV is one protein, id `<virus taxon id>:<name>`, pooled over every strain and accession it was observed on. A viral protein's function comes from its UniProt text and the literature; GO annotates human proteins.
-- **The counters are the evidence**: `n_publications`, `n_methods` (distinct PSI-MI detection methods), `n_descriptions` (observations) and `n_peptides`. A description is one observation: one pair, one publication, one method.
-- **The text is where the meaning is**: abstracts, UniProt function text, and GO annotations each with the publication showing it. Read it once a question is narrowed down.
+Reach the live graph through the tools of the `bpgraph` MCP server; its instructions say how to read the graph and the results. Use `cypher` for what the predefined tools do not answer, after reading `schema`: the structure itself, such as partners within a set, shared partners or short paths, is a graph query away. If the graph lacks something, say so rather than filling the gap from memory.
 
 The tools this report leans on:
 
@@ -43,7 +37,7 @@ The tools this report leans on:
 Draw on all of it. A report that uses only the interaction list is incomplete.
 
 - **The topic**: its proteins, and what the list records on each. For ferroptosis this is `role`: `driver`, `suppressor` or `both`. Other topics record other properties; use them, whatever they are.
-- **VH interactions** between the family's viral proteins and human proteins, with their counters and detection methods.
+- **VH interactions** between the family's viral proteins and human proteins, with their counters, and their detection methods when asked for (`methods: true`).
 - **Descriptions**, one per observation, each with its publication, its detection method, its source (IntAct, our curation, or both independently) and sometimes peptides with their direction.
 - **Publications**, with title, abstract, journal, year and authors. Abstracts are the main source for *what* an interaction does.
 - **HH interactions** among the topic's proteins and around the targets.

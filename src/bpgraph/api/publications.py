@@ -23,11 +23,12 @@ def publications(
     backend: Backend,
     pmids: Pmids,
     abstracts: Annotated[
-        bool, Field(description="Include the abstracts, which are long.")
-    ] = True,
+        bool, Field(description="Also the abstracts, which are long.")
+    ] = False,
 ) -> Rows[Publication]:
-    """Publications' title, journal, year, authors and, unless left out,
-    abstract. The abstract is where a paper says what an interaction does.
+    """Publications' title, journal, year, authors and, if asked, abstract.
+    The abstract is where a paper says what an interaction does: ask for it
+    once the papers that matter are known.
     A pmid PubMed did not return has empty text and year 0."""
     check_pmids(backend, pmids)
     return whole(
@@ -80,7 +81,7 @@ class PublicationContent(Record):
 def publication_content(
     backend: Backend,
     pmid: Annotated[str, Field(description="A PubMed id.")],
-    limit: Limit = 500,
+    limit: Limit = 100,
 ) -> PublicationContent:
     """Everything one publication backs in the graph: the interactions it
     described, the GO annotations it showed and the proteins whose UniProt
