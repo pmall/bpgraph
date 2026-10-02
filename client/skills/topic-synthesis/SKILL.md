@@ -13,12 +13,10 @@ This is a summary, not a concatenation. Report what stands out in the comparison
 
 - **Topic**, e.g. `ferroptosis`: a list of human proteins in a file or knowledge base on your side, which the user points to; ask where it is if they haven't said. Read its Swiss-Prot accessions and whatever it records on each protein, such as a `role`. Pass the accessions to tools as `accessions`, and join the list's other columns to the results yourself; `find_proteins` turns gene symbols into accessions. The list decides every count, so name the file and its date in what you write.
 - **The reports**: the files or directory the user points to. Read only those. If a family's report seems to be missing, or you are unsure which files are in scope, ask.
-- **Evidence level.** The default is the **golden dataset**: interactions backed by at least 2 distinct publications or at least 2 distinct detection methods, passed to tools as `min_publications: 2, min_methods: 2, combine: "or"`. Apply it to each interaction on its own, one viral protein with one human protein or two human proteins, and never add counters across proteins or viruses to get over the bar. Interactions below it form the **all** tier, used only in its own, clearly marked place. When you check a report's claim, check it at the level the report made it.
+- **Evidence level**: golden by default. When you check a report's claim, check it at the level the report made it.
 - **Destination**: wherever the user asks; ask if they haven't said. Name the synthesis `<topic>-synthesis.md`, e.g. `ferroptosis-synthesis.md`.
 
-## The graph
-
-Reach the live graph through the tools of the `bpgraph` MCP server; its instructions say how to read the graph and the results. Use `cypher` for what the predefined tools do not answer, after reading `schema`: the structure itself, such as partners within a set, shared partners or short paths, is a graph query away. If the graph lacks something, say so rather than filling the gap from memory.
+## Tools
 
 The tools this synthesis leans on:
 

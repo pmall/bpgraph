@@ -98,7 +98,7 @@ MinMethods = Annotated[
 ]
 Combine = Annotated[
     Literal["and", "or"],
-    Field(description="Both thresholds, or either. Golden: 2, 2, `or`."),
+    Field(description="Both thresholds, or either."),
 ]
 Accessions = Annotated[
     list[str],
