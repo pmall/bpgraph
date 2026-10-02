@@ -5,22 +5,22 @@ from collections.abc import Iterable
 from bpgraph.client import GraphWriter, Row
 from bpgraph.enums import TaxonKind
 
-PARENT = """MATCH (child:Taxon {taxon_id: r.child_taxon_id})
-MATCH (parent:Taxon {taxon_id: r.parent_taxon_id})
+PARENT = """MATCH (child:Taxon {ncbi_taxon_id: r.child_taxon_id})
+MATCH (parent:Taxon {ncbi_taxon_id: r.parent_taxon_id})
 CREATE (child)-[:PARENT]->(parent)"""
 
-IN_TAXON = """MATCH (protein:Protein {id: r.protein_id})
-MATCH (taxon:Taxon {taxon_id: r.taxon_id})
+IN_TAXON = """MATCH (protein:Viral {ncbi_taxon_id: r.ncbi_taxon_id, name: r.name})
+MATCH (taxon:Virus {ncbi_taxon_id: r.ncbi_taxon_id})
 CREATE (protein)-[:IN_TAXON]->(taxon)"""
 
 
 def write_viruses(writer: GraphWriter, rows: Iterable[Row]) -> int:
-    """Rows of `taxon_id`, `name`, `full_name`."""
+    """Rows of `ncbi_taxon_id`, `name`, `full_name`."""
     return writer.create(f"Taxon:{TaxonKind.VIRUS.value}", rows)
 
 
 def write_families(writer: GraphWriter, rows: Iterable[Row]) -> int:
-    """Rows of `taxon_id`, `name`."""
+    """Rows of `ncbi_taxon_id`, `name`."""
     return writer.create(f"Taxon:{TaxonKind.FAMILY.value}", rows)
 
 
@@ -30,5 +30,6 @@ def write_taxon_links(writer: GraphWriter, rows: Iterable[Row]) -> int:
 
 
 def write_memberships(writer: GraphWriter, rows: Iterable[Row]) -> int:
-    """Rows of `protein_id`, `taxon_id`."""
+    """Rows of a viral protein's `ncbi_taxon_id` and `name`: its virus is the
+    one of that taxon."""
     return writer.write(IN_TAXON, rows)

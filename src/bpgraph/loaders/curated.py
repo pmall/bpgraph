@@ -23,9 +23,8 @@ from typing import TextIO
 
 from bpgraph import files
 from bpgraph.enums import InteractionKind
-from bpgraph.ids import viral_protein_id
 from bpgraph.loaders.export import ExportRow, export_rows, viral_proteins
-from bpgraph.loaders.records import ABSENT, KEPT, Curated, Site, of
+from bpgraph.loaders.records import ABSENT, KEPT, Curated, Site, of, viral_ref
 from bpgraph.loaders.tsv import LoadError
 from bpgraph.psimi import Ontology
 from bpgraph.taxonomy import TaxonomyUnavailable
@@ -120,9 +119,7 @@ def _placed(
         name = taxonomy.name(strain)
         for curated in rows:
             placed = curated._replace(
-                partner_2=viral_protein_id(virus.taxon_id, curated.name_2)
-                if virus
-                else "",
+                partner_2=viral_ref(virus.taxon_id, curated.name_2) if virus else "",
                 strain_id=str(strain),
                 strain_name=name,
             )

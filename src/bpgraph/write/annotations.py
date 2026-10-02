@@ -1,20 +1,22 @@
 """Writing `:GoTerm` nodes, the GO ontology edges, and the `:Annotation` nodes
-that tie a protein to a term and the publication showing it."""
+that tie a protein to a term and the publications showing it."""
 
 from collections.abc import Iterable
 
 from bpgraph.client import GraphWriter, Row
 from bpgraph.enums import GoRelation
 
-ANNOTATION = """MATCH (protein:Protein {id: r.protein_id})
+ANNOTATION = """MATCH (protein:Human {accession: r.accession})
 MATCH (term:GoTerm {go_id: r.go_id})
-MATCH (publication:Publication {pmid: r.pmid})
-CREATE (annotation:Annotation {id: r.id, qualifier: r.qualifier,
-                               evidence_code: r.evidence_code,
-                               assigned_by: r.assigned_by})
+CREATE (annotation:Annotation {qualifier: r.qualifier})
 CREATE (annotation)-[:ANNOTATES]->(protein)
 CREATE (annotation)-[:OF_TERM]->(term)
-CREATE (annotation)-[:REPORTED_IN]->(publication)"""
+WITH r, annotation
+UNWIND r.publications AS p
+MATCH (publication:Publication {pmid: p.pmid})
+CREATE (annotation)-[:REPORTED_IN {evidence_codes: p.evidence_codes}]->(publication)
+WITH r, count(publication) AS cited
+WHERE cited = size(r.publications)"""
 
 
 def _edge_statement(relation: GoRelation) -> str:
@@ -26,7 +28,7 @@ def _edge_statement(relation: GoRelation) -> str:
 
 
 def write_go_terms(writer: GraphWriter, rows: Iterable[Row]) -> int:
-    """Rows of `go_id`, `name`, `namespace`, `obsolete`."""
+    """Rows of `go_id`, `name`, `namespace`."""
     return writer.create("GoTerm", rows)
 
 
@@ -39,11 +41,9 @@ def write_go_edges(
 
 
 def write_go_annotations(writer: GraphWriter, rows: Iterable[Row]) -> int:
-    """One node per distinct annotation and publication.
-
-    The qualifier is part of what makes two annotations distinct, because
-    `NOT` inverts one; so is the assigning database, because GOA states the
-    same term for the same protein from several sources, and picking one of
-    them would be picking the provenance.
-    """
+    """One node per protein, term and qualifier — the qualifier because `NOT`
+    inverts what an annotation states — with an edge to each publication
+    showing it, carrying the evidence codes that publication's GOA lines give.
+    Rows of `accession`, `go_id`, `qualifier` and `publications`, each `pmid`
+    and `evidence_codes`."""
     return writer.write(ANNOTATION, rows)

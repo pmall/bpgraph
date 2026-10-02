@@ -20,7 +20,6 @@ src/bpgraph/
   files.py      intermediate files: sorted on disk, read side by side
   query.py      read-only Cypher on the live graph, and bpgraph-query
   server.py     the MCP server, bpgraph-mcp: each API endpoint as a tool
-  ids.py        the derived ids — nothing else may build one
   run.py        where a run directory keeps each file, silo by silo
   sources.py    which release of each dataset a run was fetched from
   enums.py      closed vocabularies shared by loaders, ids and writers
@@ -41,9 +40,10 @@ src/bpgraph/
   shape.py      the graph's labels, properties and relationships, as data
   audit.py      check a built graph against docs/schema.md and shape.py
   write/        the write statements, one module per area
-  api/          the query API, bpgraph-api: endpoints.py lists them, one
-                module per area, base.py what they share, names.py checks
-                names, text.py renders results, app.py serves
+  api/          the query API, bpgraph-api: endpoints.py lists them,
+                raw.py the schema and Cypher, sequences.py the vaults,
+                base.py what they share, names.py checks ids, text.py
+                renders results, app.py serves
   guide/        what consumers read: server.md, the MCP server's
                 instructions; schema.md, what the `schema` tool returns
   loaders/      a run's files -> the files the graph is written from, checked:
@@ -63,6 +63,8 @@ client/         what consumers of the graph need, copied into consulting repos:
 **Stream everything.** No code, fetch or build, holds a whole file or table in memory: read a line at a time, and where two files meet, key both, sort them on disk and read them side by side with `bpgraph.files`. What may be held whole is reference data of fixed size — PSI-MI, the curated lists — never something that grows with the data. A fetch keeps only what the build reads.
 
 A change to what the graph holds updates [`schema.md`](schema.md) in the same change, along with the writers and `audit.py`. Never let them drift.
+
+**A key that joins several values is a composite key, and every value it joins is a property.** An entity holds every part of its key as its own properties: a viral protein is `NS5A` of virus `3052230`, a name meaningless without its taxon, so it is keyed by `ncbi_taxon_id` and `name`, both properties of `:Viral`, never by an id `<taxon_id>:<name>` joining them. A node that links others — an interaction, a description, an annotation — is identified by what it links, and by its own properties where they change what it states: the keys of the nodes it points to are parts of its key and are not repeated on it. A detail about a fact, such as how it was shown or who recorded it, is not part of its key. A value present only inside an id string is a missing column, so no id is built by joining values: callers name a node by its key's values. A natural key is a single value, such as a peptide's `sequence` or a publication's `pmid`: it is the property itself, and nothing is repeated.
 
 ## FalkorDB
 
@@ -87,18 +89,18 @@ docker exec bpgraph-falkordb-server-1 redis-cli GRAPH.DELETE _probe
 
 ## The query API and the MCP server
 
-Consumers see the MCP server only, and it reaches nothing itself: each of its tools forwards to the query API, which alone reads the graph and the published vaults. An endpoint is a typed function in `src/bpgraph/api/`, taking the `Backend` then its parameters, returning `Record` rows; listing it in `endpoints.py` serves it at `POST /<name>` and makes it a tool of the same name, signature and docstring. Its callers are agents of the first rank: the API answers exactly what they ask and tells them what they cannot see before asking, and never rewrites, cuts or second-guesses a question. So:
+Consumers see the MCP server only, and it reaches nothing itself: each of its tools forwards to the query API, which alone reads the graph and the published vaults. An endpoint is a typed function in `src/bpgraph/api/`, taking the `Backend` then its parameters, returning `Record` rows; listing it in `endpoints.py` serves it at `POST /<name>` and makes it a tool of the same name, signature and docstring. Its callers are agents of the first rank: the API answers exactly what they ask and never rewrites, cuts or second-guesses a question. So:
 
-- **The signature is the contract.** Annotate every parameter with a `Field` description, and write the docstring for an agent that has not read the schema: what comes back, which pitfall the query handles for it, what to call next.
-- **An endpoint is a question analyses keep asking**, not a query one analysis needed. It stays bounded: a scope parameter it cannot run without, and a `limit`.
-- **Every token an agent reads is one it cannot spend exploring.** A result is text, rendered by `text.py`: a list is a table, a line counting its rows, a header and one tab-separated line per row, without the columns no row fills. An endpoint returns `Rows`, its `rows` and `total`, how many the question has whatever `limit` kept; `base.page` runs the query cut at `limit` and, only when the page is full, counts the distinct rows it would have given. Defaults are lean: `limit` is 100, and long fields such as abstracts or method lists come when asked for. The MCP server sends parameter schemas without titles or null branches, and declares no structured output, so a result reaches the agent once.
-- **An unknown name is an error**, never an empty answer that reads as an absence: an endpoint checks every family, virus, protein, GO term, pmid, interaction or peptide it is given with `names.py` before querying, and the error names the closest known ones. A filter that keeps everything, such as `or` with a threshold of 1, is refused the same way.
+- **The graph is queried as a graph.** `schema` and `cypher` are how an agent reads it: one pattern from the question to the answer, through as many hops as it takes. An endpoint wrapping a graph query would slice the graph into relational steps, and the tool list teaches agents how to reach the data, so it would teach them to chain calls instead of writing patterns. A tool exists only for what Cypher cannot reach, the vaults. When reading something right depends on a convention, such as which side of an interaction a peptide comes from, the model is fixed so a plain pattern reads it, rather than a tool hiding the convention.
+- **The signature is the contract.** Annotate every parameter with a `Field` description, and write the docstring for an agent: what comes back, and what to call next.
+- **Every token an agent reads is one it cannot spend exploring.** A result is text, rendered by `text.py`: a list is a table, a line counting its rows, a header and one tab-separated line per row, without the columns no row fills. The MCP server sends parameter schemas without titles or null branches, and declares no structured output, so a result reaches the agent once.
+- **An unknown id given to a vault tool is an error**, never an empty answer that reads as an absence, checked with `names.py`.
 - **Size is the caller's call.** Serving adds `max_tokens` to every endpoint, 25,000 by default, estimated at three characters of text per token: a larger result is refused with its size, its rows and its total, never cut. `cypher` runs as written, under the same rule.
 - **What every query needs travels with the server.** Its instructions, `guide/server.md`, reach every agent, subagents included, but Claude Code keeps only their first 2,048 characters: the essentials, first. What interpreting one tool's result takes goes in that tool's description. `schema` returns `guide/schema.md`, the graph as a client needs it, then the Cypher rules, so an agent reads them only when it is about to write Cypher. It is written for clients by hand, not derived from `docs/schema.md`, the builder's contract: a client needs less, and in its own terms. Change it when a change to the graph changes what a client sees.
 - **Three levels, each fact once.** The server, its instructions, tool descriptions and `schema`, serves any team: facts about the graph and its tools, never a team's convention such as what counts as golden. `client/instructions.md` holds our team's rules for every query, such as the golden dataset and exploring with subagents. A skill is the recipe for one analysis, with its own report. Nothing a level above already says is repeated below it.
-- **Vaults answer one protein at a time**, through fixed lookups; there is no SQL endpoint.
-- **Enter through an indexed label, then close with `WITH`**: `MATCH (p:Protein) WHERE p.id IN $ids WITH p MATCH (p)-…`. Only `:Protein`, not `:Human` or `:Viral`, has the `id` index. A filtered `MATCH` is closed with `WITH` before the next one extends it, and a `WITH … WHERE` carries every variable its `WHERE` reads: FalkorDB 6.0.0 dropped a filter that a following `MATCH` extended, and 4.22 refuses a `WHERE` on a variable its `WITH` left behind.
-- **Check an endpoint against an independent query** before relying on it, and time it on the live graph: every one answers in well under a second.
+- **Vaults answer through fixed lookups**, by protein or by description; there is no SQL endpoint.
+- **Enter through a natural key, then close with `WITH`**: `MATCH (p:Human) WHERE p.accession IN $accessions WITH p MATCH (p)-…`. A filtered `MATCH` is closed with `WITH` before the next one extends it, and a `WITH … WHERE` carries every variable its `WHERE` reads: FalkorDB 6.0.0 dropped a filter that a following `MATCH` extended, and 4.22 refuses a `WHERE` on a variable its `WITH` left behind.
+- **Check what `schema.md` teaches on the live graph**: every pattern and rule it gives runs, and answers in well under a second.
 
 Both run in Docker from one image, so a change to `src/` reaches them only once rebuilt: `docker compose up -d --build bpgraph-api bpgraph-mcp`. To serve from the working tree instead, stop the containers and run `uv run bpgraph-api` and `uv run bpgraph-mcp`; the MCP server finds the API at `BPGRAPH_API`, `http://127.0.0.1:8000` by default.
 
