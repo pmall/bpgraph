@@ -200,12 +200,12 @@ def search_go_terms(
 
 
 class TermProtein(Record):
-    id: str
-    name: str
-    description: str
-    terms: list[str]
-    evidence_codes: list[str]
-    pmids: list[str]
+    protein_id: str
+    protein_name: str
+    go_id: str
+    term: str
+    evidence_code: str
+    pmid: str
 
 
 def go_term_proteins(
@@ -217,9 +217,9 @@ def go_term_proteins(
     limit: Limit = 100,
 ) -> Rows[TermProtein]:
     """Human proteins annotated to GO terms, or to any term below them: a way
-    to draft a topic from GO, or to find proteins a topic's list misses. Each
-    comes with the terms that matched, the evidence codes and the
-    publications. `NOT` annotations are left out."""
+    to draft a topic from GO, or to find proteins a topic's list misses. One
+    row per annotation: the term it is to, its evidence code and its
+    publication. `NOT` annotations are left out."""
     depth = "*0.." if descendants else "*0"
     check_go_ids(backend, go_ids)
     return page(
@@ -232,12 +232,10 @@ def go_term_proteins(
         MATCH (d)<-[:OF_TERM]-(n:Annotation)-[:ANNOTATES]->(h:Human)
         MATCH (n)-[:REPORTED_IN]->(b:Publication)
         WITH d, n, h, b WHERE NOT n.qualifier STARTS WITH 'NOT'""",
-        """RETURN h.id AS id, h.name AS name, h.description AS description,
-               collect(DISTINCT d.name) AS terms,
-               collect(DISTINCT n.evidence_code) AS evidence_codes,
-               collect(DISTINCT b.pmid) AS pmids
-        ORDER BY size(pmids) DESC, name""",
-        "h",
+        """RETURN h.id AS protein_id, h.name AS protein_name, d.go_id AS go_id,
+               d.name AS term, n.evidence_code AS evidence_code, b.pmid AS pmid
+        ORDER BY protein_name, term, pmid""",
+        "n",
         limit,
         go_ids=go_ids,
     )
