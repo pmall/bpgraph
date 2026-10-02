@@ -218,7 +218,12 @@ def proteins(backend: Backend, protein_ids: ProteinIds) -> Rows[ProteinCard]:
     )
 
 
-class ViralProtein(ProteinRecord):
+class ViralProtein(Record):
+    id: str
+    name: str
+    description: str
+    virus: str
+    family: str | None
     n_human_targets: int
 
 
@@ -248,7 +253,7 @@ def viral_proteins(
             OPTIONAL MATCH (v)-[e:INTERACTS_WITH]-(h:Human)
             WHERE {level}
             RETURN v.id AS id, v.name AS name, v.description AS description,
-                   'viral' AS kind, t.name AS virus, f.name AS family,
+                   t.name AS virus, f.name AS family,
                    count(DISTINCT h) AS n_human_targets
             ORDER BY virus, n_human_targets DESC""",
                 family=family,

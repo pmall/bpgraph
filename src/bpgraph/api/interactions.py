@@ -221,8 +221,6 @@ class Neighbour(Record):
     description: str
     n_set_partners: int
     set_partners: list[str]
-    best_publications: int
-    best_methods: int
 
 
 def neighbours(
@@ -234,7 +232,7 @@ def neighbours(
     limit: Limit = 100,
 ) -> Rows[Neighbour]:
     """Human proteins outside a set that interact with it, ranked by how many
-    of the set's proteins they bind, then by their best support. The first
+    of the set's proteins they bind. The first
     shell of a topic: regulators, ligases, transporters' partners, and the
     candidates for adding to the topic."""
     level = evidence_level("e", min_publications, min_methods, combine)
@@ -250,11 +248,8 @@ def neighbours(
           AND {level}""",
         """RETURN n.id AS id, n.name AS name, n.description AS description,
                count(DISTINCT h) AS n_set_partners,
-               collect(DISTINCT h.name) AS set_partners,
-               max(e.n_publications) AS best_publications,
-               max(e.n_methods) AS best_methods
-        ORDER BY n_set_partners DESC, best_publications DESC, best_methods DESC,
-                 name""",
+               collect(DISTINCT h.name) AS set_partners
+        ORDER BY n_set_partners DESC, name""",
         "n",
         limit,
         accessions=accessions,
@@ -328,8 +323,8 @@ def indirect_reach(
 
 
 class Coverage(Record):
-    group: str
     family: str | None
+    virus: str | None
     n_targets: int
     targets: list[str]
     n_viral_proteins: int
@@ -353,8 +348,7 @@ def coverage(
     level, which is the background for asking whether it hits the set more
     than its overall reach predicts. Only groups reaching the set are
     returned. Grouped by family, viruses with no family fall out."""
-    group = "f.name" if by == "family" else "t.name"
-    family = "null" if by == "family" else "f.name"
+    virus = "null" if by == "family" else "t.name"
     keep = "WHERE f IS NOT NULL" if by == "family" else ""
     level = evidence_level("e", min_publications, min_methods, combine)
     check_proteins(backend, accessions, "human")
@@ -366,19 +360,19 @@ def coverage(
                 OPTIONAL MATCH (t)-[:PARENT]->(f:Family)
                 WITH v, t, f {keep}
                 MATCH (v)-[e:INTERACTS_WITH]-(h:Human)
-                WITH {group} AS group, {family} AS family, v, e, h,
+                WITH f.name AS family, {virus} AS virus, v, e, h,
                      h.id IN $accessions AS in_set
                 WHERE {level}
-                WITH group, family,
+                WITH family, virus,
                      count(DISTINCT h) AS n_human_targets,
                      collect(DISTINCT CASE WHEN in_set THEN h.name END) AS targets,
                      count(DISTINCT CASE WHEN in_set THEN v END) AS n_viral_proteins,
                      count(DISTINCT CASE WHEN in_set THEN e.interaction_id END)
                          AS n_interactions
                 WHERE size(targets) > 0
-                RETURN group, family, size(targets) AS n_targets, targets,
+                RETURN family, virus, size(targets) AS n_targets, targets,
                        n_viral_proteins, n_interactions, n_human_targets
-                ORDER BY n_targets DESC, group""",
+                ORDER BY n_targets DESC, family, virus""",
                 accessions=accessions,
                 min_publications=min_publications,
                 min_methods=min_methods,
