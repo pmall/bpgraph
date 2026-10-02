@@ -149,7 +149,6 @@ class Hit(Record):
     title: str
     journal: str
     year: int
-    score: float
 
 
 def search_publications(
@@ -172,7 +171,7 @@ def search_publications(
         backend,
         """CALL db.idx.fulltext.queryNodes('Publication', $text) YIELD node, score""",
         """RETURN node.pmid AS pmid, node.title AS title, node.journal AS journal,
-               node.year AS year, score
+               node.year AS year
         ORDER BY score DESC, year DESC""",
         "node",
         limit,
