@@ -4,7 +4,7 @@ This repository consults bpgraph, a knowledge graph of protein–protein interac
 
 ## Evidence
 
-The default is the **golden dataset**: interactions backed by at least 2 distinct publications or at least 2 distinct detection methods, `min_publications: 2, min_methods: 2, combine: "or"`. Interactions below it form the **all** tier, used only when asked for or when a skill says so, and always kept apart from golden counts. Say which level a result stands at.
+The default is the **golden dataset**: interactions backed by at least 2 distinct publications or at least 2 distinct detection methods, `n_publications >= 2 OR n_methods >= 2` on the interaction or its `INTERACTS_WITH` edge. Interactions below it form the **all** tier, used only when asked for or when a skill says so, and always kept apart from golden counts. Say which level a result stands at.
 
 The graph's answers come from the graph alone: when it lacks something, say so rather than filling the gap from memory.
 

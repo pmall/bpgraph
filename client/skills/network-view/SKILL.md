@@ -21,7 +21,9 @@ You draw a subnetwork of the graph as an interactive page, in three steps:
 
 ## The graph
 
-Query it with `cypher`. A topic × family network is a few patterns: the family's viral proteins with their interactions to the topic's proteins, each with its virus and counters; the HH interactions among those human proteins; and whatever else the network should hold, such as partners one hop out. A network's edges are compact, so raising `max_tokens` is usually fine here.
+**A topic × family network is the standard query.** `queries/network.cypher`, in this skill's folder, returns the family's VH interactions with the topic's proteins and the HH interactions among the topic's proteins, one row per interaction, with both proteins as the dataset names them. Run it with `cypher` exactly as written, with `accessions`, `family` and `golden` as parameters: `golden: true` for the golden network, `false` for the all tier. Every topic × family network is these rows, so networks compare. Turn each row into an interaction and its two proteins, and add the topic's columns as attributes.
+
+Add to it only what the user asks for, such as partners one hop out or topic proteins no virus reaches, with `cypher`, and say so in the description. A network's edges are compact, so raising `max_tokens` is usually fine here.
 
 ## 1. The dataset
 
@@ -34,7 +36,7 @@ Query it with `cypher`. A topic × family network is a few patterns: the family'
      "description": "Phospholipid hydroperoxide glutathione peroxidase",
      "taxon_name": "Homo sapiens", "attributes": {"role": "suppressor"}},
     {"id": "3052230:NS5A", "name": "NS5A", "kind": "viral",
-     "description": "Genome polyprotein", "taxon_name": "HCV"}
+     "description": "", "taxon_name": "HCV"}
   ],
   "interactions": [
     {"source": "P36969", "target": "3052230:NS5A", "n_publications": 2,
@@ -43,7 +45,7 @@ Query it with `cypher`. A topic × family network is a few patterns: the family'
 }
 ```
 
-- `id` names the protein within this file, once: a human protein's accession, a viral protein's virus taxon id and name joined by `:`, as `3052230:NS5A`. `kind` is `human` or `viral`.
+- `id` names the protein within this file, once: a human protein's accession, a viral protein's virus taxon id and name joined by `:`, as `3052230:NS5A`. `kind` is `human` or `viral`. `description` is UniProt's name for a human protein, and empty for a viral one.
 - `taxon_name` is the virus's name for a viral protein (`HCV`, `SARS-CoV-2`), as the graph's `:Virus` names it, and `Homo sapiens` for a human one.
 - `attributes` is optional: anything else worth showing or styling by, such as the `role` the topic's list gives a protein, or the viral family. It appears when a protein is clicked, and the page can style by it.
 - An interaction connects two listed proteins, and each pair appears once. `n_publications` and `n_methods` are the interaction's counters, as the graph holds them.

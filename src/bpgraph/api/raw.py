@@ -1,4 +1,4 @@
-"""Beyond the predefined queries: the schema, and read-only Cypher."""
+"""The graph itself: its schema, and read-only Cypher."""
 
 from pathlib import Path
 from typing import Annotated
@@ -31,6 +31,5 @@ def cypher(
         dict[str, object] | None, Field(description="The values of `$name`.")
     ] = None,
 ) -> Rows[Row]:
-    """Run one read-only Cypher statement on the live graph, for what no
-    predefined tool answers."""
+    """Run one read-only Cypher statement on the live graph."""
     return whole(backend.rows(query, **(params or {})))
