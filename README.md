@@ -8,9 +8,9 @@ This repository holds:
 
 - **the graph server** — FalkorDB and its browser UI, run with Docker Compose;
 - **the ingestion** — a Python package that turns public sources and an export of the curation database into a fresh, validated graph and its sequence vaults;
-- **the query API** — internal, not exposed: one endpoint per predefined query over the graph and the vaults, and read-only Cypher;
+- **the query API** — internal, not exposed: the schema and read-only Cypher over the graph, and lookups in the vaults;
 - **the MCP server** — the only thing consumers see: each API endpoint as a tool;
-- **the client side** — in `client`: the instructions a consulting repository's agent works by and the analysis skills, maintained here with the endpoints they call, and copied into the repositories that consult the graph.
+- **the client side** — in `client`: the instructions a consulting repository's agent works by and the analysis skills, maintained here with the graph they query, and copied into the repositories that consult the graph.
 
 Curation itself happens in a separate relational database. The graph is never edited in place: each run is built into a staging graph, checked, and swapped in whole. Where it is heading — many hosts, sequence and full-text vaults, protein language model features — is in [`docs/roadmap.md`](docs/roadmap.md).
 
@@ -56,7 +56,7 @@ uv run bpgraph-audit   # check the live graph against the schema
 
 ## Querying
 
-The live graph is the only source of truth; `data/` holds build inputs. Consulting repositories query it through the MCP server, whose tools are the query API's endpoints: predefined queries, sequences from the vaults, the schema, and read-only Cypher. This repository registers no MCP server. The same query runs from a terminal. What a query needs to know travels with the MCP server: its instructions, its tool descriptions, and its `schema` tool, with the rules for Cypher and worked queries.
+The live graph is the only source of truth; `data/` holds build inputs. Consulting repositories query it through the MCP server, whose tools are the query API's endpoints: the schema, read-only Cypher, and the vaults' sequences. This repository registers no MCP server. The same query runs from a terminal. What a query needs to know travels with the MCP server: its instructions, its tool descriptions, and its `schema` tool, with the rules for Cypher and worked queries.
 
 ```sh
 uv run bpgraph-query "MATCH (v:Virus) RETURN v.name"

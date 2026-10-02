@@ -4,6 +4,11 @@ Each is a tuple of text, written as it is and read back with `of`, which skips
 the key fields a sort put in front of it. A record whose file is sorted by its
 own leading field needs no key in front: `Description` leads with its
 interaction, `Report` too.
+
+Rows refer to a protein by a reference: a human protein's accession, a viral
+protein's virus and name joined by `viral_ref`. A reference only ties rows of
+these files together; it is never written to the graph, where a protein is
+found by its own properties.
 """
 
 from pathlib import Path
@@ -11,6 +16,16 @@ from typing import NamedTuple, Self
 
 from bpgraph.files import Record
 from bpgraph.loaders.tsv import Cursor
+
+
+def viral_ref(virus_id: int | str, name: str) -> str:
+    """A viral protein's reference in the build's files."""
+    return f"{virus_id}:{name}"
+
+
+def pair_ref(a: str, b: str) -> str:
+    """An interaction's reference in the build's files: its two proteins'."""
+    return f"{a}|{b}"
 
 
 def of[T: tuple[str, ...]](kind: type[T], record: Record, width: int = 0) -> T:
@@ -24,7 +39,7 @@ class Curated(NamedTuple):
     `status` says what the build does with it: `kept`, or dropped because it
     names a human partner Swiss-Prot does not have (`absent`). A dropped row
     still answers for its peptides, which go with it.
-    `partner_2` is the second partner's protein id: its accession if human,
+    `partner_2` is the second partner's reference: its accession if human,
     its curated virus and name if viral, which `strain_id` and `strain_name`
     then place in the taxonomy.
     """
@@ -63,33 +78,35 @@ ABSENT = "absent"
 
 
 class Description(NamedTuple):
-    """One observation as the graph holds it. `stable_ids` are `;`-joined."""
+    """One observation: a pair, a publication and a method. `stable_id` is our
+    curated row's, or `''` for an IntAct record we have not curated. `side_a`
+    is the human protein of a VH pair, the one sorting first of an HH pair."""
 
-    interaction_id: str
-    id: str
-    intact_id: str
-    stable_ids: str
+    interaction: str
     kind: str
     side_a: str
     side_b: str
     pmid: str
     method_id: str
     method_name: str
+    stable_id: str
 
 
 class Report(NamedTuple):
-    """A peptide one description reports, and the side it comes from."""
+    """A peptide one curated description reports: the protein it was cut
+    from, and the one it binds."""
 
-    interaction_id: str
-    description_id: str
+    interaction: str
+    stable_id: str
     sequence: str
-    source_side: str
+    source: str
+    target: str
 
 
 class Site(NamedTuple):
     """One entry and span a viral protein was observed at, and its residues."""
 
-    protein_id: str
+    ref: str
     virus_id: str
     name: str
     accession: str
@@ -101,14 +118,13 @@ class Site(NamedTuple):
 
 
 class ViralProtein(NamedTuple):
-    """A viral protein as the graph holds it. `description` and `function` hold
-    every distinct text its entries carry, `\\x1f`-joined; `pmids` those the
-    function texts cite, `;`-joined."""
+    """A viral protein as the graph holds it. `function` holds every distinct
+    text its entries carry, `\\x1f`-joined; `pmids` those the texts cite,
+    `;`-joined. `ref` is its reference in the build's files."""
 
-    id: str
+    ref: str
     virus_id: str
     name: str
-    description: str
     function: str
     pmids: str
 

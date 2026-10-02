@@ -14,23 +14,14 @@ You draw a subnetwork of the graph as an interactive page, in three steps:
 ## Inputs
 
 - **What to draw**, e.g. ferroptosis × Flaviviridae. Ask if it is unclear.
-- **Topic**, if the network is drawn around one, e.g. `ferroptosis`: a list of human proteins in a file or knowledge base on your side, which the user points to; ask where it is if they haven't said. Read its Swiss-Prot accessions and whatever it records on each protein, such as a `role`. Pass the accessions to tools as `accessions`, and join the list's other columns to the results yourself; `find_proteins` turns gene symbols into accessions. The list decides every count, so name the file and its date in what you write.
-- **Viral family**, if the network is drawn around one, e.g. `Flaviviridae`, as `viruses` names it.
+- **Topic**, if the network is drawn around one, e.g. `ferroptosis`: a list of human proteins in a file or knowledge base on your side, which the user points to; ask where it is if they haven't said. Read its Swiss-Prot accessions and whatever it records on each protein, such as a `role`. Pass the accessions to your queries as a parameter, and join the list's other columns to the results yourself; a human protein's `name` in the graph is its gene symbol. The list decides every count, so name the file and its date in what you write.
+- **Viral family**, if the network is drawn around one, e.g. `Flaviviridae`, as the graph's `:Family` names it.
 - **Evidence level**: golden by default. The all tier is drawn only when asked for, and said so in the description.
 - **Destination**: wherever the user asks; ask if they haven't said. Name the files after the network, `<topic>-<family>.json` for a topic × family network, e.g. `ferroptosis-flaviviridae.json`.
 
-## Tools
+## The graph
 
-The tools a network leans on, for a topic × family network:
-
-| for                                                                | tools                                                        |
-| ------------------------------------------------------------------ | ------------------------------------------------------------ |
-| the VH edges, each with its viral protein, virus and counters      | `vh_interactions` with the family and the topic's accessions |
-| the HH edges among the topic's proteins and the targets outside it | `hh_interactions` with those accessions                      |
-| each human protein's description                                   | `proteins`                                                   |
-| anything else the network should hold, such as one-hop partners    | `neighbours`, `indirect_reach`, `cypher`                     |
-
-A network's edges are compact, so raising `max_tokens` is usually fine here.
+Query it with `cypher`. A topic × family network is a few patterns: the family's viral proteins with their interactions to the topic's proteins, each with its virus and counters; the HH interactions among those human proteins; and whatever else the network should hold, such as partners one hop out. A network's edges are compact, so raising `max_tokens` is usually fine here.
 
 ## 1. The dataset
 
@@ -52,10 +43,10 @@ A network's edges are compact, so raising `max_tokens` is usually fine here.
 }
 ```
 
-- `id` is the graph's protein id. `kind` is `human` or `viral`.
-- `taxon_name` is the virus's name for a viral protein (`HCV`, `SARS-CoV-2`), as the tools give it, and `Homo sapiens` for a human one.
+- `id` names the protein within this file, once: a human protein's accession, a viral protein's virus taxon id and name joined by `:`, as `3052230:NS5A`. `kind` is `human` or `viral`.
+- `taxon_name` is the virus's name for a viral protein (`HCV`, `SARS-CoV-2`), as the graph's `:Virus` names it, and `Homo sapiens` for a human one.
 - `attributes` is optional: anything else worth showing or styling by, such as the `role` the topic's list gives a protein, or the viral family. It appears when a protein is clicked, and the page can style by it.
-- An interaction connects two listed proteins, and each pair appears once. `n_publications` and `n_methods` are the interaction's counters, as the tools return them.
+- An interaction connects two listed proteins, and each pair appears once. `n_publications` and `n_methods` are the interaction's counters, as the graph holds them.
 - The renderer refuses a file that breaks these rules.
 
 Write the `description` for a reader who has not seen how the data was gathered. Name the topic, the family, the evidence level, and anything included beyond the direct interactions, such as HH edges, untargeted topic proteins or one-hop partners.

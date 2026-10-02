@@ -1,40 +1,55 @@
 """Writing the interaction stage: claims, observations, and what supports them.
 
 The shape here is the reification described in docs/schema.md: a description is
-a node because it links two proteins *and* a publication *and* some peptides,
-which no single edge can do. An interaction arrives with its counters already
-counted, and its `:INTERACTS_WITH` shortcut is written with it.
+a node because it links a pair *and* a publication *and* some peptides, which no
+single edge can do. Neither an interaction nor a description has a key: each is
+what it links, so an interaction is written in one statement with its two
+proteins, its `:INTERACTS_WITH` shortcut and its descriptions. Our curated
+descriptions carry their `stable_id`, by which their peptides then find them.
 """
 
 from collections.abc import Iterable
 
 from bpgraph.client import GraphWriter, Row
-from bpgraph.enums import InteractionKind
-
-DESCRIPTION = """MATCH (interaction:Interaction {id: r.interaction_id})
-MATCH (publication:Publication {pmid: r.pmid})
-CREATE (description:Description {id: r.id, intact_id: r.intact_id,
-                                 stable_ids: r.stable_ids,
-                                 method_id: r.method_id,
-                                 method_name: r.method_name})
-CREATE (description)-[:SUPPORTS]->(interaction)
-CREATE (description)-[:REPORTED_IN]->(publication)"""
-
-REPORTS = """MATCH (description:Description {id: r.description_id})
-MATCH (peptide:Peptide {sequence: r.sequence})
-CREATE (description)-[:REPORTS {source_side: r.source_side}]->(peptide)"""
+from bpgraph.enums import InteractionKind, ProteinKind
+from bpgraph.write.proteins import MATCH
 
 COUNTERS = """n_descriptions: r.n_descriptions, n_publications: r.n_publications,
 n_methods: r.n_methods, n_peptides: r.n_peptides"""
 
+SIDE_B: dict[InteractionKind, str] = {
+    InteractionKind.HH: "(b:Human {accession: r.b})",
+    InteractionKind.VH: "(b:Viral {ncbi_taxon_id: r.b_taxon_id, name: r.b_name})",
+}
 
-def _interaction_statement(label: str) -> str:
+DESCRIPTIONS = """WITH r, i
+UNWIND r.descriptions AS d
+MATCH (publication:Publication {pmid: d.pmid})
+CREATE (x:Description {method_id: d.method_id, method_name: d.method_name})
+CREATE (x)-[:SUPPORTS]->(i)
+CREATE (x)-[:REPORTED_IN]->(publication)
+FOREACH (_ IN CASE WHEN d.stable_id = '' THEN [] ELSE [1] END |
+  SET x:Curated, x.stable_id = d.stable_id)
+FOREACH (_ IN CASE WHEN d.stable_id = '' THEN [1] ELSE [] END | SET x:IntAct)
+WITH r, count(x) AS described
+WHERE described = size(r.descriptions)"""
+"""Every description of the row, each `:Curated` with its `stable_id` or
+`:IntAct`. A row whose descriptions did not all find their publication is not
+counted, so the writer reports it."""
+
+REPORTS = """MATCH (description:Curated {stable_id: r.stable_id})
+MATCH (peptide:Peptide {sequence: r.sequence})
+CREATE (description)-[:REPORTS]->(peptide)"""
+
+
+def _interaction_statement(kind: InteractionKind) -> str:
     return (
-        "MATCH (a:Protein {id: r.side_a})\n"
-        "MATCH (b:Protein {id: r.side_b})\n"
-        f"CREATE (a)<-[:INVOLVES {{side: 'a'}}]-(:Interaction:{label} "
-        f"{{id: r.id, {COUNTERS}}})-[:INVOLVES {{side: 'b'}}]->(b)\n"
-        f"CREATE (a)-[:INTERACTS_WITH {{interaction_id: r.id, {COUNTERS}}}]->(b)"
+        "MATCH (a:Human {accession: r.a})\n"
+        f"MATCH {SIDE_B[kind]}\n"
+        f"CREATE (a)<-[:INVOLVES]-(i:Interaction:{kind.value} {{{COUNTERS}}})"
+        "-[:INVOLVES]->(b)\n"
+        f"CREATE (a)-[:INTERACTS_WITH {{{COUNTERS}}}]->(b)\n"
+        f"{DESCRIPTIONS}"
     )
 
 
@@ -51,18 +66,26 @@ def write_peptides(writer: GraphWriter, rows: Iterable[Row]) -> int:
 def write_interactions(
     writer: GraphWriter, kind: InteractionKind, rows: Iterable[Row]
 ) -> int:
-    """Rows of `id`, `side_a`, `side_b` and the four counters: the claim, its
-    two `:INVOLVES`, and its shortcut from side `a` to side `b`."""
-    return writer.write(_interaction_statement(kind.value), rows)
+    """Rows of `a`, the human accession, side `b` — an accession for HH,
+    `b_taxon_id` and `b_name` for VH — the four counters, and `descriptions`,
+    each `pmid`, `method_id`, `method_name` and `stable_id`, `''` for IntAct."""
+    return writer.write(_interaction_statement(kind), rows)
 
 
-def write_descriptions(writer: GraphWriter, rows: Iterable[Row]) -> int:
-    """A description carries its method as properties: a method joins nothing
-    else, so it is a fact about the observation, not a node."""
-    return writer.write(DESCRIPTION, rows)
-
-
-def write_reported_peptides(writer: GraphWriter, rows: Iterable[Row]) -> int:
-    """`source_side` is what makes a peptide directed, and it belongs here
-    rather than on the peptide: the direction is a fact about one observation."""
+def write_reports(writer: GraphWriter, rows: Iterable[Row]) -> int:
+    """Rows of a curated description's `stable_id` and a peptide's `sequence`."""
     return writer.write(REPORTS, rows)
+
+
+def write_peptide_proteins(
+    writer: GraphWriter, relation: str, kind: ProteinKind, rows: Iterable[Row]
+) -> int:
+    """`FROM` the protein a peptide was cut from, `BINDS` one it binds: rows of
+    `sequence` and the protein's key. A peptide seen in many reports is linked
+    to a protein once."""
+    return writer.write(
+        "MATCH (peptide:Peptide {sequence: r.sequence})\n"
+        f"MATCH {MATCH[kind]}\n"
+        f"MERGE (peptide)-[:{relation}]->(protein)",
+        rows,
+    )

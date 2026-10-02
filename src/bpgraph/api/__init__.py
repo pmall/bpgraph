@@ -1,4 +1,5 @@
-"""The query API: the predefined queries consumers run, one endpoint each.
+"""The query API: the graph through its schema and read-only Cypher, and what
+only the vaults hold, one endpoint each.
 
 Every endpoint is a typed function taking the `Backend` first, then its
 parameters. `endpoints.ENDPOINTS` lists them; `app.py` serves each at its own

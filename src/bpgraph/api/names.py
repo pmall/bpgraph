@@ -1,11 +1,23 @@
-"""Checking what a caller names: an unknown family, virus, protein, GO term,
-publication, interaction or peptide is an error naming the closest known
-ones, never an empty answer that reads as an absence."""
+"""Checking what a caller names, by the keys it knows proteins by: a UniProt
+accession for a human protein, a virus's NCBI taxon id and a name for a viral
+one. An unknown key is an error naming the closest known ones, never an empty
+answer that reads as an absence."""
 
 from collections.abc import Iterable
 from difflib import get_close_matches
 
-from bpgraph.api.base import KIND, Backend, ProteinKind
+from pydantic import BaseModel, ConfigDict, Field
+
+from bpgraph.api.base import Backend
+
+
+class ViralKey(BaseModel):
+    """A viral protein, as a caller names it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    ncbi_taxon_id: int = Field(description="Its virus's NCBI taxon id, e.g. 10407.")
+    name: str = Field(description="Its name within the virus, e.g. `HBx`.")
 
 
 def _closest(name: str, known: Iterable[str]) -> list[str]:
@@ -27,133 +39,76 @@ def _unknown(what: str, missing: dict[str, str]) -> ValueError:
     return ValueError(f"unknown {what}: {named}")
 
 
-def _check_one(backend: Backend, what: str, name: str, label: str) -> None:
-    known = [
-        str(row["name"])
-        for row in backend.rows(f"MATCH (n:{label}) RETURN n.name AS name")
-    ]
-    if name not in known:
-        close = _closest(name, known)
-        raise _unknown(what, {name: f"closest: {', '.join(close)}" if close else ""})
-
-
-def check_scope(
-    backend: Backend,
-    family: str | None,
-    virus: str | None,
-    viral_ids: list[str] | None,
-) -> None:
-    """The family, the virus and the viral proteins a viral scope names."""
-    if family is not None:
-        _check_one(backend, "family", family, "Family")
-    if virus is not None:
-        _check_one(backend, "virus", virus, "Virus")
-    if viral_ids is not None:
-        check_proteins(backend, viral_ids, "viral")
-
-
-def check_proteins(
-    backend: Backend, ids: list[str], kind: ProteinKind | None = None
-) -> None:
-    """Protein ids, of one kind when `kind` is given. A name given for an id
-    is answered with the ids it names."""
-    found = {
-        str(row["id"]): str(row["kind"])
-        for row in backend.rows(
-            f"""MATCH (p:Protein) WHERE p.id IN $ids
-            RETURN p.id AS id, {KIND.format("p")} AS kind""",
-            ids=ids,
-        )
-    }
-    missing = [i for i in dict.fromkeys(ids) if i not in found]
-    if missing:
-        named: dict[str, list[str]] = {}
-        for row in backend.rows(
-            "MATCH (p:Protein) WHERE p.name IN $names "
-            "RETURN p.name AS name, p.id AS id",
-            names=missing,
-        ):
-            named.setdefault(str(row["name"]), []).append(str(row["id"]))
-        viral = (
-            [
-                str(row["id"])
-                for row in backend.rows("MATCH (v:Viral) RETURN v.id AS id")
-            ]
-            if any(":" in i and i not in named for i in missing)
-            else []
-        )
-        notes: dict[str, str] = {}
-        for i in missing:
-            if i in named:
-                notes[i] = f"a name, of {', '.join(sorted(named[i]))}"
-            elif ":" in i and (close := _closest(i, viral)):
-                notes[i] = f"closest: {', '.join(close)}"
-            else:
-                notes[i] = ""
-        raise _unknown("protein ids", notes)
-    if kind is not None and (
-        wrong := [i for i in dict.fromkeys(ids) if found[i] != kind]
-    ):
-        raise ValueError(f"not {kind} proteins: {', '.join(f'`{i}`' for i in wrong)}")
-
-
-def check_go_ids(backend: Backend, go_ids: list[str]) -> None:
-    found = {
-        str(row["go_id"])
-        for row in backend.rows(
-            "MATCH (g:GoTerm) WHERE g.go_id IN $ids RETURN g.go_id AS go_id",
-            ids=go_ids,
-        )
-    }
-    if missing := [i for i in dict.fromkeys(go_ids) if i not in found]:
-        raise _unknown(
-            "GO ids (the graph holds the terms of function annotations and "
-            "every term above them)",
-            dict.fromkeys(missing, ""),
-        )
-
-
-def check_pmids(backend: Backend, pmids: list[str]) -> None:
-    found = {
-        str(row["pmid"])
-        for row in backend.rows(
-            "MATCH (b:Publication) WHERE b.pmid IN $pmids RETURN b.pmid AS pmid",
-            pmids=pmids,
-        )
-    }
-    if missing := [p for p in dict.fromkeys(pmids) if p not in found]:
-        raise _unknown(
-            "pmids (the graph holds the publications backing an interaction, "
-            "a GO annotation or a function text)",
-            dict.fromkeys(missing, ""),
-        )
-
-
-def check_interactions(backend: Backend, interaction_ids: list[str]) -> None:
-    """Interaction ids. One with its sides swapped is answered with the id."""
-    swapped = {
-        i: "|".join(reversed(i.split("|", 1))) for i in dict.fromkeys(interaction_ids)
-    }
+def check_accessions(backend: Backend, accessions: list[str]) -> None:
+    """Human accessions. A gene symbol given for one is answered with it."""
     found = {
         str(row["id"])
         for row in backend.rows(
-            "MATCH (i:Interaction) WHERE i.id IN $ids RETURN i.id AS id",
-            ids=[*swapped, *swapped.values()],
+            "MATCH (p:Human) WHERE p.accession IN $ids RETURN p.accession AS id",
+            ids=accessions,
         )
     }
-    if missing := [i for i in swapped if i not in found]:
+    if missing := [a for a in dict.fromkeys(accessions) if a not in found]:
+        named = {
+            str(row["name"]): str(row["id"])
+            for row in backend.rows(
+                "MATCH (p:Human) WHERE p.name IN $names "
+                "RETURN p.name AS name, p.accession AS id",
+                names=missing,
+            )
+        }
         raise _unknown(
-            "interaction ids",
-            {
-                i: f"it is `{swapped[i]}`" if swapped[i] in found else ""
-                for i in missing
-            },
+            "human accessions",
+            {a: f"a gene symbol, of {named[a]}" if a in named else "" for a in missing},
         )
 
 
-def check_peptide(backend: Backend, sequence: str) -> None:
-    if not backend.rows(
-        "MATCH (x:Peptide {sequence: $sequence}) RETURN x.sequence AS sequence",
-        sequence=sequence,
+def check_viral(backend: Backend, keys: list[ViralKey]) -> None:
+    """Viral proteins, each by its virus's NCBI taxon id and its name."""
+    known: dict[int, set[str]] = {}
+    for row in backend.rows(
+        "MATCH (v:Viral) WHERE v.ncbi_taxon_id IN $taxa "
+        "RETURN v.ncbi_taxon_id AS taxon, v.name AS name",
+        taxa=sorted({k.ncbi_taxon_id for k in keys}),
     ):
-        raise _unknown("peptide", {sequence: ""})
+        known.setdefault(int(str(row["taxon"])), set()).add(str(row["name"]))
+    missing = [
+        k for k in dict.fromkeys(keys) if k.name not in known.get(k.ncbi_taxon_id, ())
+    ]
+    if missing:
+        notes: dict[str, str] = {}
+        for k in missing:
+            label = f"{k.ncbi_taxon_id} {k.name}"
+            if k.ncbi_taxon_id not in known:
+                notes[label] = "no curated virus has this taxon id"
+            else:
+                close = _closest(k.name, known[k.ncbi_taxon_id])
+                notes[label] = f"closest: {', '.join(close)}" if close else ""
+        raise _unknown("viral proteins", notes)
+
+
+def resolve_stable_ids(
+    backend: Backend, stable_ids: list[str]
+) -> dict[str, tuple[int, str]]:
+    """Stable ids of VH descriptions: the taxon id and name of each one's
+    viral protein."""
+    found = {
+        str(row["id"]): row
+        for row in backend.rows(
+            """MATCH (d:Curated) WHERE d.stable_id IN $ids
+            MATCH (d)-[:SUPPORTS]->(i:Interaction)
+            OPTIONAL MATCH (i)-[:INVOLVES]->(v:Viral)
+            RETURN d.stable_id AS id, v.ncbi_taxon_id AS taxon, v.name AS name""",
+            ids=stable_ids,
+        )
+    }
+    if missing := [i for i in dict.fromkeys(stable_ids) if i not in found]:
+        raise _unknown("stable ids", dict.fromkeys(missing, ""))
+    if wrong := [i for i in dict.fromkeys(stable_ids) if found[i]["taxon"] is None]:
+        raise ValueError(
+            f"not descriptions of VH interactions: {', '.join(f'`{i}`' for i in wrong)}"
+        )
+    return {
+        i: (int(str(found[i]["taxon"])), str(found[i]["name"]))
+        for i in dict.fromkeys(stable_ids)
+    }

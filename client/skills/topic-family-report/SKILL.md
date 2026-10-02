@@ -13,30 +13,22 @@ This is an analysis, not a data dump. Explore widely, weigh the evidence, then r
 
 ## Inputs
 
-- **Topic**, e.g. `ferroptosis`: a list of human proteins in a file or knowledge base on your side, which the user points to; ask where it is if they haven't said. Read its Swiss-Prot accessions and whatever it records on each protein, such as a `role`. Pass the accessions to tools as `accessions`, and join the list's other columns to the results yourself; `find_proteins` turns gene symbols into accessions. The list decides every count, so name the file and its date in what you write.
-- **Viral family**, e.g. `Flaviviridae`, as `viruses` names it.
+- **Topic**, e.g. `ferroptosis`: a list of human proteins in a file or knowledge base on your side, which the user points to; ask where it is if they haven't said. Read its Swiss-Prot accessions and whatever it records on each protein, such as a `role`. Pass the accessions to your queries as a parameter, and join the list's other columns to the results yourself; a human protein's `name` in the graph is its gene symbol. The list decides every count, so name the file and its date in what you write.
+- **Viral family**, e.g. `Flaviviridae`, as the graph's `:Family` names it.
 - **Evidence level**: golden by default.
 - **Destination**: wherever the user asks; ask if they haven't said. Name the report `<topic>-<family>.md`, e.g. `ferroptosis-flaviviridae.md`.
 
-## Tools
+## The graph
 
-The tools this report leans on:
-
-| for                                                             | tools                                                         |
-| --------------------------------------------------------------- | ------------------------------------------------------------- |
-| the family, its viruses and its overall reach                   | `viruses`, `viral_proteins`, `coverage`                       |
-| the interactions with the topic, direct and through one protein | `vh_interactions`, `indirect_reach`                           |
-| the human context                                               | `hh_interactions`, `neighbours`, `cypher`                     |
-| what each interaction rests on                                  | `evidence`, `publications`, `peptides`                        |
-| what the proteins do                                            | `proteins`, `go_annotations`, `go_rollup`, `go_term_proteins` |
+Query it with `cypher`, in patterns that go as far as the question does: from the family's viruses through their viral proteins and interactions to the topic's proteins, directly or through a protein in between, and on to the descriptions, publications and GO annotations behind them.
 
 ## The information available
 
 Draw on all of it. A report that uses only the interaction list is incomplete.
 
 - **The topic**: its proteins, and what the list records on each. For ferroptosis this is `role`: `driver`, `suppressor` or `both`. Other topics record other properties; use them, whatever they are.
-- **VH interactions** between the family's viral proteins and human proteins, with their counters, and their detection methods when asked for (`methods: true`).
-- **Descriptions**, one per observation, each with its publication, its detection method, its source (IntAct, our curation, or both independently) and sometimes peptides with their direction.
+- **VH interactions** between the family's viral proteins and human proteins, with their counters.
+- **Descriptions**, one per observation, each with its publication, its detection method, its source (IntAct or our curation) and sometimes peptides with their direction.
 - **Publications**, with title, abstract, journal, year and authors. Abstracts are the main source for *what* an interaction does.
 - **HH interactions** among the topic's proteins and around the targets.
 - **UniProt** names and function text, for human and viral proteins alike.
@@ -56,7 +48,7 @@ Each of these is a decision to make for this family, not a fixed rule. State wha
 
 **Bias and background**
 
-- Well-studied families (HIV, HCV, SARS-CoV-2, herpesviruses) have far more interactions largely because they have been studied more. Before reading much into coverage, compare it with the family's whole interactome, which `coverage` gives beside it: does the family hit topic proteins more often than its overall reach predicts?
+- Well-studied families (HIV, HCV, SARS-CoV-2, herpesviruses) have far more interactions largely because they have been studied more. Before reading much into coverage, compare it with the family's whole interactome, every human protein the family reaches: does the family hit topic proteins more often than its overall reach predicts?
 - For enrichment on a topic property, the natural background is the topic's own list: are suppressors over-represented among the targets compared with the whole topic? Choose each background deliberately, and name it.
 - Counts are often small. Give the raw counts next to every statistic. Use an exact test (Fisher or hypergeometric) where one is meaningful, and correct for multiple testing when you test many terms. A clear qualitative pattern stated with its counts beats a weak p-value.
 - Mixed values, like ferroptosis's `both`: decide whether they form their own category, are left out of a driver-versus-suppressor comparison, or are resolved per protein from the literature.
@@ -65,7 +57,7 @@ Each of these is a decision to make for this family, not a fixed rule. State wha
 
 - Count and name viral proteins by virus and name. `viral_sequences` gives a protein's strains and sequences, for verifying one protein.
 - A protein none of whose UniProt entries is reviewed has no function text; one whose entries word it differently holds each text, as separate paragraphs.
-- A virus with no family in the taxonomy falls out of the family. If a known member of the family is missing, check `viruses` and say so.
+- A virus with no family in the taxonomy falls out of the family. If a known member of the family is missing, check the graph's viruses and say so.
 - GO: an annotation's abstract can be read like an interaction's.
 
 **Network context**
@@ -73,13 +65,13 @@ Each of these is a decision to make for this family, not a fixed rule. State wha
 - Are the targets central to the topic's HH subnetwork, or at its edges? Do they cluster? Answer from the graph's structure with `cypher`. For example, each topic protein's golden partners within the topic, beside its partners across the proteome, separates a protein central to the topic from a hub of everything:
 
   ```cypher
-  MATCH (h:Protein) WHERE h.id IN $accessions AND h:Human
+  MATCH (h:Human) WHERE h.accession IN $accessions
   WITH h
   MATCH (h)-[e:INTERACTS_WITH]-(n:Human)
   WITH h, e, n
   WHERE n <> h AND (e.n_publications >= 2 OR e.n_methods >= 2)
   RETURN h.name AS protein,
-         count(DISTINCT CASE WHEN n.id IN $accessions THEN n END) AS in_topic,
+         count(DISTINCT CASE WHEN n.accession IN $accessions THEN n END) AS in_topic,
          count(DISTINCT n) AS in_proteome
   ORDER BY in_topic DESC, in_proteome DESC
   ```

@@ -67,19 +67,5 @@ def render(result: object) -> str:
         case Rows():
             head = count(len(result.rows), result.total)
             return f"{head}\n{table(result.rows)}" if result.rows else head
-        case BaseModel():
-            fields = dict(result)
-            lines = [
-                f"{name}: {cell(value)}"
-                for name, value in fields.items()
-                if not isinstance(value, list) and not name.startswith("n_")
-            ]
-            for name, value in fields.items():
-                if isinstance(value, list):
-                    total = fields.get(f"n_{name}", len(value))
-                    lines.append(f"\n{name}: {count(len(value), int(str(total)))}")
-                    if value:
-                        lines.append(table(value))
-            return "\n".join(lines)
         case _:
             return cell(result)

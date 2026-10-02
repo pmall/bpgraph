@@ -2,7 +2,7 @@
 
 The graph is rebuilt, never updated. A run gathers every source into one directory — the curation database's export, and what is fetched for each silo — and builds a fresh graph and fresh vaults from it. See [`schema.md`](schema.md) for what is written, and [`roadmap.md`](roadmap.md) for why the sources are split into silos.
 
-**Everything streams.** No step, fetch or build, holds a whole file in memory. A file is read a line at a time; where rows of two files have to meet — a curated row and the IntAct row it merges onto, a peptide and its description — both are written to an intermediate file keyed by what they share, sorted on disk with GNU `sort`, and read side by side, so memory holds one group of rows sharing a key (`bpgraph.files`). The graph is written in batches of 1,000 rows. The only thing held whole is PSI-MI with the curated keep flags, some 1,700 terms of reference data.
+**Everything streams.** No step, fetch or build, holds a whole file in memory. A file is read a line at a time; where rows of two files have to meet — our curated rows and the IntAct records of the same publication, a peptide and its description — both are written to an intermediate file keyed by what they share, sorted on disk with GNU `sort`, and read side by side, so memory holds one group of rows sharing a key (`bpgraph.files`). The graph is written in batches of 1,000 rows. The only thing held whole is PSI-MI with the curated keep flags, some 1,700 terms of reference data.
 
 ## The run directory
 
@@ -62,11 +62,11 @@ Every fetch records its dataset in `sources.tsv`, prefixed by its silo: the URL,
 `uv run bpgraph-build data/2026-09-09` runs these steps in this order. Steps 1 to 7 only read the run and write files in `build/`: every error a run can hold fails there, with its file and line, before the graph is touched.
 
 01. **Curated rows.** Both description files are read into one file of curated rows. A `stable_id` must be unique across the two; every viral taxon must have a curated virus, or the build fails naming them. A row whose human partner is not a Swiss-Prot entry is dropped — a sorted merge against `swissprot.tsv`, per partner — with the accessions logged. A dropped row stays in the file, marked, so its peptides go with it.
-02. **Viral sites.** Each VH row's viral partner is placed: its taxon made current, its curated virus found, its protein id made from the virus and the name. Every viral partner must be a row of `viral_proteins.tsv` under the same name and taxon. Each entry and span a kept row observes is a site, with its sequence.
-03. **HH descriptions.** IntAct's rows and our kept HH rows go into one file keyed by pair and pmid, IntAct first and in IntAct order within a key, and are sorted. Each key's rows arrive together: a curated row joins the IntAct description with the lowest IntAct id, and is a description of its own when IntAct has none. The load logs how many curated rows IntAct already had.
-04. **VH descriptions.** Each kept VH row is a description of its own, and the vault notes which entry it observed.
-05. **Viral proteins.** Each site takes its UniProt function text and its entry's UniProt name; the sites of each protein are then read together. A protein's members are one chain by definition, so they should agree: a protein keeps every distinct text they carry, and those carrying more than one are logged for curation.
-06. **Peptides.** Each peptide finds its curated row, must name one of that row's partners as its source, and goes to the description the row became. A peptide on no row fails the build; one on a dropped row is dropped with it.
+02. **Viral sites.** Each VH row's viral partner is placed: its taxon made current, its curated virus found: the protein is that virus and the name. Every viral partner must be a row of `viral_proteins.tsv` under the same name and taxon. Each entry and span a kept row observes is a site, with its sequence.
+03. **HH descriptions.** Our kept HH rows and IntAct's records go into one file sorted by publication, ours first. Each of our rows is a `:Curated` description. A publication one of our HH rows cites is ours alone, and IntAct's records of it are skipped; a publication we curated for VH rows only does not count. The records of the other publications are `:IntAct` descriptions, those sharing a pair and a method being one. The load logs the descriptions of each kind and the IntAct records skipped.
+04. **VH descriptions.** Each kept VH row is a `:Curated` description, and the vault notes which entry it observed.
+05. **Viral proteins.** Each site takes its UniProt function text; the sites of each protein are then read together. A protein's members are one chain by definition, so they should agree: a protein keeps every distinct text they carry, and those carrying more than one are logged for curation.
+06. **Peptides.** Each peptide finds its curated row and must name one of that row's partners as its source; the other partner is the one it binds. A peptide on no row fails the build; one on a dropped row is dropped with it.
 07. **Publications.** Every pmid the graph cites — descriptions, GO annotations, function text — is looked up in the silos' `publications.tsv`, host first. A cited pmid no silo has fails the build: run `bpgraph-pubmed`.
 08. **Staging.** `bpgraph_staging` is emptied and its indexes created, before any data, so every `MATCH` a write performs is an index lookup.
 09. **Writing**, from the files of steps 1 to 7, in dependency order:
@@ -74,8 +74,9 @@ Every fetch records its dataset in `sources.tsv`, prefixed by its silo: the URL,
     2. viruses, their families, `:PARENT` and `:IN_TAXON`;
     3. publications, and `:FUNCTION_CITES` onto them;
     4. peptides;
-    5. interactions: descriptions and peptide reports sorted by interaction are read side by side, and each interaction is written once, with its counters counted from its group, its two `:INVOLVES`, its `:INTERACTS_WITH` shortcut, its descriptions and their `:REPORTS`;
-    6. GO terms, their edges, and the annotations.
+    5. interactions: descriptions and peptide reports sorted by interaction are read side by side, and each interaction is written once, in one statement with its counters counted from its group, its two `:INVOLVES`, its `:INTERACTS_WITH` shortcut and its descriptions;
+    6. each curated description's `:REPORTS`, found by its `stable_id`, and each peptide's `:FROM` and `:BINDS`;
+    7. GO terms, their edges, and the annotations, one per protein, term and qualifier, written with an edge to each publication showing it. A term GO marks obsolete fails the build: GO detaches the terms it retires, so one here is annotated.
 10. **Gate.** The unique constraints are created and every one must settle on `OPERATIONAL`; one `FAILED` means a duplicate key, and staging is dropped.
 11. **Swap.** `RENAME bpgraph_staging bpgraph`. It overwrites its destination, so this is the whole deployment; old graphs are not kept. Staging exists so a bad export cannot land on the live graph — not for uptime.
 12. **Vaults.** `host-9606.sqlite` from `sequences.tsv`; `viral.sqlite` from the viral sites, their entries and the VH observations. Each is written beside where it goes in the run's `vault/`, then moved there.
@@ -88,23 +89,30 @@ Nothing pre-exists in a fresh graph, so every write is a `CREATE`: `MERGE` would
 
 ```cypher
 UNWIND $rows AS r
-CREATE (:Protein:Human {id: r.id, name: r.name,
+CREATE (:Protein:Human {accession: r.accession, name: r.name,
                         description: r.description, function: r.function})
 RETURN count(*)
 ```
 
-`GraphWriter.create` writes that clause itself, from the keys of the rows it is given, so a node's properties and the record behind them are one list rather than two that can drift. Relationships are written by key lookup:
+`GraphWriter.create` writes that clause itself, from the keys of the rows it is given, so a node's properties and the record behind them are one list rather than two that can drift. Relationships are written by looking up the natural keys of their ends. A node with no key is written in one statement with the edges that make it what it is, its parts nested in its row, since nothing could find it again:
 
 ```cypher
 UNWIND $rows AS r
-MATCH (a:Protein {id: r.side_a})
-MATCH (b:Protein {id: r.side_b})
-CREATE (a)<-[:INVOLVES {side: 'a'}]-(:Interaction:VH {id: r.id, n_descriptions: r.n_descriptions, …})-[:INVOLVES {side: 'b'}]->(b)
-CREATE (a)-[:INTERACTS_WITH {interaction_id: r.id, n_descriptions: r.n_descriptions, …}]->(b)
+MATCH (a:Human {accession: r.a})
+MATCH (b:Viral {ncbi_taxon_id: r.b_taxon_id, name: r.b_name})
+CREATE (a)<-[:INVOLVES]-(i:Interaction:VH {n_descriptions: r.n_descriptions, …})-[:INVOLVES]->(b)
+CREATE (a)-[:INTERACTS_WITH {n_descriptions: r.n_descriptions, …}]->(b)
+WITH r, i
+UNWIND r.descriptions AS d
+MATCH (publication:Publication {pmid: d.pmid})
+CREATE (x:Description {method_id: d.method_id, method_name: d.method_name})
+…
+WITH r, count(x) AS described
+WHERE described = size(r.descriptions)
 RETURN count(*)
 ```
 
-Every statement returns how many rows came through, and a batch where some matched nothing raises `UnmatchedRows`: the preparation guarantees every endpoint exists, so a row lost there is a bug, never data. Never interpolate values into Cypher — pass parameters.
+Every statement returns how many rows came through, and a batch where some matched nothing raises `UnmatchedRows`: the preparation guarantees every endpoint exists, so a row lost there is a bug, never data. A statement unwinding a row's parts gathers them back to one line per row before it returns, and counts only the rows whose parts all came through. Never interpolate values into Cypher — pass parameters.
 
 ## Constraints are the validation gate
 
@@ -112,7 +120,7 @@ Creating a unique constraint over rows that already violate it does not error. T
 
 ```
 type    label    properties  entitytype  status
-UNIQUE  Protein  [id]        NODE        FAILED
+UNIQUE  Human    [accession] NODE        FAILED
 ```
 
 Step 10 is therefore a hard gate: `FAILED` means the run violated a key, and the staging graph is dropped rather than swapped in.
@@ -125,7 +133,7 @@ Step 10 is therefore a hard gate: `FAILED` means the run violated a key, and the
 
 ## Auditing what was built
 
-The constraint gate proves keys are unique and nothing else, so `uv run bpgraph-audit` reads the live graph and checks it against every other promise in [`schema.md`](schema.md): properties present and correctly typed, no property the schema does not list, one of `:Human`/`:Viral`, `:HH`/`:VH` and `:Virus`/`:Family`, derived ids agreeing with the values behind them, every edge joining the labels it is declared to join, a description being IntAct's or one curated row's, an IntAct description carrying a method [`curation/methods.tsv`](../curation/methods.tsv) keeps, no interaction holding IntAct descriptions from two publications of one group of [`curation/publications.tsv`](../curation/publications.tsv), an annotation's evidence being experimental and its term a process or a function outside `protein binding`, slot `a` holding the human protein, the counters and the shortcut equalling what they count, no publication or peptide left with nothing pointing at it. Each check is one read-only query returning the rows that break its rule, so an empty result is a pass; the command exits non-zero when anything fails and prints a few offenders per failure. It takes under half a minute, so it runs after every build: a check counts a node's edges with `outdegree`, never a pattern comprehension, and never walks every path down the GO DAG.
+The constraint gate proves natural keys are unique and nothing else, so `uv run bpgraph-audit` reads the live graph and checks it against every other promise in [`schema.md`](schema.md): properties present and correctly typed, no property the schema does not list, one of `:Human`/`:Viral`, `:HH`/`:VH`, `:Virus`/`:Family` and `:Curated`/`:IntAct`, every edge joining the labels it is declared to join, a node with no key unique by what it links — one interaction per pair, one IntAct description per interaction, publication and method, one annotation per protein, term and qualifier — IntAct describing no publication we curated for HH, an IntAct description carrying a method [`curation/methods.tsv`](../curation/methods.tsv) keeps, no interaction holding IntAct descriptions from two publications of one group of [`curation/publications.tsv`](../curation/publications.tsv), an annotation's evidence being experimental and its term a process or a function outside `protein binding`, a VH joining a human protein and a viral one, the counters and the shortcut equalling what they count, a peptide reported coming from exactly one protein of each description reporting it, no publication or peptide left with nothing pointing at it. Each check is one read-only query returning the rows that break its rule, so an empty result is a pass; the command exits non-zero when anything fails and prints a few offenders per failure. It takes under half a minute, so it runs after every build: across a large label it counts rather than tests node by node, and it never walks every path down the GO DAG. A pattern may use one edge twice, so a check reaching an interaction's two proteins tells its two `:INVOLVES` apart.
 
 Run it after a build, and after anything that touches the writers.
 
@@ -135,8 +143,8 @@ Run it after a build, and after anything that touches the writers.
 
 Some things are worth a human's look without being wrong enough to stop a build. The build logs them:
 
-- **How our HH curation sits on IntAct**: curated rows IntAct already has, those it lacks, and the interactions only our curation reports.
+- **How our HH curation sits on IntAct**: our descriptions, IntAct's, and the IntAct records skipped because we curated their publication.
 - **Curated rows dropped**: naming an accession no longer in Swiss-Prot, with the accessions.
-- **Viral proteins whose members disagree**: members carrying different sets of function texts, or different UniProt names. One entry holding a generic text beside a curated one is not a disagreement. The protein keeps every distinct text; the list is for curation to check that the members really are one chain.
+- **Viral proteins whose members disagree**: members carrying different sets of function texts. One entry holding a generic text beside a curated one is not a disagreement. The protein keeps every distinct text; the list is for curation to check that the members really are one chain.
 - **Viral proteins whose members differ in length by more than half** — HBV `HBsAg` over its S/M/L forms, or a fragment.
 - **Viral names within one virus that differ only in case.** Names are case-sensitive, and EBV's `BARF1` / `BaRF1` and `BCRF1` / `BcRF1` are genuinely different proteins; any new pair may be a typo.

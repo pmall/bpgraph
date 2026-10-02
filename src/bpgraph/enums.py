@@ -24,13 +24,6 @@ class InteractionKind(StrEnum):
     VH = "VH"
 
 
-class Side(StrEnum):
-    """Which slot of an interaction a partner occupies. `A` is always human."""
-
-    A = "a"
-    B = "b"
-
-
 class GoNamespace(StrEnum):
     BIOLOGICAL_PROCESS = "biological_process"
     MOLECULAR_FUNCTION = "molecular_function"
