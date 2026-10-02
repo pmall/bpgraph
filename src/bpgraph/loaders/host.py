@@ -1,17 +1,17 @@
-"""A host's interactions: IntAct's, with our curated rows merged onto them.
+"""A host's interactions: our curated rows, and IntAct's for the publications
+we have not curated.
 
-A curated row *is* an IntAct description when both have the same pair and
-the same pmid; it then adds its `stable_id` to that description rather than
-being a description of its own. The method is not compared: curators and IntAct
-code one experiment with different PSI-MI terms, `two hybrid` against `two
-hybrid array`. One IntAct pmid may hold several descriptions of one pair, and
-every curated row matching them goes to the one with the lowest IntAct id, so a
-build is deterministic. A curated row IntAct has not got is a description of
-its own.
+A description is one pair, one publication and one method. Each of our
+curated rows is a description, keyed by its `stable_id`. An IntAct record is
+skipped when one of our HH rows cites its publication: we read that
+publication and decided what it shows, so all IntAct could add is what we
+decided against. A publication we curated for VH rows only does not count:
+IntAct's records here are human–human. The others add descriptions, the
+records sharing a pair and a method being one.
 
-Both sources are written to one file keyed by pair and pmid, IntAct
-first and in IntAct order within a key, and sorted on disk: a key's rows then
-arrive together, and nothing else is held.
+Both sources are written to one file sorted on disk by publication, ours
+first, so whether we curated a publication is known before its IntAct
+records are read, and nothing else is held.
 
 Everything else a host contributes — its proteins, their function text, its
 GO — is read straight from its silo's files when the graph is written.
@@ -24,36 +24,28 @@ from typing import TextIO
 
 from bpgraph import files
 from bpgraph.enums import InteractionKind
-from bpgraph.ids import intact_description_id, interaction_id
-from bpgraph.loaders.records import KEPT, Curated, Description, of
-from bpgraph.loaders.tsv import LoadError, required, rows
+from bpgraph.loaders.records import KEPT, Curated, Description, of, pair_ref
+from bpgraph.loaders.tsv import required, rows
 from bpgraph.run import HostPaths
 
 logger = logging.getLogger(__name__)
 
-INTACT, CURATED = "0", "1"
-"""Which source a row of the merge file comes from; IntAct's sort first."""
-
-
-def _order(intact_id: str) -> str:
-    """IntAct ids by number, `EBI-99` before `EBI-100`, as text that sorts."""
-    digits = intact_id.rpartition("-")[2]
-    return f"{int(digits):015d}" if digits.isdigit() else "9" * 15
+CURATED, INTACT = "0", "1"
+"""Which source a row of the merge file comes from; ours sort first."""
 
 
 def _merge_keys(host: HostPaths, curated: Path) -> Iterator[list[str]]:
-    """`[a, b, pmid, source, order, intact_id, psimi_id, stable_id]`."""
+    """`[pmid, source, a, b, psimi_id, stable_id]`, the pair in sorted order."""
     for cursor, row in rows(host.intact):
-        psimi_id = required(cursor, row, "psimi_id")
-        intact_id = required(cursor, row, "intact_id")
+        a, b = sorted(
+            (required(cursor, row, "accession1"), required(cursor, row, "accession2"))
+        )
         yield [
-            required(cursor, row, "accession1"),
-            required(cursor, row, "accession2"),
             required(cursor, row, "pmid"),
             INTACT,
-            _order(intact_id),
-            intact_id,
-            psimi_id,
+            a,
+            b,
+            required(cursor, row, "psimi_id"),
             "",
         ]
     for record in files.read(curated):
@@ -61,16 +53,7 @@ def _merge_keys(host: HostPaths, curated: Path) -> Iterator[list[str]]:
         if row.kind != InteractionKind.HH.value or row.status != KEPT:
             continue
         a, b = sorted((row.accession_1, row.accession_2))
-        yield [
-            a,
-            b,
-            row.pmid,
-            CURATED,
-            "",
-            "",
-            row.psimi_id,
-            row.stable_id,
-        ]
+        yield [row.pmid, CURATED, a, b, row.psimi_id, row.stable_id]
 
 
 def hh_descriptions(
@@ -82,59 +65,38 @@ def hh_descriptions(
 ) -> None:
     """Write the host's descriptions."""
     merged = files.sorted_file(scratch / "hh_merge", _merge_keys(host, curated))
-    counts = {"intact": 0, "merged": 0, "own": 0}
+    counts = {"curated": 0, "intact": 0, "intact_dropped": 0}
 
-    def description(
-        a: str, b: str, pmid: str, psimi_id: str, **ids: str
-    ) -> Description:
-        return Description(
-            interaction_id=interaction_id(a, b),
+    def write(a: str, b: str, pmid: str, psimi_id: str, stable_id: str) -> None:
+        row = Description(
+            interaction=pair_ref(a, b),
             kind=InteractionKind.HH.value,
             side_a=a,
             side_b=b,
             pmid=pmid,
             method_id=psimi_id,
             method_name=name_of(psimi_id),
-            **ids,
+            stable_id=stable_id,
         )
+        out.write("\t".join(row) + "\n")
 
-    for (a, b, pmid), found in files.groups(files.read(merged), 3):
-        intact = [r for r in found if r[3] == INTACT]
-        ours = [r[7] for r in found if r[3] == CURATED]
-        for position, record in enumerate(intact):
-            intact_id, psimi_id = record[5], record[6]
-            if position and intact_id == intact[position - 1][5]:
-                raise LoadError(f"intact.tsv: {intact_id} {a} {b} appears twice")
-            row = description(
-                a,
-                b,
-                pmid,
-                psimi_id,
-                id=intact_description_id(intact_id, a, b),
-                intact_id=intact_id,
-                stable_ids=";".join(ours) if position == 0 else "",
-            )
-            out.write("\t".join(row) + "\n")
-        counts["intact"] += len(intact)
-        if intact:
-            counts["merged"] += len(ours)
+    for (pmid,), found in files.groups(files.read(merged), 1):
+        ours = [r for r in found if r[1] == CURATED]
+        if ours:
+            counts["intact_dropped"] += len(found) - len(ours)
+            for _, _, a, b, psimi_id, stable_id in ours:
+                write(a, b, pmid, psimi_id, stable_id)
+            counts["curated"] += len(ours)
             continue
-        counts["own"] += len(ours)
-        for record in (r for r in found if r[3] == CURATED):
-            row = description(
-                a,
-                b,
-                pmid,
-                record[6],
-                id=record[7],
-                intact_id="",
-                stable_ids=record[7],
-            )
-            out.write("\t".join(row) + "\n")
+        observed = sorted({(r[2], r[3], r[4]) for r in found})
+        for a, b, psimi_id in observed:
+            write(a, b, pmid, psimi_id, "")
+        counts["intact"] += len(observed)
     logger.info(
-        "%d HH: %d IntAct descriptions; %d curated rows are IntAct's, %d are not",
+        "%d HH: %d curated descriptions; %d IntAct descriptions of publications "
+        "we have not curated; %d IntAct records of publications we curated dropped",
         host.taxon_id,
+        counts["curated"],
         counts["intact"],
-        counts["merged"],
-        counts["own"],
+        counts["intact_dropped"],
     )

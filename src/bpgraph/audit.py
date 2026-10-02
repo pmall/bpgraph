@@ -1,12 +1,11 @@
 """Auditing a built graph against docs/schema.md.
 
-The constraint gate in `schema.py` only proves that keys are unique. Everything
-else the schema promises — that no property is missing or mistyped, that a
-`:Protein` is human or viral and never both, that a derived id agrees with the
-values it was derived from, that a description comes from IntAct or from
-exactly one curated row, that `:VH` puts the human on side `a`, that the
-counters match what they count — is unchecked at build time, because FalkorDB
-has no schema to check it against.
+The constraint gate in `schema.py` only proves that natural keys are unique.
+Everything else the schema promises — that no property is missing or
+mistyped, that a `:Protein` is human or viral and never both, that a node
+with no key is unique by what it links, that IntAct describes no publication
+we curated, that the counters match what they count — is unchecked at build
+time, because FalkorDB has no schema to check it against.
 
 **The expectations are restated from docs/schema.md by hand, here and in
 `shape.py`, and that is the point.** Deriving them from the loaders or the
@@ -183,7 +182,7 @@ def _exactly_one(label: str, kind: str, rule: str) -> Check:
     )
 
 
-KNOWN_LABELS = (*NODE_PROPERTIES, "Taxon")
+KNOWN_LABELS = (*NODE_PROPERTIES, "Protein", "Taxon", "Description")
 
 NOT_KEPT = sorted(m.psimi_id for m in read_methods() if not m.keep)
 """The detection methods `curation/methods.tsv` flags `no`: no IntAct
@@ -191,6 +190,14 @@ description carries one. Our curated descriptions may."""
 
 GROUPED = sorted([group, pmid] for pmid, group in read_groups().items())
 """`[group, pmid]` for every publication of `curation/publications.tsv`."""
+
+PAIRS = (
+    "MATCH (a:Protein)<-[r:INVOLVES]-(i:Interaction)-[s:INVOLVES]->(b:Protein)\n"
+    "WHERE ID(r) < ID(s)\n"
+    "WITH i, a, b\n"
+)
+"""Each interaction with its two proteins, once: its two edges, in id order.
+A pattern may use one edge twice, so the edges are told apart."""
 
 INVARIANTS: tuple[Check, ...] = (
     # FalkorDB 6.0.0 dropped this WHERE, and returned every interaction: an
@@ -200,7 +207,7 @@ INVARIANTS: tuple[Check, ...] = (
         "the engine keeps the WHERE of a MATCH that a following MATCH extends",
         "MATCH (i:Interaction) WHERE i.n_publications < 0\n"
         "MATCH (i)-[:INVOLVES]->(p:Protein)\n"
-        "RETURN i.id AS id, i.n_publications AS n_publications",
+        "RETURN ID(i) AS interaction, i.n_publications AS n_publications",
     ),
     Check(
         "graph.labels",
@@ -209,76 +216,104 @@ INVARIANTS: tuple[Check, ...] = (
         f"WHERE NOT ({' OR '.join(f'n:{label}' for label in KNOWN_LABELS)})\n"
         "RETURN ID(n) AS node, labels(n) AS labels",
     ),
+    # Counted, as in `_exactly_one`: every interaction a source, and twice as
+    # many edges as interactions; the partner checks below leave two each.
     Check(
-        "Viral.id",
-        "a viral id is its curated virus's taxon id and its name",
-        "MATCH (p:Viral)-[:IN_TAXON]->(v:Virus)\n"
-        "WHERE p.id <> toString(v.taxon_id) + ':' + p.name\n"
-        "RETURN p.id AS id, v.taxon_id AS virus, p.name AS name",
-    ),
-    # Counted, as in `_exactly_one`: each side reaching every interaction, and
-    # twice as many edges as interactions, leaves one edge per side.
-    Check(
-        "Interaction.slots",
-        "two INVOLVES edges, one side 'a' and one side 'b'",
-        "OPTIONAL MATCH (i:Interaction)-[:INVOLVES {side: 'a'}]->()\n"
-        "WITH count(DISTINCT i) AS with_a\n"
-        "OPTIONAL MATCH (i:Interaction)-[:INVOLVES {side: 'b'}]->()\n"
-        "WITH with_a, count(DISTINCT i) AS with_b\n"
+        "Interaction.involves",
+        "two INVOLVES edges per interaction",
+        "OPTIONAL MATCH (i:Interaction)-[:INVOLVES]->()\n"
+        "WITH count(DISTINCT i) AS sources\n"
         "WHERE $edges_INVOLVES <> 2 * $nodes_Interaction\n"
-        "   OR with_a <> $nodes_Interaction OR with_b <> $nodes_Interaction\n"
-        "RETURN $nodes_Interaction AS interactions, $edges_INVOLVES AS edges,\n"
-        "       with_a, with_b",
+        "   OR sources <> $nodes_Interaction\n"
+        "RETURN $nodes_Interaction AS interactions, $edges_INVOLVES AS edges, sources",
     ),
     Check(
-        "Interaction.id",
-        "the id joins its two protein ids in slot order",
-        "MATCH (i:Interaction)-[:INVOLVES {side: 'a'}]->(a:Protein)\n"
-        "MATCH (i)-[:INVOLVES {side: 'b'}]->(b:Protein)\n"
-        "WHERE i.id <> a.id + '|' + b.id\n"
-        "RETURN i.id AS id, a.id + '|' + b.id AS derived",
+        "VH.partners",
+        "a VH interaction joins one human protein and one viral protein",
+        "MATCH (i:VH)-[:INVOLVES]->(p:Protein)\n"
+        "WITH i, sum(CASE WHEN p:Human THEN 1 ELSE 0 END) AS humans,\n"
+        "        sum(CASE WHEN p:Viral THEN 1 ELSE 0 END) AS virals\n"
+        "WHERE humans <> 1 OR virals <> 1\n"
+        "RETURN ID(i) AS interaction, humans, virals",
     ),
     Check(
-        "VH.slots",
-        "a VH interaction puts the human on side 'a' and the virus on side 'b'",
-        "MATCH (i:VH)-[r:INVOLVES]->(p:Protein)\n"
-        "WHERE (r.side = 'a' AND NOT p:Human) OR (r.side = 'b' AND NOT p:Viral)\n"
-        "RETURN i.id AS id, r.side AS side, labels(p) AS partner",
+        "HH.partners",
+        "an HH interaction joins two human proteins",
+        "MATCH (i:HH)-[:INVOLVES]->(p:Protein)\n"
+        "WHERE NOT p:Human\n"
+        "RETURN ID(i) AS interaction, labels(p) AS partner",
     ),
     Check(
-        "HH.slots",
-        "an HH interaction joins two human proteins, side 'a' sorting first",
-        "MATCH (i:HH)-[:INVOLVES {side: 'a'}]->(a:Protein)\n"
-        "MATCH (i)-[:INVOLVES {side: 'b'}]->(b:Protein)\n"
-        "WHERE NOT a:Human OR NOT b:Human OR a.id > b.id\n"
-        "RETURN i.id AS id, a.id AS side_a, b.id AS side_b",
+        "Interaction.unique",
+        "one interaction per pair of proteins",
+        PAIRS + "WITH CASE WHEN ID(a) < ID(b) THEN [ID(a), ID(b)]\n"
+        "          ELSE [ID(b), ID(a)] END AS pair, count(i) AS interactions\n"
+        "WHERE interactions > 1\n"
+        "RETURN pair, interactions",
     ),
     _exactly_one("Description", "SUPPORTS", "one interaction behind every description"),
     _exactly_one(
         "Description", "REPORTED_IN", "one publication behind every description"
     ),
     Check(
-        "Description.source",
-        "a description is IntAct's, keyed by its IntAct id and pair, or one "
-        "curated row's, keyed by its stable_id; VH descriptions are curated",
-        "MATCH (d:Description)-[:SUPPORTS]->(i:Interaction)\n"
-        "WHERE (d.intact_id = ''\n"
-        "       AND (size(d.stable_ids) <> 1 OR d.id <> d.stable_ids[0]))\n"
-        "   OR (d.intact_id <> '' AND d.id <> d.intact_id + '|' + i.id)\n"
-        "   OR (i:VH AND d.intact_id <> '')\n"
-        "RETURN d.id AS id, d.intact_id AS intact_id, d.stable_ids AS stable_ids",
+        "Curated.stable_id",
+        "a curated description has a stable id",
+        "MATCH (d:Curated)\nWHERE d.stable_id = ''\nRETURN ID(d) AS description",
+    ),
+    Check(
+        "IntAct.unique",
+        "one IntAct description per interaction, publication and method",
+        "MATCH (i:Interaction)<-[:SUPPORTS]-(d:IntAct)\n"
+        "MATCH (d)-[:REPORTED_IN]->(b:Publication)\n"
+        "WITH i, b, d.method_id AS method, count(d) AS descriptions\n"
+        "WHERE descriptions > 1\n"
+        "RETURN ID(i) AS interaction, b.pmid AS pmid, method, descriptions",
+    ),
+    # Counted: the publications of HH descriptions are ours or IntAct's, and
+    # none is both when the two counts add up to all of them.
+    Check(
+        "IntAct.uncurated",
+        "IntAct describes no publication we curated for HH interactions",
+        "MATCH (d:Description)-[:SUPPORTS]->(:HH)\n"
+        "MATCH (d)-[:REPORTED_IN]->(b:Publication)\n"
+        "WITH count(DISTINCT b) AS publications,\n"
+        "     count(DISTINCT CASE WHEN d:Curated THEN b END) AS ours,\n"
+        "     count(DISTINCT CASE WHEN d:IntAct THEN b END) AS intact\n"
+        "WHERE ours + intact <> publications\n"
+        "RETURN publications, ours, intact",
+    ),
+    Check(
+        "VH.curated",
+        "every VH description is curated",
+        "MATCH (d:IntAct)-[:SUPPORTS]->(:VH)\nRETURN ID(d) AS description",
     ),
     _exactly_one("Annotation", "ANNOTATES", "one protein behind every annotation"),
     _exactly_one("Annotation", "OF_TERM", "one term behind every annotation"),
-    _exactly_one(
-        "Annotation", "REPORTED_IN", "one publication behind every annotation"
+    Check(
+        "Annotation.published",
+        "a publication behind every annotation",
+        "OPTIONAL MATCH (a:Annotation)-[:REPORTED_IN]->()\n"
+        "WITH count(DISTINCT a) AS published\n"
+        "WHERE published <> $nodes_Annotation\n"
+        "RETURN $nodes_Annotation AS annotations, published",
     ),
     Check(
+        "Annotation.unique",
+        "one annotation per protein, term and qualifier",
+        "MATCH (p:Human)<-[:ANNOTATES]-(a:Annotation)-[:OF_TERM]->(g:GoTerm)\n"
+        "WITH p, g, a.qualifier AS qualifier, count(a) AS annotations\n"
+        "WHERE annotations > 1\n"
+        "RETURN p.accession AS accession, g.go_id AS go_id, qualifier, annotations",
+    ),
+    _edge_properties("REPORTED_IN", "Description", ()),
+    _edge_properties("REPORTED_IN", "Annotation", ("evidence_codes",)),
+    Check(
         "Annotation.evidence",
-        "an annotation stands on experimental evidence",
-        "MATCH (a:Annotation)\n"
-        f"WHERE NOT a.evidence_code IN {list(EXPERIMENTAL)}\n"
-        "RETURN a.id AS id, a.evidence_code AS code",
+        "an annotation's publications show it by experimental evidence",
+        "MATCH (a:Annotation)-[r:REPORTED_IN]->(b:Publication)\n"
+        "WHERE size(r.evidence_codes) = 0\n"
+        f"   OR any(c IN r.evidence_codes WHERE NOT c IN {list(EXPERIMENTAL)})\n"
+        "RETURN ID(a) AS annotation, b.pmid AS pmid, r.evidence_codes AS codes",
     ),
     Check(
         "Annotation.functional",
@@ -287,43 +322,25 @@ INVARIANTS: tuple[Check, ...] = (
         f"WHERE NOT g.namespace IN {list(GO_NAMESPACES)}\n"
         "   OR (g)-[:IS_A|PART_OF*0..]->(:GoTerm {go_id: "
         f"'{PROTEIN_BINDING}'}})\n"
-        "RETURN a.id AS id, g.go_id AS go_id, g.name AS name",
+        "RETURN ID(a) AS annotation, g.go_id AS go_id, g.name AS name",
     ),
     Check(
-        "Annotation.id",
-        "the id joins protein, term, pmid, evidence, assigner and qualifier",
-        "MATCH (p:Protein)<-[:ANNOTATES]-(a:Annotation)-[:OF_TERM]->(g:GoTerm)\n"
-        "MATCH (a)-[:REPORTED_IN]->(b:Publication)\n"
-        "WITH a, p.id + '|' + g.go_id + '|' + b.pmid + '|' + a.evidence_code + '|'\n"
-        "        + a.assigned_by + '|' + a.qualifier AS derived\n"
-        "WHERE a.id <> derived\n"
-        "RETURN a.id AS id, derived",
-    ),
-    Check(
-        "REPORTS.source_side",
-        "a reported peptide names a slot of its description's interaction",
-        "MATCH (d:Description)-[r:REPORTS]->(:Peptide)\n"
-        "WHERE NOT r.source_side IN ['a', 'b']\n"
-        "RETURN d.id AS id, r.source_side AS source_side",
-    ),
-    Check(
-        "Description.method_kept",
+        "IntAct.method_kept",
         "an IntAct description carries a method curation/methods.tsv keeps",
-        "MATCH (d:Description)\n"
-        f"WHERE d.intact_id <> '' AND d.method_id IN {NOT_KEPT}\n"
-        "RETURN d.id AS id, d.method_id AS method_id, d.method_name AS method_name",
+        "MATCH (d:IntAct)\n"
+        f"WHERE d.method_id IN {NOT_KEPT}\n"
+        "RETURN ID(d) AS description, d.method_id AS method_id",
     ),
     Check(
-        "Description.unrepeated",
+        "IntAct.unrepeated",
         "no interaction has IntAct descriptions from two publications of one "
         "group of curation/publications.tsv",
         f"UNWIND {GROUPED} AS grouped\n"
-        "MATCH (b:Publication {pmid: grouped[1]})<-[:REPORTED_IN]-(d:Description)\n"
+        "MATCH (b:Publication {pmid: grouped[1]})<-[:REPORTED_IN]-(d:IntAct)\n"
         "      -[:SUPPORTS]->(i:Interaction)\n"
-        "WHERE d.intact_id <> ''\n"
         "WITH grouped[0] AS group, i, collect(DISTINCT b.pmid) AS pmids\n"
         "WHERE size(pmids) > 1\n"
-        "RETURN group, i.id AS id, pmids",
+        "RETURN group, ID(i) AS interaction, pmids",
     ),
     Check(
         "Description.method",
@@ -331,7 +348,7 @@ INVARIANTS: tuple[Check, ...] = (
         "MATCH (d:Description)\n"
         "WHERE NOT d.method_id STARTS WITH 'MI:' OR size(d.method_id) <> 7\n"
         "   OR d.method_name = ''\n"
-        "RETURN d.id AS id, d.method_id AS method_id, d.method_name AS method_name",
+        "RETURN ID(d) AS description, d.method_id AS method_id",
     ),
     Check(
         "Interaction.counters",
@@ -345,21 +362,28 @@ INVARIANTS: tuple[Check, ...] = (
         "        count(DISTINCT x) AS peptides\n"
         "WHERE i.n_descriptions <> descriptions OR i.n_publications <> publications\n"
         "   OR i.n_methods <> methods OR i.n_peptides <> peptides\n"
-        "RETURN i.id AS id, descriptions, publications, methods, peptides",
+        "RETURN ID(i) AS interaction, descriptions, publications, methods, peptides",
+    ),
+    # Counted: as many shortcuts as interactions, and one copying each
+    # interaction's counters between its two proteins.
+    Check(
+        "INTERACTS_WITH.count",
+        "one shortcut edge per interaction",
+        "WITH 1 AS one\n"
+        "WHERE $edges_INTERACTS_WITH <> $nodes_Interaction\n"
+        "RETURN $nodes_Interaction AS interactions, $edges_INTERACTS_WITH AS edges",
     ),
     Check(
         "INTERACTS_WITH.shortcut",
-        "every interaction has one shortcut edge, from side 'a' to side 'b', "
+        "every interaction has a shortcut edge between its two proteins, "
         "copying its counters",
-        "MATCH (i:Interaction)-[:INVOLVES {side: 'a'}]->(a:Protein)\n"
-        "MATCH (i)-[:INVOLVES {side: 'b'}]->(b:Protein)\n"
-        "WITH i, [(a)-[r:INTERACTS_WITH {interaction_id: i.id}]->(b) | r] AS edges\n"
-        "WHERE size(edges) <> 1\n"
-        "   OR edges[0].n_descriptions <> i.n_descriptions\n"
-        "   OR edges[0].n_publications <> i.n_publications\n"
-        "   OR edges[0].n_methods <> i.n_methods\n"
-        "   OR edges[0].n_peptides <> i.n_peptides\n"
-        "RETURN i.id AS id, size(edges) AS edges",
+        PAIRS + "MATCH (a)-[e:INTERACTS_WITH]-(b)\n"
+        "WHERE e.n_descriptions = i.n_descriptions\n"
+        "  AND e.n_publications = i.n_publications\n"
+        "  AND e.n_methods = i.n_methods AND e.n_peptides = i.n_peptides\n"
+        "WITH count(DISTINCT i) AS copied\n"
+        "WHERE copied <> $nodes_Interaction\n"
+        "RETURN $nodes_Interaction AS interactions, copied",
     ),
     Check(
         "Interaction.supported",
@@ -371,22 +395,24 @@ INVARIANTS: tuple[Check, ...] = (
     ),
     Check(
         "Viral.taxon",
-        "a viral protein has one IN_TAXON edge",
+        "a viral protein has one IN_TAXON edge, to the virus of its taxon id",
         "MATCH (p:Viral)\n"
-        "WHERE outdegree(p, 'IN_TAXON') <> 1\n"
-        "RETURN p.id AS id, outdegree(p, 'IN_TAXON') AS taxa",
+        "OPTIONAL MATCH (p)-[:IN_TAXON]->(v:Virus)\n"
+        "WITH p, collect(v.ncbi_taxon_id) AS taxa\n"
+        "WHERE taxa <> [p.ncbi_taxon_id]\n"
+        "RETURN p.ncbi_taxon_id AS ncbi_taxon_id, p.name AS name, taxa",
     ),
     Check(
         "Human.taxon",
         "a human protein gets no Taxon node",
-        "MATCH (p:Human)-[:IN_TAXON]->()\nRETURN p.id AS id",
+        "MATCH (p:Human)-[:IN_TAXON]->()\nRETURN p.accession AS accession",
     ),
     Check(
         "Taxon.parent",
         "a virus has at most one family",
         "MATCH (t:Virus)\n"
         "WHERE outdegree(t, 'PARENT') > 1\n"
-        "RETURN t.taxon_id AS taxon_id, outdegree(t, 'PARENT') AS parents",
+        "RETURN t.ncbi_taxon_id AS ncbi_taxon_id, outdegree(t, 'PARENT') AS parents",
     ),
     Check(
         "Taxon.used",
@@ -394,7 +420,7 @@ INVARIANTS: tuple[Check, ...] = (
         "MATCH (t:Taxon)\n"
         "WHERE (t:Virus AND NOT (t)<-[:IN_TAXON]-(:Viral))\n"
         "   OR (t:Family AND NOT (t)<-[:PARENT]-(:Virus))\n"
-        "RETURN t.taxon_id AS taxon_id, t.name AS name",
+        "RETURN t.ncbi_taxon_id AS ncbi_taxon_id, t.name AS name",
     ),
     Check(
         "GoTerm.namespace",
@@ -408,7 +434,6 @@ INVARIANTS: tuple[Check, ...] = (
         "every term sits under a parent, up to a namespace root",
         "MATCH (t:GoTerm)\n"
         "WHERE NOT (t)-[:IS_A|PART_OF]->(:GoTerm)\n"
-        "  AND NOT t.obsolete\n"
         f"  AND NOT t.go_id IN {list(GO_ROOTS)}\n"
         "RETURN t.go_id AS go_id, t.name AS name",
     ),
@@ -438,11 +463,28 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN b.pmid AS pmid",
     ),
     Check(
-        "Peptide.reported",
-        "every peptide is reported by at least one description",
+        "Peptide.described",
+        "every peptide is reported by a curated description, cut from a "
+        "protein and binding one",
         "MATCH (x:Peptide)\n"
-        "WHERE NOT (x)<-[:REPORTS]-(:Description)\n"
+        "WHERE NOT (x)<-[:REPORTS]-(:Curated) OR NOT (x)-[:FROM]->(:Protein)\n"
+        "   OR NOT (x)-[:BINDS]->(:Protein)\n"
         "RETURN x.sequence AS sequence",
+    ),
+    Check(
+        "REPORTS.source",
+        "of a reporting description's two proteins, exactly one is a source of "
+        "the peptide, and one it binds",
+        "MATCH (x:Peptide)<-[:REPORTS]-(d:Curated)-[:SUPPORTS]->(i:Interaction)\n"
+        "MATCH (i)-[:INVOLVES]->(p:Protein)\n"
+        "OPTIONAL MATCH (x)-[f:FROM]->(p)\n"
+        "OPTIONAL MATCH (x)-[t:BINDS]->(p)\n"
+        "WITH x, d, count(DISTINCT CASE WHEN f IS NULL THEN NULL ELSE p END)\n"
+        "             AS sources,\n"
+        "           count(DISTINCT CASE WHEN t IS NULL THEN NULL ELSE p END)\n"
+        "             AS targets\n"
+        "WHERE sources <> 1 OR targets = 0\n"
+        "RETURN x.sequence AS sequence, d.stable_id AS stable_id",
     ),
 )
 

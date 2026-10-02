@@ -12,15 +12,7 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, create_model
 
-from bpgraph.api import (
-    go,
-    interactions,
-    peptides,
-    proteins,
-    publications,
-    raw,
-    sequences,
-)
+from bpgraph.api import raw, sequences
 from bpgraph.api.base import Backend, Rows
 from bpgraph.api.text import render
 
@@ -44,31 +36,11 @@ class TooLarge(ValueError):
 
 
 FUNCTIONS: tuple[Callable[..., Any], ...] = (
-    proteins.overview,
-    proteins.viruses,
-    proteins.viral_proteins,
-    proteins.find_proteins,
-    proteins.proteins,
-    interactions.partners,
-    interactions.vh_interactions,
-    interactions.hh_interactions,
-    interactions.neighbours,
-    interactions.indirect_reach,
-    interactions.coverage,
-    interactions.evidence,
-    peptides.peptides,
-    peptides.peptide,
-    publications.publications,
-    publications.publication_content,
-    publications.search_publications,
-    go.go_annotations,
-    go.go_rollup,
-    go.search_go_terms,
-    go.go_term_proteins,
-    sequences.human_sequences,
-    sequences.viral_sequences,
     raw.schema,
     raw.cypher,
+    sequences.human_sequences,
+    sequences.viral_sequences,
+    sequences.observed_sequences,
 )
 
 

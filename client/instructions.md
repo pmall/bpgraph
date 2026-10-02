@@ -19,7 +19,7 @@ The graph's answers come from the graph alone: when it lacks something, say so r
 One agent following several leads through a large graph loses track of them, so keep the leads apart.
 
 1. **Split.** State the question and split it into leads that can be explored independently: one hypothesis, one virus or viral protein, one group of targets, one mechanism. Stay out of the graph's detail yourself.
-2. **Brief.** Give each subagent its lead, its scope as ids already resolved, the evidence level and the return shape below. Launch a wave of three to six in parallel. Run leads on a fast model such as Sonnet where you can choose, and keep the strongest model for the leads the conclusion hinges on.
+2. **Brief.** Give each subagent its lead, its scope as keys already resolved, the evidence level and the return shape below. Launch a wave of three to six in parallel. Run leads on a fast model such as Sonnet where you can choose, and keep the strongest model for the leads the conclusion hinges on.
 3. **Keep them independent.** A subagent never sees another's findings: independent runs that agree make a finding stronger.
 4. **Verify.** Check the key claims of a finding yourself before your conclusion rests on it, and reconcile findings that conflict.
 5. **Go again** on the leads worth deepening, with sharper briefs. Stop when a wave changes nothing.
@@ -30,6 +30,6 @@ Fan out only for at least two independent leads.
 **The return shape**, under about 300 words:
 
 - **Answer**: a few sentences, with a confidence (high, medium, low) and why.
-- **Claims**: each with what it rests on (interaction ids with their counters, pmids, GO ids) and whether it is the graph's, the literature's or a hypothesis.
+- **Claims**: each with what it rests on (interactions by their two proteins with their counters, pmids, GO ids) and whether it is the graph's, the literature's or a hypothesis.
 - **Leads**: what is worth exploring next, and why.
 - **Dead ends**: what was looked at and found nothing.

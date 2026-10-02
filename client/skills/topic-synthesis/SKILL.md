@@ -11,21 +11,14 @@ This is a summary, not a concatenation. Report what stands out in the comparison
 
 ## Inputs
 
-- **Topic**, e.g. `ferroptosis`: a list of human proteins in a file or knowledge base on your side, which the user points to; ask where it is if they haven't said. Read its Swiss-Prot accessions and whatever it records on each protein, such as a `role`. Pass the accessions to tools as `accessions`, and join the list's other columns to the results yourself; `find_proteins` turns gene symbols into accessions. The list decides every count, so name the file and its date in what you write.
+- **Topic**, e.g. `ferroptosis`: a list of human proteins in a file or knowledge base on your side, which the user points to; ask where it is if they haven't said. Read its Swiss-Prot accessions and whatever it records on each protein, such as a `role`. Pass the accessions to your queries as a parameter, and join the list's other columns to the results yourself; a human protein's `name` in the graph is its gene symbol. The list decides every count, so name the file and its date in what you write.
 - **The reports**: the files or directory the user points to. Read only those. If a family's report seems to be missing, or you are unsure which files are in scope, ask.
 - **Evidence level**: golden by default. When you check a report's claim, check it at the level the report made it.
 - **Destination**: wherever the user asks; ask if they haven't said. Name the synthesis `<topic>-synthesis.md`, e.g. `ferroptosis-synthesis.md`.
 
-## Tools
+## The graph
 
-The tools this synthesis leans on:
-
-| for                                       | tools                                           |
-| ----------------------------------------- | ----------------------------------------------- |
-| checking a report's claim                 | `vh_interactions`, `evidence`, `publications`   |
-| the families side by side on the topic    | `coverage`, `cypher`                            |
-| how well studied a protein is             | `proteins` (its human and viral partner counts) |
-| links between different families' targets | `hh_interactions`, `cypher`                     |
+Query it with `cypher`, to check a report's claim down to its descriptions and publications, to set the families side by side on the topic, to see how well studied a protein is from its number of partners, and to find links between different families' targets.
 
 ## Considerations
 
@@ -42,7 +35,7 @@ The tools this synthesis leans on:
 - **Shared targets.** A topic protein hit by several unrelated families is the strongest signal a synthesis can produce: convergent evolution on a node the process depends on. Count the families reaching each topic protein, each through interactions at the evidence level, with `cypher`, and weigh the count against how well studied the protein is:
 
   ```cypher
-  MATCH (h:Protein) WHERE h.id IN $accessions AND h:Human
+  MATCH (h:Human) WHERE h.accession IN $accessions
   WITH h
   MATCH (h)-[e:INTERACTS_WITH]-(v:Viral)
   WITH h, e, v

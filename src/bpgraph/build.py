@@ -22,7 +22,6 @@ from bpgraph import files, schema, vault
 from bpgraph.client import BATCH_SIZE, GraphWriter, Row
 from bpgraph.config import Config
 from bpgraph.enums import GoRelation, InteractionKind, ProteinKind
-from bpgraph.ids import annotation_id, human_protein_id
 from bpgraph.loaders.records import (
     SEPARATOR,
     Description,
@@ -64,10 +63,26 @@ def _viral(prepared: Prepared) -> Iterator[ViralProtein]:
     return (of(ViralProtein, r) for r in files.read(prepared.viral_proteins))
 
 
+def _viral_keys(prepared: Prepared) -> dict[str, Row]:
+    """Each viral protein's key, by its reference in the build's files. One
+    entry per curated viral protein: a fixed list, small beside the data."""
+    return {
+        p.ref: {"ncbi_taxon_id": int(p.virus_id), "name": p.name}
+        for p in _viral(prepared)
+    }
+
+
+def _key(ref: str, viral: dict[str, Row]) -> tuple[ProteinKind, Row]:
+    """The kind and key of the protein a reference names."""
+    if ref in viral:
+        return ProteinKind.VIRAL, viral[ref]
+    return ProteinKind.HUMAN, {"accession": ref}
+
+
 def _human_proteins(prepared: Prepared) -> Iterator[Row]:
     for _, row in rows(prepared.host.swissprot):
         yield {
-            "id": human_protein_id(row["accession"]),
+            "accession": row["accession"],
             "name": row["name"],
             "description": row["description"],
             "function": row["function"],
@@ -75,25 +90,29 @@ def _human_proteins(prepared: Prepared) -> Iterator[Row]:
 
 
 def _viral_proteins(prepared: Prepared) -> Iterator[Row]:
-    """Every distinct text a protein's members carry: names on one line,
-    function texts as paragraphs."""
+    """Every distinct function text a protein's members carry, as paragraphs."""
     for protein in _viral(prepared):
         yield {
-            "id": protein.id,
+            "ncbi_taxon_id": int(protein.virus_id),
             "name": protein.name,
-            "description": "; ".join(protein.description.split(SEPARATOR)),
             "function": "\n\n".join(protein.function.split(SEPARATOR)),
         }
 
 
-def _citations(prepared: Prepared) -> Iterator[Row]:
+def _human_citations(prepared: Prepared) -> Iterator[Row]:
     for cursor, row in rows(prepared.host.swissprot):
-        protein = human_protein_id(row["accession"])
         for pmid in listed(cursor, row, "pmids"):
-            yield {"protein_id": protein, "pmid": pmid}
+            yield {"accession": row["accession"], "pmid": pmid}
+
+
+def _viral_citations(prepared: Prepared) -> Iterator[Row]:
     for protein in _viral(prepared):
         for pmid in filter(None, protein.pmids.split(";")):
-            yield {"protein_id": protein.id, "pmid": pmid}
+            yield {
+                "ncbi_taxon_id": int(protein.virus_id),
+                "name": protein.name,
+                "pmid": pmid,
+            }
 
 
 def _publications(prepared: Prepared) -> Iterator[Row]:
@@ -120,86 +139,137 @@ def _peptides(prepared: Prepared, scratch: Path) -> Iterator[Row]:
         yield {"sequence": sequence, "length": len(sequence)}
 
 
-def _interactions(writer: GraphWriter, prepared: Prepared) -> dict[str, int]:
-    """Each interaction with its descriptions and their peptides, read
-    together from the two files sorted by interaction. The counters are
-    counted here, from the group, and the interaction is written with them."""
-    counts = {"interactions": 0, "descriptions": 0, "reported_peptides": 0}
-    curated_only = 0
+def _interactions(
+    writer: GraphWriter, prepared: Prepared, viral: dict[str, Row]
+) -> dict[str, int]:
+    """Each interaction with its descriptions, read together with its
+    peptides from the two files sorted by interaction. The counters are
+    counted here, from the group, and the interaction is written with them
+    and its descriptions."""
+    counts = {"interactions": 0, "descriptions": 0}
     groups = files.cogroup(
         files.read(prepared.descriptions), files.read(prepared.reports), 1
     )
     for chunk in batched(groups, BATCH_SIZE, strict=False):
         claims: dict[InteractionKind, list[Row]] = {k: [] for k in InteractionKind}
-        observations: list[Row] = []
-        reported: list[Row] = []
-        for (identity,), found, peptides in chunk:
+        for _, found, peptides in chunk:
             members = [of(Description, record) for record in found]
             first = members[0]
             kind = InteractionKind(first.kind)
-            if kind is InteractionKind.HH and not any(d.intact_id for d in members):
-                curated_only += 1
+            side_b = (
+                {"b": first.side_b}
+                if kind is InteractionKind.HH
+                else {
+                    "b_taxon_id": viral[first.side_b]["ncbi_taxon_id"],
+                    "b_name": viral[first.side_b]["name"],
+                }
+            )
             claims[kind].append(
                 {
-                    "id": identity,
-                    "side_a": first.side_a,
-                    "side_b": first.side_b,
+                    "a": first.side_a,
+                    **side_b,
                     "n_descriptions": len(members),
                     "n_publications": len({d.pmid for d in members}),
                     "n_methods": len({d.method_id for d in members}),
                     "n_peptides": len({of(Report, r).sequence for r in peptides}),
+                    "descriptions": [
+                        {
+                            "pmid": d.pmid,
+                            "method_id": d.method_id,
+                            "method_name": d.method_name,
+                            "stable_id": d.stable_id,
+                        }
+                        for d in members
+                    ],
                 }
             )
-            observations.extend(
-                {
-                    "id": d.id,
-                    "intact_id": d.intact_id,
-                    "stable_ids": [s for s in d.stable_ids.split(";") if s],
-                    "interaction_id": identity,
-                    "pmid": d.pmid,
-                    "method_id": d.method_id,
-                    "method_name": d.method_name,
-                }
-                for d in members
-            )
-            reported.extend(
-                {
-                    "description_id": p.description_id,
-                    "sequence": p.sequence,
-                    "source_side": p.source_side,
-                }
-                for p in (of(Report, r) for r in peptides)
-            )
+            counts["descriptions"] += len(members)
         for kind, rows_of_kind in claims.items():
             counts["interactions"] += interactions.write_interactions(
                 writer, kind, rows_of_kind
             )
-        counts["descriptions"] += interactions.write_descriptions(writer, observations)
-        counts["reported_peptides"] += interactions.write_reported_peptides(
-            writer, reported
-        )
-    logger.info("HH: %d interactions only our curation reports", curated_only)
     return counts
 
 
-def _go_annotations(prepared: Prepared) -> Iterator[Row]:
-    for _, row in rows(prepared.host.go_annotations):
-        protein = human_protein_id(row["accession"])
+def _reports(prepared: Prepared) -> Iterator[Report]:
+    return (of(Report, r) for r in files.read(prepared.reports))
+
+
+def _peptide_proteins(
+    writer: GraphWriter, prepared: Prepared, viral: dict[str, Row]
+) -> dict[str, int]:
+    """Each peptide's descriptions, the proteins it was cut from and the ones
+    it binds."""
+    counts = {
+        "reports": interactions.write_reports(
+            writer,
+            (
+                {"stable_id": r.stable_id, "sequence": r.sequence}
+                for r in _reports(prepared)
+            ),
+        )
+    }
+    for relation, field in (("FROM", "source"), ("BINDS", "target")):
+        for kind in ProteinKind:
+            counts[f"peptide_{relation.lower()}_{kind.name.lower()}"] = (
+                interactions.write_peptide_proteins(
+                    writer,
+                    relation,
+                    kind,
+                    (
+                        {"sequence": r.sequence, **key}
+                        for r in _reports(prepared)
+                        for found, key in [_key(getattr(r, field), viral)]
+                        if found is kind
+                    ),
+                )
+            )
+    return counts
+
+
+def _go_terms(prepared: Prepared) -> Iterator[Row]:
+    """The terms annotated, and their ancestors. GO detaches a term it retires
+    from the hierarchy, so a term here marked obsolete is an annotation to a
+    retired term, and fails the build."""
+    for cursor, row in rows(prepared.host.go_terms):
+        if row["obsolete"] == "True":
+            raise cursor.fail(f"{row['go_id']} is obsolete and annotated")
         yield {
-            "id": annotation_id(
-                protein,
+            "go_id": row["go_id"],
+            "name": row["name"],
+            "namespace": row["namespace"],
+        }
+
+
+def _go_annotations(prepared: Prepared, scratch: Path) -> Iterator[Row]:
+    """One annotation per protein, term and qualifier, with each publication
+    showing it and the evidence codes its GOA lines give."""
+    lines = files.sorted_file(
+        scratch / "go_annotations",
+        (
+            [
+                row["accession"],
                 row["go_id"],
+                row["qualifier"],
                 row["pmid"],
                 row["evidence_code"],
-                row["assigned_by"],
-                row["qualifier"],
-            ),
-            "protein_id": protein,
-            "go_id": row["go_id"],
-            "pmid": row["pmid"],
-            "qualifier": row["qualifier"],
-            "evidence_code": row["evidence_code"],
-            "assigned_by": row["assigned_by"],
+            ]
+            for _, row in rows(prepared.host.go_annotations)
+        ),
+        unique=True,
+    )
+    for (accession, go_id, qualifier), found in files.groups(files.read(lines), 3):
+        codes: dict[str, list[str]] = {}
+        for record in found:
+            codes.setdefault(record[3], []).append(record[4])
+        yield {
+            "accession": accession,
+            "go_id": go_id,
+            "qualifier": qualifier,
+            "publications": [
+                {"pmid": pmid, "evidence_codes": evidence}
+                for pmid, evidence in codes.items()
+            ],
         }
 
 
@@ -208,6 +278,7 @@ def _load(writer: GraphWriter, prepared: Prepared, scratch: Path) -> dict[str, i
     once both its endpoints exist."""
     host = prepared.host
     families = {family.taxon_id: family for _, family in prepared.families}
+    viral = _viral_keys(prepared)
     counts = {
         "human_proteins": proteins.write_proteins(
             writer, ProteinKind.HUMAN, _human_proteins(prepared)
@@ -218,13 +289,13 @@ def _load(writer: GraphWriter, prepared: Prepared, scratch: Path) -> dict[str, i
         "viruses": taxonomy.write_viruses(
             writer,
             (
-                {"taxon_id": v.taxon_id, "name": v.name, "full_name": v.full_name}
+                {"ncbi_taxon_id": v.taxon_id, "name": v.name, "full_name": v.full_name}
                 for v in prepared.viruses
             ),
         ),
         "families": taxonomy.write_families(
             writer,
-            ({"taxon_id": f.taxon_id, "name": f.name} for f in families.values()),
+            ({"ncbi_taxon_id": f.taxon_id, "name": f.name} for f in families.values()),
         ),
         "taxon_links": taxonomy.write_taxon_links(
             writer,
@@ -233,34 +304,21 @@ def _load(writer: GraphWriter, prepared: Prepared, scratch: Path) -> dict[str, i
                 for virus, family in prepared.families
             ),
         ),
-        "memberships": taxonomy.write_memberships(
-            writer,
-            (
-                {"protein_id": p.id, "taxon_id": int(p.virus_id)}
-                for p in _viral(prepared)
-            ),
-        ),
+        "memberships": taxonomy.write_memberships(writer, viral.values()),
         "publications": interactions.write_publications(
             writer, _publications(prepared)
         ),
         "function_cites": proteins.write_function_citations(
-            writer, _citations(prepared)
+            writer, ProteinKind.HUMAN, _human_citations(prepared)
+        )
+        + proteins.write_function_citations(
+            writer, ProteinKind.VIRAL, _viral_citations(prepared)
         ),
         "peptides": interactions.write_peptides(writer, _peptides(prepared, scratch)),
     }
-    counts |= _interactions(writer, prepared)
-    counts["go_terms"] = annotations.write_go_terms(
-        writer,
-        (
-            {
-                "go_id": row["go_id"],
-                "name": row["name"],
-                "namespace": row["namespace"],
-                "obsolete": row["obsolete"] == "True",
-            }
-            for _, row in rows(host.go_terms)
-        ),
-    )
+    counts |= _interactions(writer, prepared, viral)
+    counts |= _peptide_proteins(writer, prepared, viral)
+    counts["go_terms"] = annotations.write_go_terms(writer, _go_terms(prepared))
     counts["go_edges"] = sum(
         annotations.write_go_edges(
             writer,
@@ -274,7 +332,7 @@ def _load(writer: GraphWriter, prepared: Prepared, scratch: Path) -> dict[str, i
         for relation in GoRelation
     )
     counts["go_annotations"] = annotations.write_go_annotations(
-        writer, _go_annotations(prepared)
+        writer, _go_annotations(prepared, scratch)
     )
     return counts
 
@@ -321,7 +379,14 @@ def write_vaults(run: Run, prepared: Prepared) -> list[Path]:
             run.viral.vault,
             ((a, int(t), n, d) for a, t, n, d in files.read(prepared.entries)),
             (
-                (s.protein_id, s.accession, int(s.start), int(s.stop), s.sequence)
+                (
+                    int(s.virus_id),
+                    s.name,
+                    s.accession,
+                    int(s.start),
+                    int(s.stop),
+                    s.sequence,
+                )
                 for s in sites
             ),
             ((d, a) for d, a in files.read(files.sort(prepared.observations))),

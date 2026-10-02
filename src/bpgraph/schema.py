@@ -23,19 +23,19 @@ class ConstraintRow(TypedDict):
 
 
 UNIQUE_CONSTRAINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("Protein", ("id",)),
-    ("Taxon", ("taxon_id",)),
+    ("Human", ("accession",)),
+    ("Viral", ("ncbi_taxon_id", "name")),
+    ("Taxon", ("ncbi_taxon_id",)),
     ("GoTerm", ("go_id",)),
     ("Publication", ("pmid",)),
-    ("Interaction", ("id",)),
-    ("Description", ("id",)),
-    ("Annotation", ("id",)),
+    ("Curated", ("stable_id",)),
     ("Peptide", ("sequence",)),
 )
+"""The natural keys. Interactions, IntAct descriptions and annotations have
+none: each is what it links, and the audit checks that by pattern."""
 
 EXTRA_INDEXES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Protein", ("name",)),
-    ("Description", ("intact_id",)),
     ("Taxon", ("name",)),
     ("GoTerm", ("namespace",)),
     ("Peptide", ("length",)),
