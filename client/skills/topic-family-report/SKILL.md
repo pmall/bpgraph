@@ -20,7 +20,9 @@ This is an analysis, not a data dump. Explore widely, weigh the evidence, then r
 
 ## The graph
 
-Query it with `cypher`, in patterns that go as far as the question does: from the family's viruses through their viral proteins and interactions to the topic's proteins, directly or through a protein in between, and on to the descriptions, publications and GO annotations behind them.
+**Start from the standard query.** `queries/vh-interactions.cypher`, in this skill's folder, returns the family's VH interactions with the topic's proteins: virus, viral protein, human protein and counters. Run it with `cypher` exactly as written, with `accessions`, `family` and `golden` as parameters, once with `golden: true` and once with `golden: false`. Every report starts from these rows, so reports compare across families: the coverage table and the comparison hooks count them.
+
+Beyond it, query with `cypher`, in patterns that go as far as the question does: from the family's viruses through their viral proteins and interactions to the topic's proteins, directly or through a protein in between, and on to the descriptions, publications and GO annotations behind them.
 
 ## The information available
 
