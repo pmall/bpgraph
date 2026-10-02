@@ -27,8 +27,6 @@ def publications(
     ] = False,
 ) -> Rows[Publication]:
     """Publications' title, journal, year, authors and, if asked, abstract.
-    The abstract is where a paper says what an interaction does: ask for it
-    once the papers that matter are known.
     A pmid PubMed did not return has empty text and year 0."""
     check_pmids(backend, pmids)
     return whole(
