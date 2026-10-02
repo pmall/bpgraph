@@ -120,9 +120,7 @@ def vh_interactions(
 ) -> Rows[VHInteraction]:
     """Virus–human interactions, narrowed by human proteins, by viral family,
     virus or viral proteins, or any combination; at least one is needed. Each
-    comes with its counters and, if asked, its distinct detection methods.
-    Evidence is per curated viral protein: never add counters across viral
-    proteins or viruses to push a pair over a threshold."""
+    comes with its counters and, if asked, its distinct detection methods."""
     if accessions is None:
         require_viral_scope(family, virus, viral_ids)
     human = "WHERE h.id IN $accessions" if accessions is not None else ""
@@ -416,7 +414,7 @@ def evidence(
     method that shows an interaction, never light microscopy, ChIP or a
     genetic assay; ours are all kept. A publication re-reporting an earlier
     experiment, such as BioPlex 3.0 over 2.0, adds only the pairs the earlier
-    one lacks. Read the abstracts with `publications`."""
+    one lacks."""
     check_interactions(backend, interaction_ids)
     found = paged(
         backend,

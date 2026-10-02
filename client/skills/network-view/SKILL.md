@@ -16,12 +16,10 @@ You draw a subnetwork of the graph as an interactive page, in three steps:
 - **What to draw**, e.g. ferroptosis × Flaviviridae. Ask if it is unclear.
 - **Topic**, if the network is drawn around one, e.g. `ferroptosis`: a list of human proteins in a file or knowledge base on your side, which the user points to; ask where it is if they haven't said. Read its Swiss-Prot accessions and whatever it records on each protein, such as a `role`. Pass the accessions to tools as `accessions`, and join the list's other columns to the results yourself; `find_proteins` turns gene symbols into accessions. The list decides every count, so name the file and its date in what you write.
 - **Viral family**, if the network is drawn around one, e.g. `Flaviviridae`, as `viruses` names it.
-- **Evidence level.** The default is the **golden dataset**: interactions backed by at least 2 distinct publications or at least 2 distinct detection methods, passed to tools as `min_publications: 2, min_methods: 2, combine: "or"`. Apply it to each interaction on its own, one viral protein with one human protein or two human proteins, and never add counters across proteins or viruses to get over the bar. Interactions below it form the **all** tier, drawn only when asked for, and said so in the description.
+- **Evidence level**: golden by default. The all tier is drawn only when asked for, and said so in the description.
 - **Destination**: wherever the user asks; ask if they haven't said. Name the files after the network, `<topic>-<family>.json` for a topic × family network, e.g. `ferroptosis-flaviviridae.json`.
 
-## The graph
-
-Reach the live graph through the tools of the `bpgraph` MCP server; its instructions say how to read the graph and the results. Use `cypher` for what the predefined tools do not answer, after reading `schema`: the structure itself, such as partners within a set, shared partners or short paths, is a graph query away. If the graph lacks something, say so rather than filling the gap from memory.
+## Tools
 
 The tools a network leans on, for a topic × family network:
 
