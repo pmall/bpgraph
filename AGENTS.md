@@ -30,4 +30,4 @@ Everything our team's consumers need lives in `client`: `instructions.md`, which
 
 ## Git
 
-Do not commit unless the current message asks for it. No co-authors.
+Do not commit unless the current message asks for it.
