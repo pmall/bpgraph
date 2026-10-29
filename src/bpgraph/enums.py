@@ -11,7 +11,7 @@ class ProteinKind(StrEnum):
 
 
 class TaxonKind(StrEnum):
-    """The second label on a taxon node: a curated virus, or its family."""
+    """The second label on a taxon node: a virus, or its family."""
 
     VIRUS = "Virus"
     FAMILY = "Family"

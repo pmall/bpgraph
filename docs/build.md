@@ -10,8 +10,9 @@ A run is one directory under `data/`, gitignored. What every silo shares sits at
 
 ```
 data/2026-09-09/
-  export/              descriptions_hh.tsv, descriptions_vh.tsv, viral_proteins.tsv,
-                       peptides.tsv — what the curation database exported
+  export/              descriptions_hh, descriptions_vh, interactors_viral,
+                       mappings_h, mappings_v — what the curation database
+                       exported, each named after its run: descriptions_hh_run87.tsv
   sources.tsv          which release of each dataset was fetched
   taxonomy.sqlite      NCBI taxonomy, a parent per taxon
   psi-mi.obo           PSI-MI, for method names and the detection methods to flag
@@ -30,7 +31,7 @@ data/2026-09-09/
   vault/               host-9606.sqlite, viral.sqlite — written by the build
 ```
 
-The export's `descriptions_hh.tsv` is our curation of the human interactome, and belongs to the human silo; `descriptions_vh.tsv` and `viral_proteins.tsv` are the viral silo. Its format is [`export.md`](export.md). The build writes its intermediate files into `build/` while it runs, and removes it when it ends.
+The export's `descriptions_hh` is our curation of the human interactome, and belongs to the human silo; `descriptions_vh` and `interactors_viral` are the viral silo. Its format is [`export.md`](export.md). The build writes its intermediate files into `build/` while it runs, and removes it when it ends.
 
 ## Fetching
 
@@ -52,7 +53,7 @@ uv run bpgraph-build data/2026-09-09        # the graph and the vaults, publishe
 - **Swiss-Prot.** Every reviewed entry of the host, fetched a page of 500 at a time. The graph's human proteins, and the set IntAct, GO and our curation are cut to. Swiss-Prot is for the host only: viral proteins come from UniProtKB as a whole, reviewed or not.
 - **IntAct.** The host's MITAB zip, over a gigabyte, inflated as it arrives. A row is kept when it reports a real interaction, observed by an experiment, in a publication: both partners are Swiss-Prot entries, it cites one pmid, it is not negative, and its detection method is flagged `keep` in [`curation/methods.tsv`](../curation/methods.tsv). A detection method with no row there fails the fetch. A publication that re-reports an experiment, grouped in [`curation/publications.tsv`](../curation/publications.tsv), keeps only the pairs no lower pmid of its group reports: BioPlex 3.0 adds to BioPlex 2.0 only what 2.0 lacks. Whether both partners are Swiss-Prot entries is two sorted merges against `swissprot.tsv`.
 - **GO.** The ontology and the host's GOA file, both streamed. GOA is cut to experimental annotations citing PubMed, on current terms and Swiss-Prot entries, and to function: no `cellular_component` term, and nothing at or below `protein binding`, the subtree found by walking the ontology's edges downward; then the closure above the annotated terms is walked one level at a time on disk, and the silo keeps the annotations, the terms reached and the edges walked.
-- **Viral UniProt.** The export's viral entries and spans, sorted by accession and fetched a hundred accessions at a time: the function text UniProt gives each span, and each entry's protein name. An entry UniProt has retired gets neither.
+- **Viral UniProt.** The export's viral entries and spans, from `interactors_viral`, sorted by accession and fetched a hundred accessions at a time: the function text UniProt gives each span, and each entry's protein name. An entry UniProt has retired gets neither: curation keeps it as it recorded it, of an older release.
 - **PubMed.** Every pmid a silo cites, compared as a sorted file with the silo's `publications.tsv`: a pmid already there keeps its row, one missing is fetched, one nothing cites any more is dropped. It is the one slow fetch, and a rerun only fetches what is new.
 
 Every fetch records its dataset in `sources.tsv`, prefixed by its silo: the URL, the day it was fetched, and the release the source names — UniProt's `X-UniProt-Release`, IntAct's dated release, the ontology's `data-version`, GOA's `date-generated`, PubMed's `DbBuild`, the taxonomy's `Last-Modified`. `bpgraph-build` prints them after the counts.
@@ -61,12 +62,12 @@ Every fetch records its dataset in `sources.tsv`, prefixed by its silo: the URL,
 
 `uv run bpgraph-build data/2026-09-09` runs these steps in this order. Steps 1 to 7 only read the run and write files in `build/`: every error a run can hold fails there, with its file and line, before the graph is touched.
 
-01. **Curated rows.** Both description files are read into one file of curated rows. A `stable_id` must be unique across the two; every viral taxon must have a curated virus, or the build fails naming them. A row whose human partner is not a Swiss-Prot entry is dropped — a sorted merge against `swissprot.tsv`, per partner — with the accessions logged. A dropped row stays in the file, marked, so its peptides go with it.
-02. **Viral sites.** Each VH row's viral partner is placed: its taxon made current, its curated virus found: the protein is that virus and the name. Every viral partner must be a row of `viral_proteins.tsv` under the same name and taxon. Each entry and span a kept row observes is a site, with its sequence.
+01. **Curated rows.** Both description files are read into one file of curated rows. A `stable_id` must be unique across the two. A row whose human partner is not a Swiss-Prot entry is dropped — a sorted merge against `swissprot.tsv`, per partner — with the accessions logged. A dropped row stays in the file, marked, so its peptides go with it.
+02. **Viral sites.** Each VH row's viral partner is the protein curation grouped it under: its species taxon and its `protein`. Every viral partner must be a row of `interactors_viral` of the same release, and the rows observing one site must agree on its protein, virus, strain and release. Each entry and span a kept row observes is a site, with its sequence; each species taxon a kept row names is a virus, with one name, and its family is found in the taxonomy.
 03. **HH descriptions.** Our kept HH rows and IntAct's records go into one file sorted by publication, ours first. Each of our rows is a `:Curated` description. A publication one of our HH rows cites is ours alone, and IntAct's records of it are skipped; a publication we curated for VH rows only does not count. The records of the other publications are `:IntAct` descriptions, those sharing a pair and a method being one. The load logs the descriptions of each kind and the IntAct records skipped.
 04. **VH descriptions.** Each kept VH row is a `:Curated` description, and the vault notes which entry it observed.
 05. **Viral proteins.** Each site takes its UniProt function text; the sites of each protein are then read together. A protein's members are one chain by definition, so they should agree: a protein keeps every distinct text they carry, and those carrying more than one are logged for curation.
-06. **Peptides.** Each peptide finds its curated row and must name one of that row's partners as its source; the other partner is the one it binds. A peptide on no row fails the build; one on a dropped row is dropped with it.
+06. **Peptides.** The mappings of 5 to 20 residues are the peptides. Each finds its curated row and must name one of that row's partners as its source; the other partner is the one it binds, of the kind its `target` says. A peptide on no row fails the build; one on a dropped row is dropped with it.
 07. **Publications.** Every pmid the graph cites — descriptions, GO annotations, function text — is looked up in the silos' `publications.tsv`, host first. A cited pmid no silo has fails the build: run `bpgraph-pubmed`.
 08. **Staging.** `bpgraph_staging` is emptied and its indexes created, before any data, so every `MATCH` a write performs is an index lookup.
 09. **Writing**, from the files of steps 1 to 7, in dependency order:
@@ -79,7 +80,7 @@ Every fetch records its dataset in `sources.tsv`, prefixed by its silo: the URL,
     7. GO terms, their edges, and the annotations, one per protein, term and qualifier, written with an edge to each publication showing it. A term GO marks obsolete fails the build: GO detaches the terms it retires, so one here is annotated.
 10. **Gate.** The unique constraints are created and every one must settle on `OPERATIONAL`; one `FAILED` means a duplicate key, and staging is dropped.
 11. **Swap.** `RENAME bpgraph_staging bpgraph`. It overwrites its destination, so this is the whole deployment; old graphs are not kept. Staging exists so a bad export cannot land on the live graph — not for uptime.
-12. **Vaults.** `host-9606.sqlite` from `sequences.tsv`; `viral.sqlite` from the viral sites, their entries and the VH observations. Each is written beside where it goes in the run's `vault/`, then moved there.
+12. **Vaults.** `host-9606.sqlite` from `sequences.tsv`; `viral.sqlite` from the viral sites, their entries with strain and release, and the VH observations. Each is written beside where it goes in the run's `vault/`, then moved there.
 13. **Publish the vaults.** Each is copied to the live vault directory, `BPGRAPH_VAULT` (`data/vault/` by default), and replaces the one there whole. The query API reads them there, so the vaults it serves are the live graph's.
 14. **Cleanup.** `build/` is removed, whether the build succeeded or not.
 

@@ -1,10 +1,10 @@
 """The viral silo: our virus–host interactions, probing a host interactome.
 
-A viral protein is a curated mature protein of a curated virus, whichever
-strains and accessions it was observed on: its id is its virus and its name,
-so every strain's copy of `HBx` lands on one protein. Its sites — each entry
-and span it was observed at — come from our kept VH rows, their sequences from
-`viral_proteins.tsv`.
+A viral protein is a curated mature protein of a virus, whichever strains and
+accessions it was observed on: curation groups it under a species taxon and a
+name, so every strain's copy of `HBx` lands on one protein. Its sites — each
+entry and span it was observed at — come from our kept VH rows, their
+sequences from `interactors_viral`.
 
 Its members are one chain by definition, so they should carry one function
 text. That is checked rather than assumed: a protein keeps every distinct text
@@ -13,8 +13,8 @@ to look at, as are names within one virus that differ only in case, and
 members whose lengths differ by more than half.
 
 Where each viral protein sits on each entry and its residues there, the
-entry's strain, and which entry each description used go to the viral vault
-rather than the graph.
+entry's strain and the UniProt release it was recorded from, and which entry
+each description used go to the viral vault rather than the graph.
 """
 
 import logging
@@ -52,7 +52,8 @@ class ViralFiles:
     proteins: Path
     """`ViralProtein` records."""
     entries: Path
-    """The vault's entries: accession, strain id, strain name, UniProt name."""
+    """The vault's entries: accession, strain id, strain name, release,
+    UniProt name."""
 
 
 def vh_descriptions(
@@ -112,8 +113,8 @@ def _texts(
 
 
 def _entries(viral: ViralPaths, sites: Path, scratch: Path, entries: TextIO) -> None:
-    """Write the vault's entries: each with its strain, which is one, and
-    the name UniProt gives it."""
+    """Write the vault's entries: each with its strain and release, which are
+    one, and the name UniProt gives it."""
     by_accession = files.sorted_file(
         scratch / "sites_by_accession",
         ([of(Site, r).accession, *r] for r in files.read(sites)),
@@ -131,12 +132,16 @@ def _entries(viral: ViralPaths, sites: Path, scratch: Path, entries: TextIO) -> 
         if not found:
             continue
         members = [of(Site, record, 1) for record in found]
-        strains = {(site.strain_id, site.strain_name) for site in members}
-        if len(strains) > 1:
-            raise LoadError(f"{accession} is of several taxa: {sorted(strains)}")
-        (strain_id, strain_name), *_ = strains
+        recorded = {
+            (site.strain_id, site.strain_name, site.release) for site in members
+        }
+        if len(recorded) > 1:
+            raise LoadError(
+                f"{accession} is of several taxa or releases: {sorted(recorded)}"
+            )
+        (strain_id, strain_name, release), *_ = recorded
         name = named[0][1] if named else ""
-        entries.write(f"{accession}\t{strain_id}\t{strain_name}\t{name}\n")
+        entries.write(f"{accession}\t{strain_id}\t{strain_name}\t{release}\t{name}\n")
 
 
 def _distinct(values: list[str]) -> list[str]:

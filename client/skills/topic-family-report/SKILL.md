@@ -35,7 +35,7 @@ Draw on all of it. A report that uses only the interaction list is incomplete.
 - **HH interactions** among the topic's proteins and around the targets.
 - **UniProt** names and function text, for human and viral proteins alike.
 - **GO annotations** on human proteins: experimental, biological process and molecular function only, each with its publication, and the ontology above them for rolling up.
-- **Curated viruses** (`HBV`, `SARS-CoV-2`) and their NCBI family.
+- **Viruses**, the species curation groups viral proteins under (`Hepatitis B virus`), and their NCBI family.
 - **The web**, to fill gaps: mechanisms an abstract leaves out, later papers, reviews, the family's biology.
 
 ## Considerations

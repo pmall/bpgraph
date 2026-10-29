@@ -4,7 +4,7 @@
 
 - `:Protein:Human`: `accession` (key), `name` (indexed, the gene symbol), `description` (UniProt's name), `function` (UniProt's function text).
 - `:Protein:Viral`: `ncbi_taxon_id` and `name` (together the key: `NS5A` of virus `3052230`), `function`. A viral protein pools every strain of its virus it was observed on.
-- `:Taxon:Virus`: `ncbi_taxon_id` (key), `name` (indexed), `full_name`. `name` is the familiar name (`HBV`), `full_name` the scientific one.
+- `:Taxon:Virus`: `ncbi_taxon_id` (key), `name` (indexed). A virus is the NCBI species taxon curation groups viral proteins under, and `name` its scientific name: `Hepatitis B virus`, `Severe acute respiratory syndrome coronavirus 2`. Find one with `CONTAINS`, not by an acronym.
 - `:Taxon:Family`: `ncbi_taxon_id` (key), `name` (indexed).
 - `:Publication`: `pmid` (key), `title` and `abstract` (full-text), `journal`, `year`, `authors`. `year` is 0 when PubMed gives none.
 - `:Interaction`, either `:HH` or `:VH`: no key, it is its two proteins. Its evidence: `n_publications` (distinct publications), `n_methods` (distinct PSI-MI methods), `n_descriptions` (observations), `n_peptides` (distinct peptides).

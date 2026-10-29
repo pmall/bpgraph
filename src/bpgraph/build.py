@@ -289,7 +289,7 @@ def _load(writer: GraphWriter, prepared: Prepared, scratch: Path) -> dict[str, i
         "viruses": taxonomy.write_viruses(
             writer,
             (
-                {"ncbi_taxon_id": v.taxon_id, "name": v.name, "full_name": v.full_name}
+                {"ncbi_taxon_id": int(v.taxon_id), "name": v.name}
                 for v in prepared.viruses
             ),
         ),
@@ -377,7 +377,7 @@ def write_vaults(run: Run, prepared: Prepared) -> list[Path]:
         vault.write_viral(
             run.vault,
             run.viral.vault,
-            ((a, int(t), n, d) for a, t, n, d in files.read(prepared.entries)),
+            ((a, int(t), n, r, d) for a, t, n, r, d in files.read(prepared.entries)),
             (
                 (
                     int(s.virus_id),

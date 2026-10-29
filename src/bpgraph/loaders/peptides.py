@@ -1,12 +1,14 @@
 """The peptides our curated rows report, placed on the descriptions the rows
 became.
 
-A peptide names its curated row and its source in full: `h` or `v`, entry and
-span. The source must be one of that row's partners — a human one by accession
-alone, since a human partner is its whole entry — and is the protein the
-peptide was cut from; the other partner is the one it binds, and a homodimer's
-peptide binds its own source. A dropped row drops its peptides; a peptide
-naming no row at all fails the build.
+A peptide is a mapping of 5 to 20 residues. It names its curated row and its
+source: the file says `h` or `v`, and the row the entry, and the span of a
+viral one. The source must be one of that row's partners — a human one by
+accession alone, since a human partner is its whole entry, and a mapping on
+an isoform is its entry's — and is the protein the peptide was cut from; the
+other partner is the one it binds, whose kind the mapping's `target` must
+give. A homodimer's peptide binds its own source. A dropped row drops its
+peptides; a peptide naming no row at all fails the build.
 """
 
 from collections.abc import Iterator
@@ -34,6 +36,13 @@ def _source(
     return None
 
 
+def _target(row: Curated, kind: str) -> str:
+    """The kind of the partner a peptide from a source of `kind` binds."""
+    if row.kind == InteractionKind.VH.value and kind == ProteinKind.HUMAN.value:
+        return ProteinKind.VIRAL.value
+    return ProteinKind.HUMAN.value
+
+
 def _sources(export: Path, curated: Path, scratch: Path) -> Iterator[list[str]]:
     """`[stable_id, sequence, source]` for every peptide of a kept row."""
     peptides = files.sorted_file(
@@ -46,6 +55,7 @@ def _sources(export: Path, curated: Path, scratch: Path) -> Iterator[list[str]]:
                 p.accession,
                 str(p.start),
                 str(p.stop),
+                p.target.value,
                 str(p.cursor.path),
                 str(p.cursor.line),
             ]
@@ -59,18 +69,24 @@ def _sources(export: Path, curated: Path, scratch: Path) -> Iterator[list[str]]:
         if not found:
             continue
         if not owner:
-            path, line = found[0][6], found[0][7]
+            path, line = found[0][7], found[0][8]
             raise Cursor(Path(path), int(line)).fail(
                 f"{stable_id} is not in the description files"
             )
         row = of(Curated, owner[0])
         if row.status != KEPT:
             continue
-        for _, sequence, kind, accession, start, stop, path, line in found:
+        for _, sequence, kind, accession, start, stop, target, path, line in found:
+            cursor = Cursor(Path(path), int(line))
             source = _source(row, kind, accession, start, stop)
             if source is None:
-                raise Cursor(Path(path), int(line)).fail(
+                raise cursor.fail(
                     f"source {accession}:{start}-{stop} is not a partner of {stable_id}"
+                )
+            if target != _target(row, kind):
+                raise cursor.fail(
+                    f"target {target}: {stable_id} is {row.kind}, so a peptide from "
+                    f"its {kind} partner binds a {_target(row, kind)} one"
                 )
             yield [stable_id, sequence, source]
 

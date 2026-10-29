@@ -336,9 +336,11 @@ def write_viral(export: Path, viral: ViralPaths) -> tuple[int, int, int, str]:
 
     The spans are read sorted by accession, a hundred accessions to a request;
     an accession named at one span only is the protein as a whole. An accession
-    UniProt has retired comes back with nothing, and gets no row.
+    UniProt has retired comes back with nothing, and gets no row: curation
+    keeps such an entry as it recorded it, but UniProt has nothing to say
+    about it any more.
     """
-    from bpgraph.loaders.export import VIRAL_PROTEINS
+    from bpgraph.loaders.export import VIRAL_SITES, export_file
     from bpgraph.loaders.tsv import rows
 
     viral.directory.mkdir(parents=True, exist_ok=True)
@@ -350,7 +352,7 @@ def write_viral(export: Path, viral: ViralPaths) -> tuple[int, int, int, str]:
             scratch / "sites",
             (
                 [row["accession"], row["start"], row["stop"]]
-                for _, row in rows(export / VIRAL_PROTEINS)
+                for _, row in rows(export_file(export, VIRAL_SITES))
             ),
             unique=True,
         )

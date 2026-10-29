@@ -16,7 +16,7 @@ class ViralKey(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    ncbi_taxon_id: int = Field(description="Its virus's NCBI taxon id, e.g. 10407.")
+    ncbi_taxon_id: int = Field(description="Its virus's NCBI taxon id, e.g. 3431302.")
     name: str = Field(description="Its name within the virus, e.g. `HBx`.")
 
 
@@ -80,7 +80,7 @@ def check_viral(backend: Backend, keys: list[ViralKey]) -> None:
         for k in missing:
             label = f"{k.ncbi_taxon_id} {k.name}"
             if k.ncbi_taxon_id not in known:
-                notes[label] = "no curated virus has this taxon id"
+                notes[label] = "no virus has this taxon id"
             else:
                 close = _closest(k.name, known[k.ncbi_taxon_id])
                 notes[label] = f"closest: {', '.join(close)}" if close else ""

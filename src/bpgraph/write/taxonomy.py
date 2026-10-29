@@ -1,4 +1,4 @@
-"""Writing the curated viruses, their families, and `:IN_TAXON`."""
+"""Writing the viruses, their families, and `:IN_TAXON`."""
 
 from collections.abc import Iterable
 
@@ -15,7 +15,7 @@ CREATE (protein)-[:IN_TAXON]->(taxon)"""
 
 
 def write_viruses(writer: GraphWriter, rows: Iterable[Row]) -> int:
-    """Rows of `ncbi_taxon_id`, `name`, `full_name`."""
+    """Rows of `ncbi_taxon_id`, `name`."""
     return writer.create(f"Taxon:{TaxonKind.VIRUS.value}", rows)
 
 

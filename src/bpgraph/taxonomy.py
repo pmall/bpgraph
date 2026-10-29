@@ -1,9 +1,8 @@
 """The NCBI taxonomy, kept in SQLite in the run directory.
 
-The graph holds only the taxa an analysis groups by — the curated viruses of
-`bpgraph.viruses`, and the family above each. Placing a strain under its virus
-and a virus under its family needs the whole tree, three million rows that have
-no business in the graph.
+The graph holds only the taxa an analysis groups by — the viruses curation
+names, and the family above each. Placing a virus under its family needs the
+whole tree, three million rows that have no business in the graph.
 
 Each taxon keeps its parent, as the dump gives it, and is loaded row by row. A
 taxon's ancestors are a walk up its parents, one indexed lookup per level, and
@@ -13,7 +12,7 @@ the tree is some forty levels deep at most.
 import sqlite3
 import tempfile
 import zipfile
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from shutil import copyfileobj
@@ -160,14 +159,6 @@ class Taxonomy:
     def family(self, tax_id: int) -> Taxon | None:
         """The family above a taxon, if it has one."""
         return next((t for t in self.lineage(tax_id) if t.rank == FAMILY), None)
-
-    def families(self, virus_ids: Iterable[int]) -> Iterator[tuple[int, Taxon]]:
-        """Each virus with the family above it. A virus with no family is left
-        out: it stays queryable, it just falls out of family rollups."""
-        for virus_id in virus_ids:
-            family = self.family(virus_id)
-            if family is not None:
-                yield virus_id, family
 
 
 def main() -> None:
