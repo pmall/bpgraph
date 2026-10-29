@@ -14,7 +14,7 @@ NODE_PROPERTIES: Mapping[str, Mapping[str, str]] = {
         "function": "String",
     },
     "Viral": {"ncbi_taxon_id": "Integer", "name": "String", "function": "String"},
-    "Virus": {"ncbi_taxon_id": "Integer", "name": "String", "full_name": "String"},
+    "Virus": {"ncbi_taxon_id": "Integer", "name": "String"},
     "Family": {"ncbi_taxon_id": "Integer", "name": "String"},
     "Publication": {
         "pmid": "String",

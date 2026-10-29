@@ -36,7 +36,7 @@ Add to it only what the user asks for, such as partners one hop out or topic pro
      "description": "Phospholipid hydroperoxide glutathione peroxidase",
      "taxon_name": "Homo sapiens", "attributes": {"role": "suppressor"}},
     {"id": "3052230:NS5A", "name": "NS5A", "kind": "viral",
-     "description": "", "taxon_name": "HCV"}
+     "description": "", "taxon_name": "Hepatitis C virus"}
   ],
   "interactions": [
     {"source": "P36969", "target": "3052230:NS5A", "n_publications": 2,
@@ -46,7 +46,7 @@ Add to it only what the user asks for, such as partners one hop out or topic pro
 ```
 
 - `id` names the protein within this file, once: a human protein's accession, a viral protein's virus taxon id and name joined by `:`, as `3052230:NS5A`. `kind` is `human` or `viral`. `description` is UniProt's name for a human protein, and empty for a viral one.
-- `taxon_name` is the virus's name for a viral protein (`HCV`, `SARS-CoV-2`), as the graph's `:Virus` names it, and `Homo sapiens` for a human one.
+- `taxon_name` is the virus's name for a viral protein (`Hepatitis C virus`), as the graph's `:Virus` names it, and `Homo sapiens` for a human one.
 - `attributes` is optional: anything else worth showing or styling by, such as the `role` the topic's list gives a protein, or the viral family. It appears when a protein is clicked, and the page can style by it.
 - An interaction connects two listed proteins, and each pair appears once. `n_publications` and `n_methods` are the interaction's counters, as the graph holds them.
 - The renderer refuses a file that breaks these rules.

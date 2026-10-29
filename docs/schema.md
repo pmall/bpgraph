@@ -31,13 +31,13 @@ A **human** protein is one reviewed UniProt entry, keyed by its accession. **Eve
 | `description` | str  | UniProt protein name, e.g. `Glutathione peroxidase 4` |
 | `function`    | str  | UniProt `CC FUNCTION` text                            |
 
-A **viral** protein is a curated mature protein of a curated virus, whichever strains and accessions it was observed on: SARS-CoV-2 `nsp2` is one node, although curation saw it on pp1a, on pp1ab and on a TrEMBL copy, and HBV `HBx` is one node over twenty-one accessions. A name means nothing without its virus, so a viral protein is keyed by both. Which accessions, at which spans, and in which strains, is kept in the viral sequence vault (§5), not in the graph.
+A **viral** protein is a curated mature protein of a virus, whichever strains and accessions it was observed on, as curation groups them: SARS-CoV-2 `nsp2` is one node, although curation saw it on pp1a, on pp1ab and on a TrEMBL copy, and HBV `HBx` is one node over twenty-one accessions. A name means nothing without its virus, so a viral protein is keyed by both. Which accessions, at which spans, and in which strains, is kept in the viral sequence vault (§5), not in the graph.
 
-| property        | type | notes                                                          |
-| --------------- | ---- | -------------------------------------------------------------- |
-| `ncbi_taxon_id` | int  | **key**, with `name`: its curated virus's NCBI taxon id        |
-| `name`          | str  | **key**, with `ncbi_taxon_id`: the curated mature-protein name |
-| `function`      | str  | UniProt `CC FUNCTION` text — see below                         |
+| property        | type | notes                                                   |
+| --------------- | ---- | ------------------------------------------------------- |
+| `ncbi_taxon_id` | int  | **key**, with `name`: its virus's NCBI taxon id         |
+| `name`          | str  | **key**, with `ncbi_taxon_id`: the curated protein name |
+| `function`      | str  | UniProt `CC FUNCTION` text — see below                  |
 
 **Names are case-sensitive.** EBV carries `BARF1`, a secreted protein, beside `BaRF1`, the ribonucleotide reductase small subunit. Folding case would merge them.
 
@@ -45,15 +45,14 @@ A **viral** protein is a curated mature protein of a curated virus, whichever st
 
 ### `:Taxon` + `:Virus` | `:Family`
 
-Only the curated viruses a viral protein belongs to, and the family above each. Human proteins get no `:Taxon` node, and strains get none either: they are in the viral vault.
+Only the viruses viral proteins belong to, and the family above each. Human proteins get no `:Taxon` node, and strains get none either: they are in the viral vault.
 
-`:Virus` — one row of [`curation/viruses.tsv`](../curation/viruses.tsv), which [`curation/viruses.md`](../curation/viruses.md) explains. A viral protein belongs to the most specific row enclosing its entry's taxon.
+`:Virus` — the species taxon curation groups a viral protein under, as the export names it (see [`export.md`](export.md)).
 
-| property        | type | notes                                              |
-| --------------- | ---- | -------------------------------------------------- |
-| `ncbi_taxon_id` | int  | **key**, the NCBI taxon the virus is anchored at   |
-| `name`          | str  | familiar short name: `HBV`, `SARS-CoV-2`, `HPV16`  |
-| `full_name`     | str  | scientific name of that taxon: `Hepatitis B virus` |
+| property        | type | notes                                                          |
+| --------------- | ---- | -------------------------------------------------------------- |
+| `ncbi_taxon_id` | int  | **key**, the species taxon id, as curation gives it            |
+| `name`          | str  | its scientific name, as curation gives it: `Hepatitis B virus` |
 
 `:Family` — the NCBI family above a virus.
 
@@ -62,7 +61,7 @@ Only the curated viruses a viral protein belongs to, and the family above each. 
 | `ncbi_taxon_id` | int  | **key**         |
 | `name`          | str  | scientific name |
 
-The virus level is curated rather than an NCBI rank: NCBI attaches UniProt entries to strains, and its species sometimes pool viruses nobody would, *Betacoronavirus pandemicum* holding both SARS-CoV-2 and SARS-CoV. The `:PARENT` edge from a virus to its family is derived at build time from the NCBI taxonomy, which this repo keeps in SQLite (`bpgraph.taxonomy`). A virus with no family gets no edge: it stays queryable, it just falls out of family rollups.
+The virus level is curation's: NCBI attaches UniProt entries to strains, and curation decides which species taxon each protein belongs to, taking its strains with it. The build does no grouping of its own. The `:PARENT` edge from a virus to its family is derived at build time from the NCBI taxonomy, following NCBI's merges from the id curation gives, which this repo keeps in SQLite (`bpgraph.taxonomy`). A virus with no family gets no edge: it stays queryable, it just falls out of family rollups.
 
 ### `:Publication`
 
@@ -122,14 +121,14 @@ How each publication shows it is on its `:REPORTED_IN` edge: `evidence_codes`, t
 
 ### `:Peptide`
 
-A short subsequence reported sufficient for an interaction — the drug-discovery precursor, and the only place residues are stored. One node per sequence, which is its key: the same sequence seen in two proteins is one peptide.
+A short subsequence reported sufficient for an interaction, of 5 to 20 residues — the drug-discovery precursor, and the only place residues are stored. Curation maps longer regions too; only the peptides among them are loaded. One node per sequence, which is its key: the same sequence seen in two proteins is one peptide.
 
 | property   | type | notes   |
 | ---------- | ---- | ------- |
 | `sequence` | str  | **key** |
 | `length`   | int  |         |
 
-It is described by its edges: `:FROM` each protein it was cut from, `:BINDS` each protein it was shown to bind, and the curated descriptions that `:REPORTS` it. A homodimer's peptide binds its own source. Within one description, the peptide comes from the one of its two proteins it is `:FROM`, and binds the other; the build fails a description reporting a peptide from both.
+It is described by its edges: `:FROM` each protein it was cut from — the protein, whichever isoform it was mapped on — `:BINDS` each protein it was shown to bind, and the curated descriptions that `:REPORTS` it. A homodimer's peptide binds its own source. Within one description, the peptide comes from the one of its two proteins it is `:FROM`, and binds the other; the build fails a description reporting a peptide from both.
 
 ### `:GoTerm`
 
@@ -149,23 +148,23 @@ ______________________________________________________________________
 
 ## 2. Relationships
 
-| pattern                                         | properties          | meaning                                      |
-| ----------------------------------------------- | ------------------- | -------------------------------------------- |
-| `(:Interaction)-[:INVOLVES]->(:Protein)`        | —                   | the two partners                             |
-| `(:Description)-[:SUPPORTS]->(:Interaction)`    | —                   | observation → claim                          |
-| `(:Description)-[:REPORTED_IN]->(:Publication)` | —                   |                                              |
-| `(:Curated)-[:REPORTS]->(:Peptide)`             | —                   | a peptide the observation reported           |
-| `(:Peptide)-[:FROM]->(:Protein)`                | —                   | a protein the peptide was cut from           |
-| `(:Peptide)-[:BINDS]->(:Protein)`               | —                   | a protein the peptide was shown to bind      |
-| `(:Annotation)-[:ANNOTATES]->(:Human)`          | —                   | the annotated protein                        |
-| `(:Annotation)-[:OF_TERM]->(:GoTerm)`           | —                   | the term, the most specific that fits        |
-| `(:Annotation)-[:REPORTED_IN]->(:Publication)`  | `evidence_codes`    | a publication showing it, and how            |
-| `(:Protein)-[:FUNCTION_CITES]->(:Publication)`  | —                   | evidence UniProt cites for `function`        |
-| `(:Viral)-[:IN_TAXON]->(:Virus)`                | —                   | the curated virus, of the protein's taxon id |
-| `(:Virus)-[:PARENT]->(:Family)`                 | —                   | virus → family                               |
-| `(:Protein)-[:INTERACTS_WITH]->(:Protein)`      | counters, see below | shortcut over an interaction                 |
-| `(:GoTerm)-[:IS_A]->(:GoTerm)`                  | —                   | GO ontology                                  |
-| `(:GoTerm)-[:PART_OF]->(:GoTerm)`               | —                   | GO ontology                                  |
+| pattern                                         | properties          | meaning                                 |
+| ----------------------------------------------- | ------------------- | --------------------------------------- |
+| `(:Interaction)-[:INVOLVES]->(:Protein)`        | —                   | the two partners                        |
+| `(:Description)-[:SUPPORTS]->(:Interaction)`    | —                   | observation → claim                     |
+| `(:Description)-[:REPORTED_IN]->(:Publication)` | —                   |                                         |
+| `(:Curated)-[:REPORTS]->(:Peptide)`             | —                   | a peptide the observation reported      |
+| `(:Peptide)-[:FROM]->(:Protein)`                | —                   | a protein the peptide was cut from      |
+| `(:Peptide)-[:BINDS]->(:Protein)`               | —                   | a protein the peptide was shown to bind |
+| `(:Annotation)-[:ANNOTATES]->(:Human)`          | —                   | the annotated protein                   |
+| `(:Annotation)-[:OF_TERM]->(:GoTerm)`           | —                   | the term, the most specific that fits   |
+| `(:Annotation)-[:REPORTED_IN]->(:Publication)`  | `evidence_codes`    | a publication showing it, and how       |
+| `(:Protein)-[:FUNCTION_CITES]->(:Publication)`  | —                   | evidence UniProt cites for `function`   |
+| `(:Viral)-[:IN_TAXON]->(:Virus)`                | —                   | the virus, of the protein's taxon id    |
+| `(:Virus)-[:PARENT]->(:Family)`                 | —                   | virus → family                          |
+| `(:Protein)-[:INTERACTS_WITH]->(:Protein)`      | counters, see below | shortcut over an interaction            |
+| `(:GoTerm)-[:IS_A]->(:GoTerm)`                  | —                   | GO ontology                             |
+| `(:GoTerm)-[:PART_OF]->(:GoTerm)`               | —                   | GO ontology                             |
 
 `:REPORTED_IN` leaves a description or an annotation: from a publication, `(b)<-[:REPORTED_IN]-(d:Description)` is what it observed and `(b)<-[:REPORTED_IN]-(a:Annotation)` what it annotated.
 
@@ -252,8 +251,8 @@ Sequences are not in the graph. A build writes them beside it, one SQLite file p
 
 | table         | key                                                   | columns                                                                   |
 | ------------- | ----------------------------------------------------- | ------------------------------------------------------------------------- |
-| `entry`       | `accession`                                           | `taxon_id`, `taxon_name` (the strain), `description`                      |
+| `entry`       | `accession`                                           | `taxon_id`, `taxon_name` (the strain), `release`, `description`           |
 | `mature`      | `ncbi_taxon_id`, `name`, `accession`, `start`, `stop` | where a viral protein sits on an entry, 1-based inclusive, and `sequence` |
 | `observation` | `stable_id`                                           | `accession`: the viral entry a curated VH description observed            |
 
-A viral protein's sequences are its `mature` rows, keyed as the graph keys the protein, as curation recorded them: as many as places it was observed at. An entry's `description` is UniProt's protein name, empty for an entry UniProt has retired.
+A viral protein's sequences are its `mature` rows, keyed as the graph keys the protein, as curation recorded them: as many as places it was observed at. An entry is the one curation recorded, of the UniProt `release` it gives: the current one where curation could match it, an older one otherwise, whose coordinates and sequence are that release's. Its `description` is the current UniProt protein name, empty for an entry UniProt has retired.

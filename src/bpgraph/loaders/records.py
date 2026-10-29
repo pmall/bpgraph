@@ -40,8 +40,10 @@ class Curated(NamedTuple):
     names a human partner Swiss-Prot does not have (`absent`). A dropped row
     still answers for its peptides, which go with it.
     `partner_2` is the second partner's reference: its accession if human,
-    its curated virus and name if viral, which `strain_id` and `strain_name`
-    then place in the taxonomy.
+    its virus and name if viral. The viral fields are curation's: the virus is
+    the species taxon the row groups its protein under, the strain the one the
+    entry is of, and `release_2` the UniProt release the entry was recorded
+    from. An HH row leaves them empty.
     """
 
     stable_id: str
@@ -54,10 +56,12 @@ class Curated(NamedTuple):
     start_2: str
     stop_2: str
     name_2: str
-    taxon_2: str
-    partner_2: str
+    virus_id: str
+    virus_name: str
     strain_id: str
     strain_name: str
+    release_2: str
+    partner_2: str
     path: str
     line: str
 
@@ -104,7 +108,8 @@ class Report(NamedTuple):
 
 
 class Site(NamedTuple):
-    """One entry and span a viral protein was observed at, and its residues."""
+    """One entry and span a viral protein was observed at, the entry's strain
+    and the UniProt release it was recorded from, and its residues."""
 
     ref: str
     virus_id: str
@@ -114,7 +119,16 @@ class Site(NamedTuple):
     stop: str
     strain_id: str
     strain_name: str
+    release: str
     sequence: str
+
+
+class Virus(NamedTuple):
+    """A virus as curation names it: the species taxon its proteins are
+    grouped under."""
+
+    taxon_id: str
+    name: str
 
 
 class ViralProtein(NamedTuple):

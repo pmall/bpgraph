@@ -46,6 +46,7 @@ class MatureSequence(Record):
     name: str
     accession: str
     strain: str
+    release: str
     start: int
     stop: int
     length: int
@@ -60,8 +61,9 @@ def viral_sequences(
     ],
 ) -> Rows[MatureSequence]:
     """Every place viral proteins were observed: for each, one row per
-    UniProt entry curation saw it on, with the entry's strain, the span of the
-    mature protein on it (1-based, inclusive) and the residues there. A viral
+    UniProt entry curation saw it on, with the entry's strain, the UniProt
+    release curation recorded the entry from, the span of the mature protein
+    on it (1-based, inclusive) and the residues there. A viral
     protein pools strains and entries, so it has as many sequences as places
     curation saw it."""
     check_viral(backend, proteins)
@@ -72,6 +74,7 @@ def viral_sequences(
                 name=key.name,
                 accession=site.accession,
                 strain=site.taxon_name,
+                release=site.release,
                 start=site.start,
                 stop=site.stop,
                 length=len(site.sequence),
@@ -89,6 +92,7 @@ class ObservedSequence(Record):
     stable_id: str
     accession: str
     strain: str
+    release: str
     start: int
     stop: int
     length: int
@@ -107,8 +111,9 @@ def observed_sequences(
 ) -> Rows[ObservedSequence]:
     """The exact mature viral protein each VH description observed: the
     UniProt entry and strain the experiment used, which the graph's pooled
-    viral protein does not say, the span of the protein on it (1-based,
-    inclusive) and the residues there."""
+    viral protein does not say, the UniProt release the entry was recorded
+    from, the span of the protein on it (1-based, inclusive) and the residues
+    there."""
     found = vault.observed_sequences(
         backend.vault, resolve_stable_ids(backend, stable_ids)
     )
@@ -118,6 +123,7 @@ def observed_sequences(
                 stable_id=d,
                 accession=site.accession,
                 strain=site.taxon_name,
+                release=site.release,
                 start=site.start,
                 stop=site.stop,
                 length=len(site.sequence),

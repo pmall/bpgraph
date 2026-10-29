@@ -10,8 +10,7 @@ data/           one directory per run: export/ as the database wrote it, what
                 silo (hosts/9606/, viral/), and the vaults the build
                 writes; vault/, the vaults of the live graph, which the
                 build publishes and the API reads. Gitignored
-curation/       viruses.tsv, the curated viruses; viruses.md, why;
-                methods.tsv, the IntAct keep flag; methods.md, where it comes from;
+curation/       methods.tsv, the IntAct keep flag; methods.md, where it comes from;
                 publications.tsv, publications that repeat one experiment;
                 publications.md, how IntAct resolves them
 src/bpgraph/
@@ -24,7 +23,6 @@ src/bpgraph/
   sources.py    which release of each dataset a run was fetched from
   enums.py      closed vocabularies shared by loaders, ids and writers
   taxonomy.py   the NCBI dump in SQLite, bpgraph-taxonomy; families
-  viruses.py    curation/viruses.tsv, and placing a taxon under its virus
   psimi.py      the PSI-MI ontology, bpgraph-psimi
   methods.py    curation/methods.tsv, the IntAct keep flag, bpgraph-methods
   publications.py  curation/publications.tsv, the repeating publication groups

@@ -7,10 +7,11 @@ question a vault answers is about one protein at a time, never many.
 
 - **A host vault**, `host-9606.sqlite`: every Swiss-Prot entry of the host, by
   accession, the human protein's key.
-- **The viral vault**, `viral.sqlite`: every viral entry once, with its strain,
-  and the mature proteins observed on them, each with the sequence curation
-  recorded. A viral protein (`HBx` of HBV, 10407) is pooled over strains and entries,
-  so it has as many sequences as places it was observed at. The vault also
+- **The viral vault**, `viral.sqlite`: every viral entry once, with its strain
+  and the UniProt release curation recorded it from, and the mature proteins
+  observed on them, each with the sequence curation recorded. A viral protein
+  (`HBx` of HBV, 3431302) is pooled over strains and entries, so it has as many
+  sequences as places it was observed at. The vault also
   keeps which entry each VH description used, which the graph no longer holds.
 
 A build writes the vaults into its run, from the same run as the graph, and
@@ -42,6 +43,7 @@ VIRAL_SCHEMA = (
         accession   TEXT PRIMARY KEY,
         taxon_id    INTEGER NOT NULL,
         taxon_name  TEXT NOT NULL,
+        release     TEXT NOT NULL,
         description TEXT NOT NULL
     )""",
     """CREATE TABLE mature (
@@ -58,8 +60,10 @@ VIRAL_SCHEMA = (
         accession TEXT NOT NULL REFERENCES entry (accession)
     )""",
 )
-"""An entry's `taxon_id` and `taxon_name` are its strain's; `description` is
-UniProt's protein name, empty for an entry UniProt has retired. A mature
+"""An entry's `taxon_id` and `taxon_name` are its strain's, as curation
+recorded them; `release` is the UniProt release its sequence and coordinates
+are from, which may predate the entry's retirement; `description` is the
+current UniProt protein name, empty for an entry UniProt has retired. A mature
 protein is keyed as the graph keys a viral protein, by its virus's NCBI taxon
 id and its name; an observation by the stable id of the curated description
 that made it."""
@@ -71,6 +75,7 @@ class MatureSequence:
 
     accession: str
     taxon_name: str
+    release: str
     start: int
     stop: int
     sequence: str
@@ -116,7 +121,7 @@ def write_viral(
     mature: Iterable[Row],
     observations: Iterable[Row],
 ) -> Path:
-    """`entries`: accession, taxon id, taxon name, description. `mature`:
+    """`entries`: accession, taxon id, taxon name, release, description. `mature`:
     NCBI taxon id, name, accession, start, stop, sequence. `observations`:
     stable id, accession."""
     return _write(
@@ -173,7 +178,7 @@ def mature_sequences(
     connection = _open(directory / VIRAL_FILE)
     try:
         found = connection.execute(
-            """SELECT m.accession, e.taxon_name, m.start, m.stop, m.sequence
+            """SELECT m.accession, e.taxon_name, e.release, m.start, m.stop, m.sequence
                FROM mature m JOIN entry e USING (accession)
                WHERE m.ncbi_taxon_id = ? AND m.name = ?
                ORDER BY m.accession, m.start""",
@@ -182,8 +187,8 @@ def mature_sequences(
     finally:
         connection.close()
     return [
-        MatureSequence(accession, taxon, start, stop, sequence)
-        for accession, taxon, start, stop, sequence in found
+        MatureSequence(accession, taxon, release, start, stop, sequence)
+        for accession, taxon, release, start, stop, sequence in found
     ]
 
 
@@ -199,7 +204,8 @@ def observed_sequences(
             stable_id: MatureSequence(*row)
             for stable_id, (ncbi_taxon_id, name) in observed.items()
             for row in connection.execute(
-                """SELECT m.accession, e.taxon_name, m.start, m.stop, m.sequence
+                """SELECT m.accession, e.taxon_name, e.release,
+                          m.start, m.stop, m.sequence
                    FROM observation o
                    JOIN mature m ON m.accession = o.accession
                    JOIN entry e ON e.accession = m.accession

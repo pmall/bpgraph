@@ -449,9 +449,9 @@ INVARIANTS: tuple[Check, ...] = (
     ),
     Check(
         "Peptide.sequence",
-        "length is the residue count, and residues are upper case",
+        "length is the residue count, 5 to 20, and residues are upper case",
         "MATCH (x:Peptide)\n"
-        "WHERE x.length <> size(x.sequence) OR x.length < 1\n"
+        "WHERE x.length <> size(x.sequence) OR x.length < 5 OR x.length > 20\n"
         "   OR toUpper(x.sequence) <> x.sequence\n"
         "RETURN x.sequence AS sequence, x.length AS length",
     ),

@@ -1,8 +1,8 @@
 """Preparing a run: every file a build writes from, checked, in `build/`.
 
 Nothing is written to the graph until this is done, so every error a run can
-hold — a malformed row, a viral taxon nobody curated, a peptide on
-no row, a cited pmid with no metadata — fails here, with the file and line.
+hold — a malformed row, a viral site with no sequence, a peptide on no row, a
+cited pmid with no metadata — fails here, with the file and line.
 
 What the silos share is joined here, and nowhere else:
 
@@ -22,14 +22,13 @@ from bpgraph import files
 from bpgraph.loaders.curated import load_curated
 from bpgraph.loaders.host import hh_descriptions
 from bpgraph.loaders.peptides import reports
-from bpgraph.loaders.records import Description, ViralProtein, of
+from bpgraph.loaders.records import Description, ViralProtein, Virus, of
 from bpgraph.loaders.tsv import LoadError, listed, rows
 from bpgraph.loaders.viral import vh_descriptions, viral_proteins
 from bpgraph.psimi import read_ontology
 from bpgraph.pubmed import COLUMNS as PUBLICATION_COLUMNS
 from bpgraph.run import HUMAN, HostPaths, Run
-from bpgraph.taxonomy import Taxon, Taxonomy
-from bpgraph.viruses import CuratedViruses, Virus
+from bpgraph.taxonomy import Taxon, Taxonomy, TaxonomyUnavailable
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +48,7 @@ class Prepared:
     """`ViralProtein` records."""
     viruses: tuple[Virus, ...]
     families: tuple[tuple[int, Taxon], ...]
-    """Each virus with a family, and that family."""
+    """Each virus with a family, by the virus's taxon id, and that family."""
     publications: Path
     """Every publication something cites, in `publications.tsv` order."""
     sites: Path
@@ -109,6 +108,24 @@ def _publications(run: Run, host: HostPaths, cited: Path, scratch: Path) -> Path
     return publications
 
 
+def _families(
+    taxonomy: Taxonomy, viruses: tuple[Virus, ...]
+) -> Iterator[tuple[int, Taxon]]:
+    """The family above each virus, found from the id NCBI now gives its
+    taxon. A taxon NCBI does not know fails: the taxonomy is older than the
+    export."""
+    for virus in viruses:
+        try:
+            current = taxonomy.canonical(int(virus.taxon_id))
+        except TaxonomyUnavailable as error:
+            raise LoadError(
+                f"virus {virus.taxon_id} {virus.name!r}: {error}: run bpgraph-taxonomy"
+            ) from None
+        family = taxonomy.family(current)
+        if family is not None:
+            yield int(virus.taxon_id), family
+
+
 def prepare(run: Run, scratch: Path) -> Prepared:
     """Read and check every silo of a run into `scratch`."""
     psimi = read_ontology(run.psimi)
@@ -118,13 +135,12 @@ def prepare(run: Run, scratch: Path) -> Prepared:
         return psimi.terms[psimi_id].name
 
     taxonomy = Taxonomy.open(run.taxonomy)
-    viruses = CuratedViruses.load(taxonomy)
     host = run.host(HUMAN)
 
     proteins = files.sorted_file(
         scratch / "swissprot", ([row["accession"]] for _, row in rows(host.swissprot))
     )
-    curated = load_curated(run.export, proteins, scratch, psimi, viruses)
+    curated = load_curated(run.export, proteins, scratch, psimi)
 
     descriptions = scratch / "descriptions"
     observations = scratch / "observations"
@@ -137,12 +153,7 @@ def prepare(run: Run, scratch: Path) -> Prepared:
     files.sort(descriptions)
 
     viral = viral_proteins(run.viral, curated.sites, curated.exported, scratch)
-    virus_ids = files.sorted_file(
-        scratch / "viruses",
-        ([of(ViralProtein, r).virus_id] for r in files.read(viral.proteins)),
-        unique=True,
-    )
-    used = tuple(viruses.viruses[int(v)] for (v,) in files.read(virus_ids))
+    viruses = tuple(of(Virus, r) for r in files.read(curated.viruses))
 
     cited = files.sorted_file(
         scratch / "cited", _cited(host, descriptions, viral.proteins), unique=True
@@ -152,8 +163,8 @@ def prepare(run: Run, scratch: Path) -> Prepared:
         descriptions=descriptions,
         reports=reports(run.export, curated.curated, descriptions, scratch),
         viral_proteins=viral.proteins,
-        viruses=used,
-        families=tuple(taxonomy.families(v.taxon_id for v in used)),
+        viruses=viruses,
+        families=tuple(_families(taxonomy, viruses)),
         publications=_publications(run, host, cited, scratch),
         sites=curated.sites,
         entries=viral.entries,
