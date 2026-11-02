@@ -1,7 +1,7 @@
 """Connection settings, read from the environment: the FalkorDB server at
 `FALKORDB_HOST` and `FALKORDB_PORT` (`localhost:6379` by default), with
 `FALKORDB_PASSWORD`, empty for a server without auth, and the live graph's
-vaults in `BPGRAPH_VAULT` (`data/vault` by default)."""
+vaults in `BPGRAPH_VAULT` (`_data/vault` by default)."""
 
 import os
 from dataclasses import dataclass
@@ -10,7 +10,7 @@ from typing import Self
 
 LIVE_GRAPH = "bpgraph"
 STAGING_GRAPH = "bpgraph_staging"
-LIVE_VAULT = Path("data/vault")
+LIVE_VAULT = Path("_data/vault")
 """Where a build publishes the vaults of the live graph, and the API reads them."""
 
 
