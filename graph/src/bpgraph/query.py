@@ -1,4 +1,8 @@
-"""Query the live graph, read-only: what the MCP server and `bpgraph-query` run.
+"""Query the live graph, read-only: what the query API and `bpgraph-query` run.
+
+`bpgraph-query [--params JSON] [CYPHER]` runs one statement, read from stdin
+when it is not given, its `$name` values given by `--params` as a JSON object,
+`'{"accessions": ["P36969"]}'`, and prints each row on a line of its own.
 
 A statement goes to `bpgraph` with `GRAPH.RO_QUERY`, so the server refuses
 anything that writes. Each row is a JSON object keyed by the returned columns.
@@ -65,17 +69,11 @@ def live_graph() -> Graph:
 
 
 def main() -> None:
-    """`bpgraph-query [--params JSON] [CYPHER]`, the statement read from stdin
-    when it is not given."""
     parser = argparse.ArgumentParser(
-        prog="bpgraph-query", description="Run a read-only Cypher query on bpgraph."
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("cypher", nargs="?", help="the statement; stdin if omitted")
-    parser.add_argument(
-        "--params",
-        default="{}",
-        help='query parameters as JSON, e.g. \'{"topic": "ferroptosis"}\'',
-    )
+    parser.add_argument("cypher", nargs="?", metavar="CYPHER")
+    parser.add_argument("--params", default="{}", metavar="JSON")
     args = parser.parse_args()
     cypher: str = args.cypher if args.cypher is not None else sys.stdin.read()
     params: dict[str, object] = json.loads(args.params)

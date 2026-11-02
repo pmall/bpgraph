@@ -1,13 +1,11 @@
 """A host's interactions: our curated rows, and IntAct's for the publications
 we have not curated.
 
-A description is one pair, one publication and one method. Each of our
-curated rows is a description, keyed by its `stable_id`. An IntAct record is
-skipped when one of our HH rows cites its publication: we read that
-publication and decided what it shows, so all IntAct could add is what we
-decided against. A publication we curated for VH rows only does not count:
-IntAct's records here are human–human. The others add descriptions, the
-records sharing a pair and a method being one.
+Each of our curated rows is a description, keyed by its `stable_id`. An
+IntAct record is skipped when one of our HH rows cites its publication, for
+the reason docs/schema.md#description gives; a publication we curated for VH
+rows only does not count. The other records add descriptions, the records
+sharing a pair, a publication and a method being one.
 
 Both sources are written to one file sorted on disk by publication, ours
 first, so whether we curated a publication is known before its IntAct

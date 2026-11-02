@@ -11,13 +11,14 @@ A run is one directory under `data/`, named after the export it builds from —
 A silo reads nothing from another. A host is its own UniProt, IntAct, GO and
 PubMed; adding one adds a directory. The vaults a build writes sit in
 `vault/`, one file per silo. A fetch keeps what the build reads and nothing
-else: a raw dump is streamed, or deleted once it is read. The build's own
-intermediate files live in `build/` while it runs, and go with it.
+else. The build's own intermediate files live in `build/` while it runs, and
+go with it.
 
 A new export is a new directory, so it holds nothing fetched for the last one,
 and every public dump a run reads is at least as recent as its export.
 """
 
+import argparse
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -146,3 +147,14 @@ class Run:
     @property
     def viral(self) -> ViralPaths:
         return ViralPaths(self.directory / "viral")
+
+
+def command_line(description: str | None) -> Run:
+    """The run directory a command is given, `data/2026-09-09`. Its `--help`
+    prints `description`, the docstring of the command's module."""
+    parser = argparse.ArgumentParser(
+        description=description, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument("run", type=Path, metavar="RUN")
+    directory: Path = parser.parse_args().run
+    return Run(directory)

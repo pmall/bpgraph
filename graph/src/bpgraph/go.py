@@ -1,29 +1,30 @@
 """The Gene Ontology, and a host's experimental GO annotations.
 
-Two dumps, both streamed from the network and neither kept: the ontology,
+`bpgraph-go RUN` needs the run's `hosts/9606/swissprot.tsv` first. Two dumps
+are streamed from the network and neither is kept: the ontology,
 `go-basic.obo`, and the host's GOA annotations. What the host's silo keeps is
 exactly what the build writes:
 
-- `go_annotations.tsv`, the annotations the graph takes;
-- `go_terms.tsv`, every term they reach, with its ancestors;
-- `go_edges.tsv`, the `is_a` and `part_of` edges between those terms.
+- `go_annotations.tsv`, the annotations the graph takes, one row per pmid:
+  `accession`, `go_id`, `qualifier`, `evidence_code`, `assigned_by`, `pmid`;
+- `go_terms.tsv`, every term they reach, with its ancestors: `go_id`, `name`,
+  `namespace`, and `obsolete`, `True` or `False`;
+- `go_edges.tsv`, the `is_a` and `part_of` edges between those terms:
+  `child_go_id`, `parent_go_id`, and `relation`, `IS_A` or `PART_OF`.
 
-**Experimental evidence only**, each citing a PubMed id: `EXP`, `IDA`, `IPI`,
-`IMP`, `IGI`, `IEP` and their high-throughput counterparts. An experiment is
-what gives an annotation a publication, and a publication is what an agent can
-read. Electronic and inferred annotations add no publication, and restate what
-other annotations say. A GOA row citing several pmids is one annotation per
-pmid, as an interaction observation is one description per publication.
+It prints how many GOA rows it dropped for each reason, and records both
+fetches in `sources.tsv`: the ontology's release is its `data-version`, GOA's
+its `date-generated`.
 
-**Function only.** The layer says what a protein does, so two parts of GO stay
-out:
+What the graph takes of GO, and why, is docs/schema.md#annotation:
+experimental evidence citing a PubMed id, of function, on host proteins. So a
+GOA row is kept when its evidence code is experimental, `EXP`, `IDA`, `IPI`,
+`IMP`, `IGI`, `IEP` or a high-throughput counterpart, and it cites a pmid; a
+row citing several pmids is one annotation per pmid. Its term may not be a
+`cellular_component`, nor `protein binding` or a term below it, found by
+walking the ontology's edges downward from it.
 
-- **`cellular_component`**, the whole namespace: where a protein sits is not
-  what it does, and much of it is proteomics listing every protein a purified
-  fraction held.
-- **`protein binding`** and every term below it: an annotation there says the
-  protein binds another protein, which is an interaction, and the interactions
-  say it better, naming the partner.
+The two dumps:
 
 - **`go-basic.obo`** is the release filtered to the relations annotations
   propagate over and guaranteed acyclic, which is exactly the traversal the
@@ -36,10 +37,6 @@ out:
   whichever id a term had when the annotation was made, so a secondary id is
   mapped onto the term's current one, and a term GO has deleted outright drops
   its annotation.
-
-**Host proteins only.** GOA does annotate viral proteins, but it annotates a
-whole accession, while a viral protein here is one mature chain excised from a
-polyprotein and nothing in GOA says which chain a term belongs to.
 
 An annotation is made to the most specific term that fits, so the silo keeps
 the **full ancestor closure** above every annotated term, walked up one level
@@ -61,7 +58,7 @@ from bpgraph import files
 from bpgraph.enums import GoNamespace, GoRelation
 from bpgraph.loaders.tsv import rows
 from bpgraph.obo import TERM, parse, target
-from bpgraph.run import HUMAN, HostPaths, Run
+from bpgraph.run import HUMAN, HostPaths, command_line
 from bpgraph.sources import record_source
 
 logger = logging.getLogger(__name__)
@@ -386,17 +383,8 @@ def write_go(host: HostPaths, sources: Path) -> tuple[int, int, int, Counter[str
 
 
 def main() -> None:
-    """Fetch GO and one host's experimental annotations.
-
-    `uv run bpgraph-go data/2026-09-09` needs `hosts/9606/swissprot.tsv` first,
-    and writes `go_annotations.tsv`, `go_terms.tsv` and `go_edges.tsv` there.
-    """
-    import sys
-
+    run = command_line(__doc__)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    if len(sys.argv) != 2:
-        sys.exit("usage: bpgraph-go <run directory>")
-    run = Run(Path(sys.argv[1]))
     host = run.host(HUMAN)
     annotations, terms, edges, dropped = write_go(host, run.sources)
     for reason, count in dropped.most_common():

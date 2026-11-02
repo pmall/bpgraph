@@ -10,6 +10,7 @@ COPY pyproject.toml uv.lock ./
 COPY graph/pyproject.toml ./graph/
 COPY client/pyproject.toml ./client/
 RUN uv sync --locked --no-dev --package bpgraph --no-install-workspace
+COPY graph/README.md ./graph/
 COPY graph/src ./graph/src
 RUN uv sync --locked --no-dev --package bpgraph
 

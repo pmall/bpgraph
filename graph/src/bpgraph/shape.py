@@ -1,7 +1,8 @@
 """The graph's shape as data, restated by hand from docs/schema.md: its labels
 and their properties, the labels that carry a type, and its relationships.
 
-The audit checks the live graph against it.
+The audit checks the live graph against it, and the tests check both schemas,
+docs/schema.md and guide/schema.md, against it.
 """
 
 from collections.abc import Mapping

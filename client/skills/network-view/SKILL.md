@@ -7,9 +7,9 @@ description: Draw a subnetwork of the bpgraph protein–protein interaction grap
 
 You draw a subnetwork of the graph as an interactive page, in three steps:
 
-1. **Gather the dataset.** Query the graph, choose what the network holds, and write it to `<name>.json`. This is your judgment.
-2. **Render it.** Run `uv run bpgraph-client render <name>.json`. It writes a standard page, `<name>.cytoscape.html`, beside the JSON, from the `cytoscape.html` template of the `bpgraph-client` package. Every network goes through that template, so networks share one look and compare directly.
-3. **Adjust the page**, if the network calls for it: colours, labels, shapes or layout, in the page's `adjust` block and nowhere else.
+1. **Gather the [dataset](#dataset).** Query the graph, choose what the network holds, and write it to `<name>.json`. This is your judgment.
+2. **Render it.** Run `uv run bpgraph-client render <name>.json`. It writes a [standard page](#page), `<name>.cytoscape.html`, beside the JSON, from the `cytoscape.html` template of the `bpgraph-client` package. Every network goes through that template, so networks share one look and compare directly.
+3. **[Adjust the page](#adjust)**, if the network calls for it: colours, labels, shapes or layout, in the page's `adjust` block and nowhere else.
 
 ## Inputs
 
@@ -25,7 +25,7 @@ You draw a subnetwork of the graph as an interactive page, in three steps:
 
 Add to it only what the user asks for, such as partners one hop out or topic proteins no virus reaches, with `cypher`, and say so in the description. A network's edges are compact, so raising `max_tokens` is usually fine here.
 
-## 1. The dataset
+## The dataset <a id="dataset"></a>
 
 ```json
 {
@@ -55,7 +55,7 @@ Write the `description` for a reader who has not seen how the data was gathered.
 
 **Keep it readable.** A few hundred proteins is plenty to look at. If the data runs to thousands, raise the evidence level or narrow the scope and say so in the description, unless the user asked for the whole thing. Proteins no virus reaches show coverage, but they swamp a small network, so include them when coverage is the point.
 
-## 2. The standard page
+## The standard page <a id="page"></a>
 
 - The layout is force-directed (fcose). Proteins are circles, labelled with their name.
 - Colour depends on kind and partners:
@@ -66,7 +66,7 @@ Write the `description` for a reader who has not seen how the data was gathered.
 - Clicking a protein or an interaction shows its details, an interaction's publications and methods included.
 - Proteins can be dragged. **Save PNG** saves the whole network as it stands, dragged positions included, at 3× resolution, as `<name>.png`.
 
-## 3. Adjusting the page
+## Adjusting the page <a id="adjust"></a>
 
 Edit only the `adjust` block near the end of the generated HTML:
 

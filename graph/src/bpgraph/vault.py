@@ -1,22 +1,21 @@
 """The sequence vaults: SQLite files beside the graph, one per silo.
 
-Sequences are kept out of the graph on purpose. Technically, so the graph stays
-small enough to traverse; methodologically, so they are never the basis of
-large-scale reasoning, only of the deep verification of one hypothesis. The
-question a vault answers is about one protein at a time, never many.
+Sequences are kept out of the graph on purpose, for the reasons
+docs/roadmap.md#principles gives: the question a vault answers is about one
+protein at a time, never many.
 
 - **A host vault**, `host-9606.sqlite`: every Swiss-Prot entry of the host, by
-  accession, the human protein's key.
+  accession, the human protein's key: `sequence(accession, sequence)`.
 - **The viral vault**, `viral.sqlite`: every viral entry once, with its strain
   and the UniProt release curation recorded it from, and the mature proteins
   observed on them, each with the sequence curation recorded. A viral protein
   (`HBx` of HBV, 3431302) is pooled over strains and entries, so it has as many
-  sequences as places it was observed at. The vault also
-  keeps which entry each VH description used, which the graph no longer holds.
+  sequences as places it was observed at. The vault also keeps which entry
+  each VH description used, which the graph does not hold.
 
 A build writes the vaults into its run, from the same run as the graph, and
-publishes them once the graph is swapped: copies them to the live vault
-directory, `BPGRAPH_VAULT`, where the API reads them, each replaced whole.
+publishes them once the graph is swapped, with `publish`, to the live vault
+directory `bpgraph.config` names, where the API reads them.
 """
 
 import shutil
@@ -60,13 +59,15 @@ VIRAL_SCHEMA = (
         accession TEXT NOT NULL REFERENCES entry (accession)
     )""",
 )
-"""An entry's `taxon_id` and `taxon_name` are its strain's, as curation
-recorded them; `release` is the UniProt release its sequence and coordinates
-are from, which may predate the entry's retirement; `description` is the
-current UniProt protein name, empty for an entry UniProt has retired. A mature
-protein is keyed as the graph keys a viral protein, by its virus's NCBI taxon
-id and its name; an observation by the stable id of the curated description
-that made it."""
+"""An entry is the one curation recorded. Its `taxon_id` and `taxon_name` are
+its strain's, as curation recorded them; `release` is the UniProt release its
+sequences and coordinates are from: the current one where curation could match
+the entry, an older one otherwise, which may predate the entry's retirement;
+`description` is the current UniProt protein name, empty for an entry UniProt
+has retired. A mature protein is keyed as the graph keys a viral protein, by
+its virus's NCBI taxon id and its name, then by where it sits on an entry,
+1-based inclusive; an observation by the stable id of the curated description
+that made it, the entry it observed its value."""
 
 
 @dataclass(frozen=True, slots=True)

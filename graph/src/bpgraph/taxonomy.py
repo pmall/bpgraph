@@ -1,12 +1,17 @@
 """The NCBI taxonomy, kept in SQLite in the run directory.
 
+`bpgraph-taxonomy RUN` downloads NCBI's `taxdmp.zip`, loads it into the run's
+`taxonomy.sqlite` and deletes it, and records the fetch in `sources.tsv`, its
+release the dump's `Last-Modified`, since NCBI names none.
+
 The graph holds only the taxa an analysis groups by — the viruses curation
 names, and the family above each. Placing a virus under its family needs the
 whole tree, three million rows that have no business in the graph.
 
-Each taxon keeps its parent, as the dump gives it, and is loaded row by row. A
-taxon's ancestors are a walk up its parents, one indexed lookup per level, and
-the tree is some forty levels deep at most.
+Each taxon keeps its parent, as the dump gives it, and is loaded row by row,
+with NCBI's merges of old ids into new ones. A taxon's ancestors are a walk up
+its parents, one indexed lookup per level, and the tree is some forty levels
+deep at most.
 """
 
 import sqlite3
@@ -19,7 +24,7 @@ from shutil import copyfileobj
 from typing import Self
 from urllib.request import urlopen
 
-from bpgraph.run import Run
+from bpgraph.run import Run, command_line
 from bpgraph.sources import record_source
 
 TAXDUMP_URL = "https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxdmp.zip"
@@ -162,16 +167,7 @@ class Taxonomy:
 
 
 def main() -> None:
-    """Fetch the taxonomy into one run directory.
-
-    `uv run bpgraph-taxonomy data/2026-09-09` writes `taxonomy.sqlite` beside
-    the export, and records the fetch.
-    """
-    import sys
-
-    if len(sys.argv) != 2:
-        sys.exit("usage: bpgraph-taxonomy <run directory>")
-    run = Run(Path(sys.argv[1]))
+    run = command_line(__doc__)
     count, release = fetch(run)
     record_source(run.sources, "taxonomy", TAXDUMP_URL, release)
     print(f"{run.taxonomy}: {count} taxa, released {release}")

@@ -8,4 +8,4 @@ It applies to IntAct only; our curated descriptions are always kept. Within a gr
 
 ## Changing it
 
-A row is `group`, `pmid` and a `note` saying what the publication is and why it is grouped. A pmid is in one group at most, and a group has at least two publications. After a change, refetch IntAct and rebuild.
+`bpgraph.publications` says what a row holds. After a change, refetch IntAct and rebuild.

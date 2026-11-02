@@ -4,25 +4,25 @@ FalkorDB is schemaless; **this document is the schema**. Nothing is written to t
 
 Companion documents, load when relevant: [`build.md`](build.md) (how a run builds and validates a graph), [`roadmap.md`](roadmap.md) (where the schema is going).
 
-## Principles
+## Principles <a id="principles"></a>
 
-1. **A graph, not tables.** An entity is keyed by its natural key, the value the world names it by. A node that links entities — an interaction, a description, an annotation — has no key of its own: it is what it links, and its uniqueness is checked by pattern (§3). No id is ever derived by joining values into a string.
-2. **No optional properties.** Every property listed here is always present. Free text that is unknown is `''`, never null or absent.
-3. **Labels carry the type, not properties.** Human vs viral, HH vs VH, virus vs family, curated vs IntAct are labels — no `kind` or `source` property duplicates them.
-4. **Reify the n-ary facts.** An interaction observation links a pair, a publication and some peptides; a GO annotation links a protein, a term and publications. Cypher edges join exactly two nodes and cannot be an endpoint themselves, so those facts are nodes: `:Description` and `:Annotation`. What only qualifies one link is a property of that edge.
-5. **Two levels of interaction.** `:Interaction` is the deduplicated claim ("A binds B"); `:Description` is one observation of it, in one publication, by one method.
-6. **Every fact we did not curate points at a publication.** Interactions, GO annotations and function text come in only when a publication backs them, and the publication is a node an agent can read.
-7. **Sequences only on `:Peptide`.** Peptides are the deliverable; every other sequence is in the sequence vaults beside the graph, never in it (§5).
+- **A graph, not tables.** An entity is keyed by its natural key, the value the world names it by. A natural key that is a single value, such as a publication's `pmid`, is the property itself. A key that joins several values is a composite key, and every value it joins is a property: a viral protein is `NS5A` of virus `3052230`, a name meaningless without its taxon, so it is keyed by `ncbi_taxon_id` and `name`, never by an id `<taxon_id>:<name>`. A node that links entities — an interaction, a description, an annotation — has no key of its own: it is what it links, and its own properties where they change what it states, and its uniqueness is checked by pattern, as [the keys](#keys) say. The keys of the nodes it points to are not repeated on it, and a detail about a fact, such as how it was shown or who recorded it, is not part of its key. No id is ever derived by joining values into a string: a value present only inside an id is a missing property, and a caller names a node by its key's values.
+- **No optional properties.** Every property listed here is always present. Free text that is unknown is `''`, never null or absent.
+- **Labels carry the type, not properties.** Human vs viral, HH vs VH, virus vs family, curated vs IntAct are labels — no `kind` or `source` property duplicates them.
+- **Reify the n-ary facts.** An interaction observation links a pair, a publication and some peptides; a GO annotation links a protein, a term and publications. Cypher edges join exactly two nodes and cannot be an endpoint themselves, so those facts are nodes: `:Description` and `:Annotation`. What only qualifies one link is a property of that edge.
+- **Two levels of interaction.** `:Interaction` is the deduplicated claim ("A binds B"); `:Description` is one observation of it, in one publication, by one method.
+- **Every fact we did not curate points at a publication.** Interactions, GO annotations and function text come in only when a publication backs them, and the publication is a node an agent can read.
+- **Sequences only on `:Peptide`.** Peptides are the deliverable; every other sequence is in the [sequence vaults](#vaults) beside the graph, never in it.
 
 ______________________________________________________________________
 
-## 1. Nodes
+## Nodes
 
-### `:Protein` + `:Human` | `:Viral`
+### `:Protein` + `:Human` | `:Viral` <a id="protein"></a>
 
 What an interaction joins, and what an analysis means by a protein: `GPX4`, `NS5A` of HCV, `HBx` of HBV. Human or viral comes from `labels(p)`.
 
-A **human** protein is one reviewed UniProt entry, keyed by its accession. **Every** Swiss-Prot human entry is a protein of the graph, whether or not an interaction names it: about 20,000, each with its function text and GO annotations.
+A **human** protein is one reviewed UniProt entry, keyed by its accession. **Every** Swiss-Prot human entry is a protein of the graph, whether or not an interaction names it, each with its function text and GO annotations.
 
 | property      | type | notes                                                 |
 | ------------- | ---- | ----------------------------------------------------- |
@@ -31,13 +31,13 @@ A **human** protein is one reviewed UniProt entry, keyed by its accession. **Eve
 | `description` | str  | UniProt protein name, e.g. `Glutathione peroxidase 4` |
 | `function`    | str  | UniProt `CC FUNCTION` text                            |
 
-A **viral** protein is a curated mature protein of a virus, whichever strains and accessions it was observed on, as curation groups them: SARS-CoV-2 `nsp2` is one node, although curation saw it on pp1a, on pp1ab and on a TrEMBL copy, and HBV `HBx` is one node over twenty-one accessions. A name means nothing without its virus, so a viral protein is keyed by both. Which accessions, at which spans, and in which strains, is kept in the viral sequence vault (§5), not in the graph.
+A **viral** protein is a curated mature protein of a virus, whichever strains and accessions it was observed on, as curation groups them: SARS-CoV-2 `nsp2` is one node, although curation saw it on pp1a, on pp1ab and on a TrEMBL copy, and HBV `HBx` is one node over every accession curation saw it on. A name means nothing without its virus, so a viral protein is keyed by both. Which accessions, at which spans, and in which strains, is kept in the viral [sequence vault](#vaults), not in the graph.
 
 | property        | type | notes                                                   |
 | --------------- | ---- | ------------------------------------------------------- |
 | `ncbi_taxon_id` | int  | **key**, with `name`: its virus's NCBI taxon id         |
 | `name`          | str  | **key**, with `ncbi_taxon_id`: the curated protein name |
-| `function`      | str  | UniProt `CC FUNCTION` text — see below                  |
+| `function`      | str  | UniProt `CC FUNCTION` text, every distinct one          |
 
 **Names are case-sensitive.** EBV carries `BARF1`, a secreted protein, beside `BaRF1`, the ribonucleotide reductase small subunit. Folding case would merge them.
 
@@ -47,7 +47,7 @@ A **viral** protein is a curated mature protein of a virus, whichever strains an
 
 Only the viruses viral proteins belong to, and the family above each. Human proteins get no `:Taxon` node, and strains get none either: they are in the viral vault.
 
-`:Virus` — the species taxon curation groups a viral protein under, as the export names it (see [`export.md`](export.md)).
+`:Virus` — the species taxon curation groups a viral protein under, as the export names it.
 
 | property        | type | notes                                                          |
 | --------------- | ---- | -------------------------------------------------------------- |
@@ -89,7 +89,7 @@ The deduplicated claim that two proteins interact, and nothing else: it is its t
 
 **A homodimer is an ordinary `:HH`** whose two `:INVOLVES` edges point at the same protein. Entering from a protein therefore reaches it twice, once per edge, so a query that ranks a protein's partners excludes it with `WHERE partner <> self` unless self-binding is what it is asking about.
 
-### `:Description` + `:Curated` | `:IntAct`
+### `:Description` + `:Curated` | `:IntAct` <a id="description"></a>
 
 One observation of an interaction: one pair, one publication, one method, and its peptides. Its method is two properties; everything else about it is its edges. Its type is its interaction's — `(d)-[:SUPPORTS]->(:VH)`.
 
@@ -105,7 +105,7 @@ An **`:IntAct`** description is IntAct's, of a publication we have not curated f
 
 The method is a property because it joins nothing: a description has exactly one, and no query walks from a method to its descriptions. Two methods are two descriptions.
 
-### `:Annotation`
+### `:Annotation` <a id="annotation"></a>
 
 What GO states about a human protein: that it has a function or takes part in a process — the term — as its qualifier says, shown by publications. One per protein, term and qualifier; it is a node because it joins a protein, a term and publications, and has no key: it is what it links.
 
@@ -146,46 +146,46 @@ GO is the structured functional layer; `description` and `function` on `:Protein
 
 ______________________________________________________________________
 
-## 2. Relationships
+## Relationships
 
-| pattern                                         | properties          | meaning                                 |
-| ----------------------------------------------- | ------------------- | --------------------------------------- |
-| `(:Interaction)-[:INVOLVES]->(:Protein)`        | —                   | the two partners                        |
-| `(:Description)-[:SUPPORTS]->(:Interaction)`    | —                   | observation → claim                     |
-| `(:Description)-[:REPORTED_IN]->(:Publication)` | —                   |                                         |
-| `(:Curated)-[:REPORTS]->(:Peptide)`             | —                   | a peptide the observation reported      |
-| `(:Peptide)-[:FROM]->(:Protein)`                | —                   | a protein the peptide was cut from      |
-| `(:Peptide)-[:BINDS]->(:Protein)`               | —                   | a protein the peptide was shown to bind |
-| `(:Annotation)-[:ANNOTATES]->(:Human)`          | —                   | the annotated protein                   |
-| `(:Annotation)-[:OF_TERM]->(:GoTerm)`           | —                   | the term, the most specific that fits   |
-| `(:Annotation)-[:REPORTED_IN]->(:Publication)`  | `evidence_codes`    | a publication showing it, and how       |
-| `(:Protein)-[:FUNCTION_CITES]->(:Publication)`  | —                   | evidence UniProt cites for `function`   |
-| `(:Viral)-[:IN_TAXON]->(:Virus)`                | —                   | the virus, of the protein's taxon id    |
-| `(:Virus)-[:PARENT]->(:Family)`                 | —                   | virus → family                          |
-| `(:Protein)-[:INTERACTS_WITH]->(:Protein)`      | counters, see below | shortcut over an interaction            |
-| `(:GoTerm)-[:IS_A]->(:GoTerm)`                  | —                   | GO ontology                             |
-| `(:GoTerm)-[:PART_OF]->(:GoTerm)`               | —                   | GO ontology                             |
+| pattern                                         | properties                           | meaning                                 |
+| ----------------------------------------------- | ------------------------------------ | --------------------------------------- |
+| `(:Interaction)-[:INVOLVES]->(:Protein)`        | —                                    | the two partners                        |
+| `(:Description)-[:SUPPORTS]->(:Interaction)`    | —                                    | observation → claim                     |
+| `(:Description)-[:REPORTED_IN]->(:Publication)` | —                                    |                                         |
+| `(:Curated)-[:REPORTS]->(:Peptide)`             | —                                    | a peptide the observation reported      |
+| `(:Peptide)-[:FROM]->(:Protein)`                | —                                    | a protein the peptide was cut from      |
+| `(:Peptide)-[:BINDS]->(:Protein)`               | —                                    | a protein the peptide was shown to bind |
+| `(:Annotation)-[:ANNOTATES]->(:Human)`          | —                                    | the annotated protein                   |
+| `(:Annotation)-[:OF_TERM]->(:GoTerm)`           | —                                    | the term, the most specific that fits   |
+| `(:Annotation)-[:REPORTED_IN]->(:Publication)`  | `evidence_codes`                     | a publication showing it, and how       |
+| `(:Protein)-[:FUNCTION_CITES]->(:Publication)`  | —                                    | evidence UniProt cites for `function`   |
+| `(:Viral)-[:IN_TAXON]->(:Virus)`                | —                                    | the virus, of the protein's taxon id    |
+| `(:Virus)-[:PARENT]->(:Family)`                 | —                                    | virus → family                          |
+| `(:Protein)-[:INTERACTS_WITH]->(:Protein)`      | [the four counters](#interacts-with) | shortcut over an interaction            |
+| `(:GoTerm)-[:IS_A]->(:GoTerm)`                  | —                                    | GO ontology                             |
+| `(:GoTerm)-[:PART_OF]->(:GoTerm)`               | —                                    | GO ontology                             |
 
 `:REPORTED_IN` leaves a description or an annotation: from a publication, `(b)<-[:REPORTED_IN]-(d:Description)` is what it observed and `(b)<-[:REPORTED_IN]-(a:Annotation)` what it annotated.
 
-### `:INTERACTS_WITH`
+### `:INTERACTS_WITH` <a id="interacts-with"></a>
 
 The shortcut from one partner of an interaction to the other, so a walk over the interactome is one hop instead of `Protein ← INVOLVES ← Interaction → INVOLVES → Protein`. One edge per `:Interaction`, written from the human protein of a VH and from either of an HH, and always matched **undirected**: `(p)-[:INTERACTS_WITH]-(q)`. Whether it is human–human or virus–human is read from the endpoints' `:Human` and `:Viral` labels.
 
-| property         | type | notes                                               |
-| ---------------- | ---- | --------------------------------------------------- |
-| `n_descriptions` | int  | copied from the interaction, as are the three below |
-| `n_publications` | int  |                                                     |
-| `n_methods`      | int  |                                                     |
-| `n_peptides`     | int  |                                                     |
+| property         | type | notes                       |
+| ---------------- | ---- | --------------------------- |
+| `n_descriptions` | int  | copied from the interaction |
+| `n_publications` | int  | copied from the interaction |
+| `n_methods`      | int  | copied from the interaction |
+| `n_peptides`     | int  | copied from the interaction |
 
 `:Interaction` stays the source of truth: the evidence and the peptides are reached through it, and the audit checks that the edge agrees with it. A homodimer is a self-loop, so a query ranking partners still excludes it with `WHERE partner <> self`.
 
 ______________________________________________________________________
 
-## 3. Keys
+## Keys <a id="keys"></a>
 
-The natural keys, each what `MATCH` targets and a unique constraint holds:
+The natural keys, each what `MATCH` targets and a unique constraint holds, which a build must pass before it is published; `bpgraph.schema` creates them, with the indexes queries need:
 
 | label          | key                      |
 | -------------- | ------------------------ |
@@ -197,7 +197,7 @@ The natural keys, each what `MATCH` targets and a unique constraint holds:
 | `:Peptide`     | `sequence`               |
 | `:Curated`     | `stable_id`              |
 
-A node that links others has no key: it is what it links, and the audit checks that it is unique by pattern.
+A node that links others has no key: it is what it links, and is unique by pattern, as [invariants](#invariants) `I1`, `D4` and `A3` say.
 
 | label          | unique by                                    |
 | -------------- | -------------------------------------------- |
@@ -205,54 +205,51 @@ A node that links others has no key: it is what it links, and the audit checks t
 | `:IntAct`      | its interaction, its publication, its method |
 | `:Annotation`  | its protein, its term, its qualifier         |
 
-A build writes such a node with the edges that make it what it is, in one statement, so nothing ever has to find it again by a key.
+______________________________________________________________________
+
+## Invariants <a id="invariants"></a>
+
+What the graph holds beyond its keys, each rule with an ID that never changes. `bpgraph-audit` checks every one on the live graph, and names a rule it finds broken by its ID.
+
+| ID  | invariant                                                                                                                                           |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S1  | Every node carries a label this document defines.                                                                                                   |
+| S2  | A node carries exactly the properties its label lists, of the types listed.                                                                         |
+| S3  | A `:Protein`, an `:Interaction`, a `:Taxon` and a `:Description` carries exactly one of its two type labels.                                        |
+| S4  | An edge joins the labels its relationship gives, and carries exactly the properties it lists.                                                       |
+| I1  | One interaction per pair of proteins.                                                                                                               |
+| I2  | An interaction has two `:INVOLVES` edges.                                                                                                           |
+| I3  | A `:VH` joins a human protein and a viral one, an `:HH` two human proteins.                                                                         |
+| I4  | An interaction's counters equal what they count: its descriptions, their distinct publications, their distinct methods and their distinct peptides. |
+| I5  | One `:INTERACTS_WITH` per interaction, between its two proteins, copying its counters.                                                              |
+| I6  | Every interaction has a description.                                                                                                                |
+| D1  | A description supports one interaction, and is reported in one publication.                                                                         |
+| D2  | A `:Curated` description's `stable_id` is not empty.                                                                                                |
+| D3  | A description's `method_id` is a PSI-MI id, `MI:0018`, and its `method_name` is not empty.                                                          |
+| D4  | One `:IntAct` description per interaction, publication and method.                                                                                  |
+| D5  | No `:IntAct` description is of a publication we curated for HH interactions.                                                                        |
+| D6  | Every VH description is `:Curated`.                                                                                                                 |
+| D7  | An `:IntAct` description's method is one `curation/methods.tsv` keeps.                                                                              |
+| D8  | No interaction has `:IntAct` descriptions from two publications of one group of `curation/publications.tsv`.                                        |
+| A1  | An annotation annotates one protein, with one term.                                                                                                 |
+| A2  | Every annotation is reported in a publication.                                                                                                      |
+| A3  | One annotation per protein, term and qualifier.                                                                                                     |
+| A4  | Each publication of an annotation shows it by experimental evidence codes, one at least.                                                            |
+| A5  | No annotation is to a `cellular_component` term, nor to `protein binding` or a term below it.                                                       |
+| G1  | Every term is a `biological_process` or a `molecular_function`.                                                                                     |
+| G2  | Every term but the two namespace roots has a parent.                                                                                                |
+| G3  | Every term is annotated, or lies above a term that is.                                                                                              |
+| T1  | A viral protein has one `:IN_TAXON`, to the virus of its `ncbi_taxon_id`.                                                                           |
+| T2  | A human protein has no `:IN_TAXON`.                                                                                                                 |
+| T3  | A virus has one family at most.                                                                                                                     |
+| T4  | Every virus has a viral protein, and every family a virus.                                                                                          |
+| P1  | A peptide's `length` is its residue count, 5 to 20, and its residues are upper case.                                                                |
+| P2  | Every peptide is reported by a curated description, comes from a protein and binds one.                                                             |
+| P3  | Of the two proteins of a description reporting a peptide, exactly one is its source, and it binds one at least.                                     |
+| B1  | Every publication backs a description, an annotation or a function text.                                                                            |
 
 ______________________________________________________________________
 
-## 4. DDL
+## The sequence vaults <a id="vaults"></a>
 
-Verified against `falkordb/falkordb-server:v4.22.0`, the version `docker-compose.yml` pins. A unique constraint needs a supporting index first, and is applied asynchronously: creating it answers `PENDING`, and `CALL db.constraints()` then reports it `UNDER CONSTRUCTION` until the scan finishes. Both mean *still building* — only `OPERATIONAL` and `FAILED` are verdicts. Applied after the data is loaded; see [`build.md`](build.md).
-
-```cypher
-CREATE INDEX FOR (p:Human)       ON (p.accession);
-CREATE INDEX FOR (p:Viral)       ON (p.ncbi_taxon_id, p.name);
-CREATE INDEX FOR (p:Protein)     ON (p.name);
-CREATE INDEX FOR (t:Taxon)       ON (t.ncbi_taxon_id);
-CREATE INDEX FOR (t:Taxon)       ON (t.name);
-CREATE INDEX FOR (g:GoTerm)      ON (g.go_id);
-CREATE INDEX FOR (g:GoTerm)      ON (g.namespace);
-CREATE INDEX FOR (b:Publication) ON (b.pmid);
-CREATE INDEX FOR (d:Curated)     ON (d.stable_id);
-CREATE INDEX FOR (x:Peptide)     ON (x.sequence);
-CREATE INDEX FOR (x:Peptide)     ON (x.length);
-
-CALL db.idx.fulltext.createNodeIndex('Publication', 'title', 'abstract');
-```
-
-```
-GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE Human       PROPERTIES 1 accession
-GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE Viral       PROPERTIES 2 ncbi_taxon_id name
-GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE Taxon       PROPERTIES 1 ncbi_taxon_id
-GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE GoTerm      PROPERTIES 1 go_id
-GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE Publication PROPERTIES 1 pmid
-GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE Curated     PROPERTIES 1 stable_id
-GRAPH.CONSTRAINT CREATE bpgraph_staging UNIQUE NODE Peptide     PROPERTIES 1 sequence
-```
-
-______________________________________________________________________
-
-## 5. The sequence vaults
-
-Sequences are not in the graph. A build writes them beside it, one SQLite file per silo in the run's `vault/`, from the same run as the graph. They answer questions about one protein at a time — verifying a hypothesis the graph produced — and are never the basis of reasoning over many. `bpgraph.vault` reads them.
-
-**`host-9606.sqlite`** — `sequence(accession, sequence)`: every Swiss-Prot human entry, keyed by its accession.
-
-**`viral.sqlite`**:
-
-| table         | key                                                   | columns                                                                   |
-| ------------- | ----------------------------------------------------- | ------------------------------------------------------------------------- |
-| `entry`       | `accession`                                           | `taxon_id`, `taxon_name` (the strain), `release`, `description`           |
-| `mature`      | `ncbi_taxon_id`, `name`, `accession`, `start`, `stop` | where a viral protein sits on an entry, 1-based inclusive, and `sequence` |
-| `observation` | `stable_id`                                           | `accession`: the viral entry a curated VH description observed            |
-
-A viral protein's sequences are its `mature` rows, keyed as the graph keys the protein, as curation recorded them: as many as places it was observed at. An entry is the one curation recorded, of the UniProt `release` it gives: the current one where curation could match it, an older one otherwise, whose coordinates and sequence are that release's. Its `description` is the current UniProt protein name, empty for an entry UniProt has retired.
+Sequences are not in the graph. A build writes them beside it, one SQLite file per silo, from the same run as the graph. They answer questions about one protein at a time — verifying a hypothesis the graph produced — and are never the basis of reasoning over many, for the reasons [`roadmap.md`](roadmap.md#principles) gives. The host vault holds the sequence of every Swiss-Prot human entry. The viral vault holds every place a viral protein was observed, keyed as the graph keys the protein: each entry and span as curation recorded them, of the UniProt release curation gives, with the entry's strain; and the entry each curated VH description observed. `bpgraph.vault` gives their tables.

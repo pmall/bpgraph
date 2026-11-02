@@ -14,14 +14,12 @@ The long-term scope is **One Health**: the interactomes of many host species, no
 
 Each host species is ingested on its own, as a **silo**: its own downloads, its own metadata, its own publications. Adding a host touches no other host. Within a host, only **experimentally validated** facts come in, because an experiment is what gives a fact a publication, and a publication is what gives an agent something to read.
 
-1. **Interactions**, from IntAct: PubMed-cited, between reviewed proteins of that host, by a detection method that [`curation/methods.tsv`](../curation/methods.tsv) keeps, with re-reported experiments collapsed by [`curation/publications.tsv`](../curation/publications.tsv). For human, our own HH curation is merged on top of IntAct; how much it adds beyond IntAct is measured, not assumed.
-2. **GO annotations** with experimental evidence codes (`EXP`, `IDA`, `IPI`, `IMP`, `IGI`, `IEP` and the high-throughput `HTP`, `HDA`, `HMP`, `HGI`, `HEP`), each citing a PubMed id. Electronic and inferred annotations are left out: they add no publication, and they restate what other annotations say. GO is kept to function: no cellular component, and no `protein binding` subtree, which restates interactions.
-3. **UniProt annotations of the proteins**, Swiss-Prot wherever a host has it: name, description, function text, and the publications UniProt cites for them.
-4. **Publication metadata** for every pmid the three above cite: title, abstract, journal, authors, year — fetched from PubMed.
-5. **The vaults** *(later, except sequences)*. A relational database beside the graph, keyed by pmid for full text and by accession for sequences. Kept out of the graph on purpose:
-   - technically, so the graph stays small enough to traverse;
-   - methodologically, so they are never the basis of large-scale reasoning, only of deep verification of a hypothesis the graph produced.
-6. **ESM-C sparse autoencoder annotations** *(later)*. Features of a protein language model's sparse autoencoder, computed on host protein sequences from the vault. They add a layer of AI predictions that connects proteins within a host, and, more importantly, **across hosts**. They are the only link between host silos: two hosts share no node except through them.
+- **Interactions**, from IntAct: PubMed-cited, between reviewed proteins of that host, by a detection method that [`curation/methods.tsv`](../curation/methods.tsv) keeps, with re-reported experiments collapsed by [`curation/publications.tsv`](../curation/publications.tsv). For human, our own HH curation is merged on top of IntAct; how much it adds beyond IntAct is measured, not assumed.
+- **GO annotations** with experimental evidence, each citing a PubMed id, kept to function, as [`schema.md`](schema.md#annotation) says.
+- **UniProt annotations of the proteins**, Swiss-Prot wherever a host has it: name, description, function text, and the publications UniProt cites for them.
+- **Publication metadata** for every pmid the interactions, the annotations and the UniProt text cite: title, abstract, journal, authors, year — fetched from PubMed.
+- **The vaults** *(later, except sequences)*. A relational database beside the graph, keyed by pmid for full text and by accession for sequences, and kept out of the graph on purpose, as the [principles](#principles) say.
+- **ESM-C sparse autoencoder annotations** *(later)*. Features of a protein language model's sparse autoencoder, computed on host protein sequences from the vault. They add a layer of AI predictions that connects proteins within a host, and, more importantly, **across hosts**. They are the only link between host silos: two hosts share no node except through them.
 
 ### Tier 2 — viral probes
 
@@ -31,11 +29,11 @@ Our curated virus–host interactions. A viral protein is a probe into a host in
 
 What we curate by hand and hand over as-is: **peptides** reported sufficient for an interaction. Topics, curated lists of host proteins such as ferroptosis, are not in the graph: queries take them as parameters.
 
-## Principles that follow
+## Principles that follow <a id="principles"></a>
 
 - **A host is a silo.** Its downloads live in their own directory of a run, its publications are fetched for it alone, and its build stage reads nothing from another host. A publication cited by two silos is one node in the graph, but each silo fetches it.
 - **Only what an experiment backs.** Every fact in the graph that is not curated by us points at a publication.
-- **The graph holds what an agent reasons over; the vaults hold what it verifies against.** Sequences and full text never enter the graph.
+- **The graph holds what an agent reasons over; the vaults hold what it verifies against.** Sequences and full text never enter the graph: technically, so the graph stays small enough to traverse; methodologically, so they are never the basis of large-scale reasoning, only of deep verification of a hypothesis the graph produced.
 - **UniProt entries are not nodes.** An entry node carried two things: which strain a viral protein was seen on, and where its mature chain sits. Both are about sequences, and belong in the sequence vault. A host protein is one accession, which is already its id; a viral protein's accessions and spans are rows in the vault, which is what retrieving every mature sequence of a protein needs. Adding a host then adds proteins, not proteins and entries.
 
 ## Beyond ingestion: splitting the repository
@@ -49,23 +47,25 @@ A client reaches the graph through the MCP server's tools only, and the graph kn
 
 ## Order of work
 
-| step | what                                                                      | status |
-| ---- | ------------------------------------------------------------------------- | ------ |
-| 1    | Human host: IntAct + our HH, experimental GO, Swiss-Prot, PubMed          | done   |
-| 2    | Viral probes: our VH, viral UniProt text, PubMed, as their own silo       | done   |
-| 3    | Peptides                                                                  | done   |
-| 4    | Sequence vault in SQLite: host sequences, viral entries and mature spans  | done   |
-| 5    | Drop `:Entry` from the graph                                              | done   |
-| 6    | Full-text vault, keyed by pmid                                            | later  |
-| 7    | ESM-C SAE features on host sequences, intra-host                          | later  |
-| 8    | A second host: labels move from `:Human` to a host label with its species | later  |
-| 9    | SAE features as the cross-host link                                       | later  |
-| 10   | Internal query API; MCP serves it; consumers move out                     | doing  |
+Each step has an id, which stays when steps are added or reordered.
 
-Steps 1–5 are one build, described in [`build.md`](build.md); they replaced a pipeline that took everything from the curation export.
+| id               | what                                                                      | status |
+| ---------------- | ------------------------------------------------------------------------- | ------ |
+| `human-host`     | Human host: IntAct + our HH, experimental GO, Swiss-Prot, PubMed          | done   |
+| `viral-probes`   | Viral probes: our VH, viral UniProt text, PubMed, as their own silo       | done   |
+| `peptides`       | Peptides                                                                  | done   |
+| `sequence-vault` | Sequence vault in SQLite: host sequences, viral entries and mature spans  | done   |
+| `no-entry`       | Drop `:Entry` from the graph                                              | done   |
+| `full-text`      | Full-text vault, keyed by pmid                                            | later  |
+| `sae`            | ESM-C SAE features on host sequences, intra-host                          | later  |
+| `second-host`    | A second host: labels move from `:Human` to a host label with its species | later  |
+| `cross-host`     | SAE features as the cross-host link                                       | later  |
+| `query-api`      | Internal query API; MCP serves it; consumers move out                     | doing  |
+
+The steps done are one build, described in [`build.md`](build.md); they replaced a pipeline that took everything from the curation export.
 
 Known gaps in what is done:
 
-- Only human is a host. `:Human`, `:HH` and the `9606` of the run layout are the places a second host touches (step 8).
-- The engine is pinned to FalkorDB 4.22, the C engine. 6.0 is a rewrite in Rust, fast on our audit but with a planner that dropped filters in its first release; it is worth moving to once a 6.x passes the audit, as [`development.md`](development.md) describes.
-- Step 10 is nearly done. The API and the MCP server serve the schema, Cypher and the vaults, and what a query needs to know travels with the MCP server. What is left is the consuming repositories themselves.
+- Only human is a host. `:Human`, `:HH` and the `9606` of the run layout are the places a second host touches (`second-host`).
+- The engine is pinned to FalkorDB 4.22, the C engine; 6.x is worth moving to once one passes the audit, as [`development.md`](development.md#falkordb) says.
+- `query-api` is nearly done. The API and the MCP server serve the schema, Cypher and the vaults, and what a query needs to know travels with the MCP server. What is left is the consuming repositories themselves.

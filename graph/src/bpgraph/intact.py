@@ -1,13 +1,19 @@
 """IntAct's interactions of one host, filtered to what its network is built on.
 
+`bpgraph-intact RUN` needs the run's `psi-mi.obo` and `hosts/9606/swissprot.tsv`
+first. It writes `hosts/9606/intact.tsv`, one row per IntAct record kept:
+`intact_id`, `accession1` and `accession2`, the pair in sorted order, `pmid`
+and `psimi_id`, the method's current PSI-MI id. It prints how many rows it
+dropped for each reason, and records the fetch in `sources.tsv`, its release
+the dated directory beside IntAct's `current`.
+
 IntAct publishes every interaction with a partner of a species as one MITAB 2.7
 file — for human, a zip of over a gigabyte. It is streamed rather than
 downloaded: the zip is inflated as it arrives and each row is filtered on the
 way past, so only `intact.tsv` lands in the host's silo.
 
-The graph is for an agent that explores it to formulate biological hypotheses,
-such as mechanistic explanations. So an IntAct row is kept when it reports a
-real interaction, observed by an experiment, in a publication:
+An IntAct row is kept when it reports a real interaction, observed by an
+experiment, in a publication, as `curation/methods.md` explains:
 
 - both partners are Swiss-Prot entries of the host, once an isoform or a chain
   is mapped to its entry;
@@ -19,7 +25,8 @@ real interaction, observed by an experiment, in a publication:
   the first of its group to report.
 
 A detection method with no row there fails the fetch, naming it, once the
-whole file is read.
+whole file is read. Whether both partners are Swiss-Prot entries is two sorted
+merges against `swissprot.tsv`, one per partner.
 
 Spoke-expanded complexes are kept, so one IntAct interaction id may name
 several rows, one per pair. Negative interactions are published apart and never
@@ -42,7 +49,7 @@ from bpgraph.loaders.tsv import rows
 from bpgraph.methods import Methods
 from bpgraph.psimi import Ontology, read_ontology
 from bpgraph.publications import read_groups
-from bpgraph.run import HUMAN, HostPaths, Run
+from bpgraph.run import HUMAN, HostPaths, command_line
 from bpgraph.sources import record_source
 from bpgraph.swissprot import canonical
 
@@ -278,17 +285,8 @@ def write_intact(
 
 
 def main() -> None:
-    """Filter IntAct into one run directory.
-
-    `uv run bpgraph-intact data/2026-09-09` needs `psi-mi.obo` and
-    `hosts/9606/swissprot.tsv` there first, and writes `hosts/9606/intact.tsv`.
-    """
-    import sys
-
+    run = command_line(__doc__)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    if len(sys.argv) != 2:
-        sys.exit("usage: bpgraph-intact <run directory>")
-    run = Run(Path(sys.argv[1]))
     host = run.host(HUMAN)
     written, dropped = write_intact(host, run.psimi, run.sources)
     for reason, count in dropped.most_common():

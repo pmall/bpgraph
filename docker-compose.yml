@@ -5,10 +5,8 @@ name: bpgraph
 services:
   # Graph database. Speaks RESP on 6379.
   # Published to the host so local scripts (python) can connect on localhost:6379.
-  # Pinned: `latest` moved from the C engine to 6.0.0, a Rust rewrite whose
-  # planner dropped filters, and back again. A new version is a rebuild;
-  # graph/docs/development.md says how to try one.
-  # A query stops after a minute unless its client asks for up to ten.
+  # Pinned: graph/docs/development.md#falkordb says why, and how to try another
+  # version. A query stops after a minute unless its client asks for up to ten.
   falkordb-server:
     image: falkordb/falkordb-server:v4.22.0
     ports:
@@ -19,6 +17,7 @@ services:
         THREAD_COUNT ${FALKORDB_THREADS:-4}
         TIMEOUT_DEFAULT 60000
         TIMEOUT_MAX 600000
+    # Where this image keeps its data: at /data, nothing would survive a restart.
     volumes:
       - falkordb_data:/var/lib/falkordb/data
 

@@ -2,6 +2,7 @@
 name = "bpgraph-client"
 version = "0.1.0"
 description = "What a repository consulting bpgraph needs: its agent's instructions, the analysis skills and their commands"
+readme = "README.md"
 authors = [
     { name = "pmall", email = "pierre.mallinjoud@gmail.com" }
 ]

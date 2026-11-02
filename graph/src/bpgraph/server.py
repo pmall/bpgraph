@@ -1,11 +1,19 @@
 """The MCP server, `bpgraph-mcp`: the only thing consumers see.
 
+`bpgraph-mcp` serves streamable HTTP at `/mcp` until stopped, on `MCP_HOST`
+and `MCP_PORT` (`127.0.0.1:8080` by default). Only localhost may connect for
+now; remote clients will need their host names allowed.
+
 Each endpoint of the query API is a tool of the same name, signature and
-description, which forwards its arguments to the API at `BPGRAPH_API` and
-hands back its answer. The server reaches neither the graph nor the vaults
-itself. It serves streamable HTTP at `/mcp`, on `MCP_HOST` and `MCP_PORT`.
+description, which forwards its arguments to the API at `BPGRAPH_API`
+(`http://127.0.0.1:8000` by default) and hands back its answer. The server
+reaches neither the graph nor the vaults itself. Its instructions are
+`guide/server.md`. A tool's parameter schema goes without titles or null
+branches, and declares no structured output, so a result reaches the agent
+once.
 """
 
+import argparse
 import os
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -20,8 +28,6 @@ from mcp.types import ToolAnnotations
 from bpgraph.api.endpoints import ENDPOINTS, Endpoint
 
 INSTRUCTIONS = (Path(__file__).parent / "guide" / "server.md").read_text().strip()
-"""Every agent receives these, subagents included, and Claude Code keeps the
-first 2,048 characters only: what every query needs, first."""
 
 API = os.environ.get("BPGRAPH_API", "http://127.0.0.1:8000")
 
@@ -90,8 +96,9 @@ for endpoint in ENDPOINTS.values():
 
 
 def main() -> None:
-    """`bpgraph-mcp`: serve until stopped. Only localhost may connect for now;
-    remote clients will need their host names allowed."""
+    argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    ).parse_args()
     server.run(
         "streamable-http",
         host=os.environ.get("MCP_HOST", "127.0.0.1"),

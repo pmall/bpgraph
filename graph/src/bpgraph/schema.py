@@ -4,6 +4,9 @@ Indexes go in **before** the data, so every `MATCH` a build performs is
 index-backed. Constraints go in **after**, because that is what makes them a
 gate: FalkorDB does not reject a constraint created over violating rows, it
 parks it in state `FAILED`, which is exactly the signal a run needs.
+
+Verified against the FalkorDB version docker-compose.yml pins, which applies a
+constraint asynchronously: `BUILDING` says how it reports one being applied.
 """
 
 import time
@@ -60,7 +63,8 @@ class ConstraintsNotSatisfied(RuntimeError):
 
 
 def create_indexes(graph: Graph) -> None:
-    """Call before loading. Indexing a property twice is an error, so the
+    """Call before loading. A unique constraint needs an index on its
+    properties first, and indexing a property twice is an error, so the
     constrained properties are indexed here and not again by the constraints."""
     for label, properties in (*UNIQUE_CONSTRAINTS, *EXTRA_INDEXES):
         graph.create_node_range_index(label, *properties)

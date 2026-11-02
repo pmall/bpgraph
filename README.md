@@ -1,21 +1,21 @@
 # bpgraph
 
-A [FalkorDB](https://www.falkordb.com/) knowledge graph of protein–protein interactions, human–human and virus–human, and the tooling that builds and explores it. The human interactome is IntAct's interactions, kept by detection method as [`graph/curation/methods.tsv`](graph/curation/methods.tsv) flags it, with our own curation merged on top; the virus–human interactions are ours. Every interaction carries the publications, detection methods and peptides behind it, abstracts included. Every Swiss-Prot human protein is in, with its UniProt function text and experimental GO annotations of what it does — biological process and molecular function — each tied to the publications behind it. A viral protein is a curated one — `HBx` of HBV, `NS5A` of HCV — pooled over every strain and UniProt accession it was observed on, so its evidence is counted once rather than scattered. Viruses are grouped by a curated list and rolled up to their NCBI family, and curated topics — lists of human proteins involved in a subject such as ferroptosis — make it possible to ask how viral families act on a biological process. Sequences live in SQLite vaults beside the graph.
+A [FalkorDB](https://www.falkordb.com/) knowledge graph of protein–protein interactions, human–human and virus–human, built to be explored by an agent. Scripts do the deterministic work; the agent reads the connected text — function descriptions, GO annotations, abstracts — and draws the connections a person would need years of reading to make.
 
-The graph is built to be explored by an agent. Scripts do the deterministic work; the agent reads the connected text — function descriptions, GO annotations, abstracts — and draws the connections a person would need years of reading to make.
+## The data
+
+The human interactome is IntAct's interactions, kept by detection method, with our own curation on top; the virus–human interactions are ours. Every interaction carries the publications, detection methods and peptides behind it, abstracts included. Every Swiss-Prot human protein is in, with its UniProt function text and experimental GO annotations of what it does — biological process and molecular function — each tied to the publications behind it. A viral protein is a curated one — `HBx` of HBV, `NS5A` of HCV — pooled over every strain and UniProt accession it was observed on, so its evidence is counted once rather than scattered; its virus is the species curation groups it under, rolled up to its NCBI family. Curated topics — lists of human proteins involved in a subject such as ferroptosis, which a query takes as a parameter — make it possible to ask how viral families act on a biological process. Sequences live in SQLite vaults beside the graph.
+
+Curation itself happens in a separate relational database. The graph is never edited in place: each run is built from that database's export and from public sources into a staging graph, checked, and swapped in whole. [`graph/docs/schema.md`](graph/docs/schema.md) is what the graph holds, and [`graph/docs/roadmap.md`](graph/docs/roadmap.md) where it is heading: many hosts, sequence and full-text vaults, protein language model features.
+
+## The parts
 
 This repository is a uv workspace of two packages:
 
-- **`graph/`**, the package `bpgraph`: the graph and everything around it —
-  - **the graph server**: FalkorDB and its browser UI, run with Docker Compose;
-  - **the ingestion**: it turns public sources and an export of the curation database into a fresh, validated graph and its sequence vaults;
-  - **the query API**: internal, not exposed: the schema and read-only Cypher over the graph, and lookups in the vaults;
-  - **the MCP server**: the only thing consumers see: each API endpoint as a tool.
-- **`client/`**, the package `bpgraph-client`: what a repository consulting the graph needs — the instructions its agent works by, the analysis skills, and the `bpgraph-client` command that does their mechanical part. It reaches the graph through the MCP server only.
+- **[`graph/`](graph/README.md)**, the package `bpgraph`: the graph and everything around it — the ingestion that builds it, an internal query API over the graph and its vaults, and the MCP server, the only thing consumers see.
+- **[`client/`](client/README.md)**, the package `bpgraph-client`: what a repository consulting the graph needs — its agent's instructions, the analysis skills, and the command that does their mechanical part. It reaches the graph through the MCP server only.
 
-Curation itself happens in a separate relational database. The graph is never edited in place: each run is built into a staging graph, checked, and swapped in whole. Where it is heading — many hosts, sequence and full-text vaults, protein language model features — is in [`graph/docs/roadmap.md`](graph/docs/roadmap.md).
-
-## Quick start
+## Running it
 
 Requires Docker and [uv](https://docs.astral.sh/uv/).
 
@@ -25,57 +25,6 @@ docker compose up -d
 uv sync                     # both packages
 ```
 
-| service            | port | role                                                    |
-| ------------------ | ---- | ------------------------------------------------------- |
-| `falkordb-server`  | 6379 | the graph; builds write here over RESP                  |
-| `falkordb-browser` | 3000 | UI; log in with host `falkordb-server`, not `localhost` |
-| `bpgraph-api`      | —    | query API, internal: only the MCP server reaches it     |
-| `bpgraph-mcp`      | 8080 | MCP at `http://localhost:8080/mcp`, read-only           |
+This brings up the graph, its browser UI at `http://localhost:3000` — log in with host `falkordb-server`, not `localhost` — and the MCP server at `http://localhost:8080/mcp`; `docker-compose.yml` describes each service. [`graph/docs/build.md`](graph/docs/build.md) says how to build a graph, and [`client/README.md`](client/README.md) how to consult it.
 
-## Building a graph
-
-A run lives in its own directory, `data/<date>/` (gitignored): the TSV files the curation database exports go in `export/`, and everything else is fetched beside it, one directory per silo — `hosts/9606/` for human, `viral/` for our virus–host interactions — each fetch recording its release in `sources.tsv`. The IntAct keep flag of each detection method is curated in [`graph/curation/methods.tsv`](graph/curation/methods.tsv), and the publications that re-report one experiment, such as BioPlex 2.0 and 3.0, in [`graph/curation/publications.tsv`](graph/curation/publications.tsv), each with a document explaining the choices.
-
-```sh
-uv run bpgraph-taxonomy data/2026-09-09     # NCBI taxonomy
-uv run bpgraph-psimi data/2026-09-09        # PSI-MI
-uv run bpgraph-methods data/2026-09-09      # check graph/curation/methods.tsv against PSI-MI
-uv run bpgraph-swissprot data/2026-09-09    # Swiss-Prot human and sequences
-uv run bpgraph-intact data/2026-09-09       # IntAct human, filtered by graph/curation/methods.tsv
-uv run bpgraph-go data/2026-09-09           # GO and experimental, functional annotations
-uv run bpgraph-functions data/2026-09-09    # viral UniProt text and protein names
-uv run bpgraph-pubmed data/2026-09-09       # PubMed metadata, per silo
-uv run bpgraph-build data/2026-09-09        # build and publish the graph, write the vaults
-```
-
-The build streams every silo through files sorted on disk, never holding one in memory, writes the result to `bpgraph_staging` in batches, adds the unique constraints as a validation gate, and renames the result to the live graph `bpgraph`. A malformed export or a viral taxon with no curated virus fails before anything is written, and an IntAct detection method with no row in `graph/curation/methods.tsv` fails the IntAct fetch. See [`graph/docs/build.md`](graph/docs/build.md) for the full sequence and [`graph/docs/export.md`](graph/docs/export.md) for the export format.
-
-```sh
-uv run bpgraph         # what the live graph holds
-uv run bpgraph-audit   # check the live graph against the schema
-```
-
-## Querying
-
-The live graph is the only source of truth; `data/` holds build inputs. Consulting repositories query it through the MCP server, whose tools are the query API's endpoints: the schema, read-only Cypher, and the vaults' sequences. This repository registers no MCP server. The same query runs from a terminal. What a query needs to know travels with the MCP server: its instructions, its tool descriptions, and its `schema` tool, with the rules for Cypher and worked queries.
-
-```sh
-uv run bpgraph-query "MATCH (v:Virus) RETURN v.name"
-```
-
-To draw a subnetwork, gather it into a `network.json` and render it with the client's command; no database connection is needed. The `network-view` skill describes the file:
-
-```sh
-uv run bpgraph-client render ferroptosis-flaviviridae.json   # -> ferroptosis-flaviviridae.cytoscape.html
-```
-
-## Documentation
-
-- [`graph/docs/schema.md`](graph/docs/schema.md) — the schema contract. FalkorDB is schemaless; this document is what keeps the graph coherent.
-- [`graph/docs/export.md`](graph/docs/export.md) — the TSV files the curation database exports.
-- [`graph/docs/roadmap.md`](graph/docs/roadmap.md) — where the graph is going: many hosts, vaults, language-model features.
-- [`graph/docs/build.md`](graph/docs/build.md) — building, validating, swapping and auditing a graph.
-- [`graph/docs/development.md`](graph/docs/development.md) — the graph's code layout, FalkorDB, the query API and the MCP server.
-- [`client/instructions.md`](client/instructions.md) — how a consulting repository's agent works with the graph.
-- [`client/docs/development.md`](client/docs/development.md) — the client's layout, and how a consulting repository installs it.
-- [`AGENTS.md`](AGENTS.md) — where things are, and conventions for working on this repository.
+[`AGENTS.md`](AGENTS.md) is the guide for agents working on this repository.

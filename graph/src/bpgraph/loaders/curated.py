@@ -11,10 +11,9 @@ Every check a curated row can fail happens here, before anything is written:
   strain and release;
 - a virus has one name.
 
-Curation groups the viral proteins: a protein is the row's `protein` of its
-species taxon, which is taken as given. A dropped row stays in the file,
-marked, because its peptides are still its own: they are dropped with it
-rather than orphaned.
+Curation groups the viral proteins, as `bpgraph.loaders.export` says, and the
+grouping is taken as given. A dropped row stays in the file, marked, because
+its peptides are still its own: they are dropped with it rather than orphaned.
 """
 
 import logging

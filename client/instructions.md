@@ -12,14 +12,14 @@ The graph's answers come from the graph alone: when it lacks something, say so r
 
 **Deterministic work** has one right output for a given input: drawing a network, extracting a table, checking a claim, counting. Do it directly, in one agent, so the same input gives the same result.
 
-**Exploration** has no single right output: a hypothesis to test or to find, a mechanism to explain, an open question. Explore with subagents, as below, whether a skill is driving the work or not. When a task holds both, the exploring fans out and the rest stays with you.
+**Exploration** has no single right output: a hypothesis to test or to find, a mechanism to explain, an open question. Explore with [subagents](#subagents), whether a skill is driving the work or not. When a task holds both, the exploring fans out and the rest stays with you.
 
-## Exploring with subagents
+## Exploring with subagents <a id="subagents"></a>
 
 One agent following several leads through a large graph loses track of them, so keep the leads apart.
 
 1. **Split.** State the question and split it into leads that can be explored independently: one hypothesis, one virus or viral protein, one group of targets, one mechanism. Stay out of the graph's detail yourself.
-2. **Brief.** Give each subagent its lead, its scope as keys already resolved, the evidence level and the return shape below. Launch a wave of three to six in parallel. Run leads on a fast model such as Sonnet where you can choose, and keep the strongest model for the leads the conclusion hinges on.
+2. **Brief.** Give each subagent its lead, its scope as keys already resolved, the evidence level and the [return shape](#return-shape). Launch a wave of three to six in parallel. Run leads on a fast model such as Sonnet where you can choose, and keep the strongest model for the leads the conclusion hinges on.
 3. **Keep them independent.** A subagent never sees another's findings: independent runs that agree make a finding stronger.
 4. **Verify.** Check the key claims of a finding yourself before your conclusion rests on it, and reconcile findings that conflict.
 5. **Go again** on the leads worth deepening, with sharper briefs. Stop when a wave changes nothing.
@@ -27,7 +27,9 @@ One agent following several leads through a large graph loses track of them, so 
 
 Fan out only for at least two independent leads.
 
-**The return shape**, under about 300 words:
+### The return shape <a id="return-shape"></a>
+
+Under about 300 words:
 
 - **Answer**: a few sentences, with a confidence (high, medium, low) and why.
 - **Claims**: each with what it rests on (interactions by their two proteins with their counters, pmids, GO ids) and whether it is the graph's, the literature's or a hypothesis.
