@@ -113,7 +113,9 @@ def fetch(run: Run) -> tuple[int, str]:
         with urlopen(TAXDUMP_URL) as response, dump.open("wb") as handle:
             copyfileobj(response, handle)
             release = response.headers.get("Last-Modified", "")
-        return load_taxdump(dump, run.taxonomy), release
+        count = load_taxdump(dump, run.taxonomy)
+    record_source(run.sources, "taxonomy", TAXDUMP_URL, release)
+    return count, release
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,14 +150,6 @@ class Taxonomy:
             current = row[0]
         raise TaxonomyUnavailable(f"taxon {tax_id} merges in a cycle")
 
-    def name(self, tax_id: int) -> str:
-        row = self.connection.execute(
-            "SELECT name FROM taxon WHERE tax_id = ?", (tax_id,)
-        ).fetchone()
-        if row is None:
-            raise TaxonomyUnavailable(f"taxon {tax_id} is not in the taxonomy")
-        return row[0]
-
     def lineage(self, tax_id: int) -> Iterator[Taxon]:
         """The taxon, then everything above it, nearest first."""
         for taxon_id, rank, name in self.connection.execute(ANCESTORS, (tax_id,)):
@@ -169,5 +163,4 @@ class Taxonomy:
 def main() -> None:
     run = command_line(__doc__)
     count, release = fetch(run)
-    record_source(run.sources, "taxonomy", TAXDUMP_URL, release)
     print(f"{run.taxonomy}: {count} taxa, released {release}")

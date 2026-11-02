@@ -151,10 +151,6 @@ def _open(path: Path) -> sqlite3.Connection:
     return sqlite3.connect(f"file:{path}?mode=ro", uri=True)
 
 
-def _marks(values: Sequence[str]) -> str:
-    return ", ".join("?" * len(values))
-
-
 def host_sequences(
     directory: Path, taxon_id: int, accessions: Sequence[str]
 ) -> dict[str, str]:
@@ -164,7 +160,7 @@ def host_sequences(
     try:
         found = connection.execute(
             "SELECT accession, sequence FROM sequence "
-            f"WHERE accession IN ({_marks(accessions)})",
+            f"WHERE accession IN ({', '.join('?' * len(accessions))})",
             tuple(accessions),
         ).fetchall()
     finally:

@@ -7,7 +7,7 @@ serve it, and each one's `--help` says what it does.
 
 import argparse
 
-from bpgraph.client import connect
+from bpgraph.client import connect, exists
 from bpgraph.config import Config
 
 
@@ -17,8 +17,7 @@ def main() -> None:
     ).parse_args()
     config = Config.from_env()
     db = connect(config)
-    # Not GRAPH.LIST: it once missed a graph swapped in over one 6.0 wrote.
-    if not db.connection.exists(config.live_graph):
+    if not exists(db, config.live_graph):
         print(f"{config.live_graph}: not built yet")
         return
     graph = db.select_graph(config.live_graph)

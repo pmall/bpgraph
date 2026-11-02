@@ -56,6 +56,7 @@ from urllib.request import Request, urlopen
 
 from bpgraph import files
 from bpgraph.enums import GoNamespace, GoRelation
+from bpgraph.files import clean
 from bpgraph.loaders.tsv import rows
 from bpgraph.obo import TERM, parse, target
 from bpgraph.run import HUMAN, HostPaths, command_line
@@ -117,11 +118,6 @@ class _Field(IntEnum):
     ASSIGNED_BY = 14
 
 
-def _clean(text: str) -> str:
-    """One line of text: a TSV cell holds no tab and no newline."""
-    return " ".join(text.split())
-
-
 def _lines(url: str) -> Iterator[str]:
     """A text file's lines, streamed, gunzipped if the URL says so."""
     request = Request(url, headers={"User-Agent": USER_AGENT})
@@ -160,7 +156,7 @@ def _ontology(scratch: Path) -> tuple[Path, Path, Path, str]:
             go_id = fields["id"][0]
             obsolete = fields.get(OBSOLETE, ())[:1] == [TRUE]
             namespace = GoNamespace(fields["namespace"][0]).value
-            t.write(f"{go_id}\t{_clean(fields['name'][0])}\t{namespace}\t{obsolete}\n")
+            t.write(f"{go_id}\t{clean(fields['name'][0])}\t{namespace}\t{obsolete}\n")
             for alias in (go_id, *fields.get(ALT_ID, ())):
                 i.write(f"{alias}\t{go_id}\n")
             for parent in fields.get(IS_A, ()):
@@ -226,9 +222,9 @@ def _candidates(lines: Iterable[str], dropped: Counter[str]) -> Iterator[list[st
             yield [
                 fields[_Field.GO_ID],
                 fields[_Field.ACCESSION],
-                _clean(fields[_Field.QUALIFIER]),
+                clean(fields[_Field.QUALIFIER]),
                 fields[_Field.EVIDENCE_CODE],
-                _clean(fields[_Field.ASSIGNED_BY]),
+                clean(fields[_Field.ASSIGNED_BY]),
                 pmid,
             ]
 

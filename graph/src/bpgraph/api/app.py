@@ -16,6 +16,7 @@ import argparse
 import os
 from collections.abc import Awaitable, Callable
 
+import uvicorn
 from pydantic import ValidationError
 from redis.exceptions import ResponseError
 from starlette.applications import Starlette
@@ -71,8 +72,6 @@ def application(backend: Backend) -> Starlette:
 
 
 def main() -> None:
-    import uvicorn
-
     argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     ).parse_args()

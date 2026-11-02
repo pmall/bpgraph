@@ -16,6 +16,7 @@ from. A detection method without a row fails the IntAct fetch, which
 
 import csv
 import logging
+import sys
 from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -128,8 +129,6 @@ class Methods:
 
 
 def main() -> None:
-    import sys
-
     run = command_line(__doc__)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     try:

@@ -37,6 +37,9 @@ from urllib.request import Request, urlopen
 
 from bpgraph import files
 from bpgraph.enums import InteractionKind
+from bpgraph.files import clean
+from bpgraph.loaders.export import export_pmids
+from bpgraph.loaders.tsv import listed, rows
 from bpgraph.run import HUMAN, HostPaths, Run, command_line
 from bpgraph.sources import record_source
 
@@ -69,7 +72,7 @@ def _text(element: ET.Element | None) -> str:
     """All the text under an element, markup dropped, on one line."""
     if element is None:
         return ""
-    return " ".join("".join(element.itertext()).split())
+    return clean("".join(element.itertext()))
 
 
 def _year(*elements: ET.Element | None) -> int:
@@ -193,7 +196,7 @@ def release() -> str:
 
 def _fields(article: Article) -> list[str]:
     return [
-        " ".join(field.split())
+        clean(field)
         for field in (
             article.pmid,
             article.title,
@@ -215,8 +218,6 @@ def write_publications(
     The pmids wanted and the file already there are sorted on disk and read
     side by side: a pmid in both keeps its row, one only wanted is fetched.
     """
-    from bpgraph.loaders.tsv import rows
-
     path.parent.mkdir(parents=True, exist_ok=True)
     fetched = absent = 0
     with tempfile.TemporaryDirectory(dir=path.parent) as directory:
@@ -263,9 +264,6 @@ def write_publications(
 def host_pmids(run: Run, host: HostPaths) -> Iterator[str]:
     """Every pmid a host's silo cites: IntAct, our curated rows of its
     interactome, its GO annotations and its function text."""
-    from bpgraph.loaders.export import export_pmids
-    from bpgraph.loaders.tsv import listed, rows
-
     yield from (row["pmid"] for _, row in rows(host.intact))
     yield from export_pmids(run.export, InteractionKind.HH)
     yield from (row["pmid"] for _, row in rows(host.go_annotations))
@@ -276,9 +274,6 @@ def host_pmids(run: Run, host: HostPaths) -> Iterator[str]:
 def viral_pmids(run: Run) -> Iterator[str]:
     """Every pmid the viral silo cites: our VH rows, and the function text of
     the viral proteins."""
-    from bpgraph.loaders.export import export_pmids
-    from bpgraph.loaders.tsv import listed, rows
-
     yield from export_pmids(run.export, InteractionKind.VH)
     for cursor, row in rows(run.viral.functions):
         yield from listed(cursor, row, "pmids")

@@ -15,7 +15,7 @@ first one on, which is also how Python compares tuples of `str`.
 import os
 import subprocess
 from collections.abc import Iterable, Iterator, Sequence
-from itertools import groupby
+from itertools import chain, groupby
 from pathlib import Path
 
 type Record = list[str]
@@ -35,18 +35,17 @@ def write(path: Path, records: Iterable[Sequence[str]]) -> int:
     return written
 
 
+def clean(text: str) -> str:
+    """One line of text: a TSV cell holds no tab and no newline."""
+    return " ".join(text.split())
+
+
 def write_table(
     path: Path, header: Sequence[str], records: Iterable[Sequence[str]]
 ) -> int:
     """Write a file a run keeps: a header row, then the records. Returns how
     many records."""
-    written = 0
-    with path.open("w", encoding="utf-8", newline="\n") as handle:
-        handle.write("\t".join(header) + "\n")
-        for record in records:
-            handle.write("\t".join(record) + "\n")
-            written += 1
-    return written
+    return write(path, chain([header], records)) - 1
 
 
 def read(path: Path) -> Iterator[Record]:

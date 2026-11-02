@@ -31,8 +31,6 @@ from bpgraph.loaders.records import (
 from bpgraph.loaders.tsv import LoadError, integer, listed, required, rows, text
 from bpgraph.run import ViralPaths
 
-FUNCTION = "f"
-
 
 @dataclass(frozen=True, slots=True)
 class ViralFiles:
@@ -68,7 +66,7 @@ def vh_descriptions(
 def _texts(
     viral: ViralPaths, by_site: Path, exported: Path, scratch: Path
 ) -> Iterator[list[str]]:
-    """`[ref, f, text, pmids]` for each function text of each site. A text
+    """`[ref, text, pmids]` for each function text of each site. A text
     for a span the export does not have means the file no longer matches it."""
     functions = files.sorted_file(
         scratch / "functions_by_site",
@@ -95,7 +93,7 @@ def _texts(
         if found and texts:
             site = of(Site, found[0], 3)
             for _, _, _, function, pmids in texts:
-                yield [site.ref, FUNCTION, function, pmids]
+                yield [site.ref, function, pmids]
 
 
 def _entries(viral: ViralPaths, sites: Path, scratch: Path, entries: TextIO) -> None:
@@ -130,10 +128,6 @@ def _entries(viral: ViralPaths, sites: Path, scratch: Path, entries: TextIO) -> 
         entries.write(f"{accession}\t{strain_id}\t{strain_name}\t{release}\t{name}\n")
 
 
-def _distinct(values: list[str]) -> list[str]:
-    return sorted(set(values))
-
-
 def viral_proteins(
     viral: ViralPaths, sites: Path, exported: Path, scratch: Path
 ) -> ViralFiles:
@@ -142,11 +136,11 @@ def viral_proteins(
         scratch / "sites_by_site", ([*of(Site, r)[3:6], *r] for r in files.read(sites))
     )
     entries = scratch / "vault_entries"
-    texts = scratch / "texts"
     with entries.open("w", encoding="utf-8") as handle:
         _entries(viral, sites, scratch, handle)
-    files.write(texts, _texts(viral, by_site, exported, scratch))
-    files.sort(texts, unique=True)
+    texts = files.sorted_file(
+        scratch / "texts", _texts(viral, by_site, exported, scratch), unique=True
+    )
     by_protein = files.sorted_file(scratch / "sites_by_protein", files.read(sites))
 
     proteins = scratch / "viral_proteins_final"
@@ -155,9 +149,9 @@ def viral_proteins(
             files.read(by_protein), files.read(texts), 1
         ):
             members = [of(Site, record) for record in found]
-            functions = _distinct([r[2] for r in carried])
+            functions = sorted({r[1] for r in carried})
             pmids = dict.fromkeys(
-                pmid for r in carried for pmid in r[3].split(";") if pmid
+                pmid for r in carried for pmid in r[2].split(";") if pmid
             )
             protein = ViralProtein(
                 ref=identity,
