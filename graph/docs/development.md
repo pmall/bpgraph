@@ -1,6 +1,6 @@
 # bpgraph — development
 
-Conventions for changing the code, whether the build or a skill's script.
+Conventions for changing the graph's code: the build, the query API and the MCP server. The workspace's Python rules and verification are in the root `AGENTS.md`.
 
 ## Layout
 
@@ -9,7 +9,8 @@ data/           one directory per run: export/ as the database wrote it, what
                 every silo shares (taxonomy, PSI-MI), one directory per
                 silo (hosts/9606/, viral/), and the vaults the build
                 writes; vault/, the vaults of the live graph, which the
-                build publishes and the API reads. Gitignored
+                build publishes and the API reads. Gitignored, at the
+                root of the workspace
 curation/       methods.tsv, the IntAct keep flag; methods.md, where it comes from;
                 publications.tsv, publications that repeat one experiment;
                 publications.md, how IntAct resolves them
@@ -49,11 +50,8 @@ src/bpgraph/
                 IntAct merge, viral.py the viral proteins, peptides.py, and
                 run.py puts them together; tsv.py parses, records.py the
                 intermediate records
-client/         what consumers of the graph need, copied into consulting repos:
-  instructions.md
-                how a consulting repo's agent works; becomes its AGENTS.md
-  skills/       the analysis skills, each self-contained with its scripts;
-                .agents/skills and .claude/skills link here
+Dockerfile      the image of the query API and the MCP server, built from the
+                root of the workspace
 ```
 
 `write/` is the only code that decides what is written: every write statement lives there, and `client.py` only runs them. `loaders/` turn a run's files into checked, distinct rows in the run's `build/`; they never touch the database. Keeping that line intact is what stops source quirks reaching the graph.
@@ -95,7 +93,7 @@ Consumers see the MCP server only, and it reaches nothing itself: each of its to
 - **An unknown id given to a vault tool is an error**, never an empty answer that reads as an absence, checked with `names.py`.
 - **Size is the caller's call.** Serving adds `max_tokens` to every endpoint, 25,000 by default, estimated at three characters of text per token: a larger result is refused with its size, its rows and its total, never cut. `cypher` runs as written, under the same rule.
 - **What every query needs travels with the server.** Its instructions, `guide/server.md`, reach every agent, subagents included, but Claude Code keeps only their first 2,048 characters: the essentials, first. What interpreting one tool's result takes goes in that tool's description. `schema` returns `guide/schema.md`, the graph as a client needs it, then the Cypher rules, so an agent reads them only when it is about to write Cypher. It is written for clients by hand, not derived from `docs/schema.md`, the builder's contract: a client needs less, and in its own terms. Change it when a change to the graph changes what a client sees.
-- **Three levels, each fact once.** The server, its instructions, tool descriptions and `schema`, serves any team: facts about the graph and its tools, never a team's convention such as what counts as golden. `client/instructions.md` holds our team's rules for every query, such as the golden dataset and exploring with subagents. A skill is the recipe for one analysis, with its own report. Nothing a level above already says is repeated below it.
+- **Three levels, each fact once.** The server, its instructions, tool descriptions and `schema`, serves any team: facts about the graph and its tools, never a team's convention such as what counts as golden. A team's rules for every query, and the recipes of its analyses, live with its client. Nothing the server already says is repeated there.
 - **Vaults answer through fixed lookups**, by protein or by description; there is no SQL endpoint.
 - **Enter through a natural key, then close with `WITH`**: `MATCH (p:Human) WHERE p.accession IN $accessions WITH p MATCH (p)-…`. A filtered `MATCH` is closed with `WITH` before the next one extends it, and a `WITH … WHERE` carries every variable its `WHERE` reads: FalkorDB 6.0.0 dropped a filter that a following `MATCH` extended, and 4.22 refuses a `WHERE` on a variable its `WITH` left behind.
 - **Check what `schema.md` teaches on the live graph**: every pattern and rule it gives runs, and answers in well under a second.
@@ -104,20 +102,4 @@ Both run in Docker from one image, so a change to `src/` reaches them only once 
 
 ## Writing code
 
-`uv` is the package manager and Python is 3.14. Use `uv add` / `uv sync` / `uv run`, never bare `pip` or `python`.
-
-Type everything — parameters, returns, attributes, record fields — and keep annotations precise rather than convenient: a literal or an enum over a bare `str`, a concrete collection type over `Any`.
-
-`None` and `Optional` are statements about the domain, not escape hatches. Use them only where absence is genuinely possible in the data, never to satisfy the type checker, silence an error, or stand in for a value that is not initialized yet. An awkward type usually means the shape of the code is wrong. The graph follows the same rule: no property in `schema.md` is optional, and unknown free text is `''`.
-
-## Verification
-
-At the end of every coding session, in order, fixing what they surface rather than working around it:
-
-1. Delete dead code, and imports the change introduced or left orphaned.
-2. `uv run ruff format .`
-3. `uv run ruff check --fix .`
-4. `uv run pyright`
-5. `uv run python -m compileall -q src` — add other code roots as they appear.
-6. `uv run pytest`, if there is anything to test. This is ingestion code and query scripts; most of it is verified by running it, not by unit tests.
-7. `uv run mdformat --wrap no --number *.md docs curation client`
+The graph follows the root `AGENTS.md`'s rule on `None`: no property in `schema.md` is optional, and unknown free text is `''`. Most of the graph's code is ingestion and query code, verified by running it rather than by unit tests.

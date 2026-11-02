@@ -1,0 +1,37 @@
+[project]
+name = "bpgraph-client"
+version = "0.1.0"
+description = "What a repository consulting bpgraph needs: its agent's instructions, the analysis skills and their commands"
+authors = [
+    { name = "pmall", email = "pierre.mallinjoud@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.11",
+]
+
+[project.scripts]
+bpgraph-client = "bpgraph_client:main"
+
+[build-system]
+requires = ["uv_build>=0.12.3,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1",
+    "pytest>=8",
+    "ruff>=0.9",
+]
+
+[tool.ruff]
+extend = "../pyproject.toml"
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"bpgraph".msg = "The client reaches the graph through the MCP server's tools only."
+
+[tool.pyright]
+include = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

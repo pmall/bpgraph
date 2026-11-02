@@ -1,0 +1,52 @@
+[project]
+name = "bpgraph"
+version = "0.1.0"
+description = "FalkorDB graph of protein-protein interactions: ingestion, validation, the query API and a read-only MCP server"
+authors = [
+    { name = "pmall", email = "pierre.mallinjoud@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "falkordb>=1.7.1",
+    "httpx2>=2.13.1",
+    "mcp>=2.2.0",
+    "pydantic>=2.13.5",
+    "starlette>=1.7.0",
+    "uvicorn>=0.54.0",
+]
+
+[project.scripts]
+bpgraph = "bpgraph:main"
+bpgraph-api = "bpgraph.api.app:main"
+bpgraph-audit = "bpgraph.audit:main"
+bpgraph-functions = "bpgraph.uniprot:main"
+bpgraph-go = "bpgraph.go:main"
+bpgraph-intact = "bpgraph.intact:main"
+bpgraph-methods = "bpgraph.methods:main"
+bpgraph-taxonomy = "bpgraph.taxonomy:main"
+bpgraph-build = "bpgraph.build:main"
+bpgraph-mcp = "bpgraph.server:main"
+bpgraph-psimi = "bpgraph.psimi:main"
+bpgraph-pubmed = "bpgraph.pubmed:main"
+bpgraph-query = "bpgraph.query:main"
+bpgraph-swissprot = "bpgraph.swissprot:main"
+
+[build-system]
+requires = ["uv_build>=0.12.3,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1",
+    "pytest>=8",
+    "ruff>=0.9",
+]
+
+[tool.ruff]
+extend = "../pyproject.toml"
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"bpgraph_client".msg = "The graph knows no client: it serves any team through its MCP server."
+
+[tool.pyright]
+include = ["src"]

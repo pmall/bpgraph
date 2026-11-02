@@ -2,6 +2,24 @@ version = 1
 revision = 3
 requires-python = ">=3.14"
 
+[manifest]
+members = [
+    "bpgraph",
+    "bpgraph-client",
+]
+
+[manifest.dependency-groups]
+dev = [
+    { name = "bpgraph", editable = "graph" },
+    { name = "bpgraph-client", editable = "client" },
+    { name = "mdformat", specifier = ">=1.0.0" },
+    { name = "mdformat-frontmatter", specifier = ">=2.1.2" },
+    { name = "mdformat-gfm", specifier = ">=1.0.0" },
+    { name = "pyright", specifier = ">=1.1" },
+    { name = "pytest", specifier = ">=8" },
+    { name = "ruff", specifier = ">=0.9" },
+]
+
 [[package]]
 name = "annotated-types"
 version = "0.8.0"
@@ -36,7 +54,7 @@ wheels = [
 [[package]]
 name = "bpgraph"
 version = "0.1.0"
-source = { editable = "." }
+source = { editable = "graph" }
 dependencies = [
     { name = "falkordb" },
     { name = "httpx2" },
@@ -48,9 +66,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "mdformat" },
-    { name = "mdformat-frontmatter" },
-    { name = "mdformat-gfm" },
     { name = "pyright" },
     { name = "pytest" },
     { name = "ruff" },
@@ -68,9 +83,31 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "mdformat", specifier = ">=1.0.0" },
-    { name = "mdformat-frontmatter", specifier = ">=2.1.2" },
-    { name = "mdformat-gfm", specifier = ">=1.0.0" },
+    { name = "pyright", specifier = ">=1.1" },
+    { name = "pytest", specifier = ">=8" },
+    { name = "ruff", specifier = ">=0.9" },
+]
+
+[[package]]
+name = "bpgraph-client"
+version = "0.1.0"
+source = { editable = "client" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pyright" },
+    { name = "pytest" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2.11" }]
+
+[package.metadata.requires-dev]
+dev = [
     { name = "pyright", specifier = ">=1.1" },
     { name = "pytest", specifier = ">=8" },
     { name = "ruff", specifier = ">=0.9" },

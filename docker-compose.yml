@@ -7,7 +7,7 @@ services:
   # Published to the host so local scripts (python) can connect on localhost:6379.
   # Pinned: `latest` moved from the C engine to 6.0.0, a Rust rewrite whose
   # planner dropped filters, and back again. A new version is a rebuild;
-  # docs/development.md says how to try one.
+  # graph/docs/development.md says how to try one.
   # A query stops after a minute unless its client asks for up to ten.
   falkordb-server:
     image: falkordb/falkordb-server:v4.22.0
@@ -37,7 +37,9 @@ services:
   # graph and the vaults a build publishes in data/vault; nothing it runs
   # writes.
   bpgraph-api:
-    build: .
+    build:
+      context: .
+      dockerfile: graph/Dockerfile
     command: ["uv", "run", "--no-sync", "bpgraph-api"]
     expose:
       - "8000"
@@ -57,7 +59,9 @@ services:
   # Published so MCP clients reach http://localhost:8080/mcp. Each tool
   # forwards to the query API; it reaches neither the graph nor the vaults.
   bpgraph-mcp:
-    build: .
+    build:
+      context: .
+      dockerfile: graph/Dockerfile
     ports:
       - "8080:8080"
     environment:

@@ -1,6 +1,6 @@
 *
 !pyproject.toml
 !uv.lock
-!README.md
-!src
-!docs/schema.md
+!graph/pyproject.toml
+!graph/src
+!client/pyproject.toml
