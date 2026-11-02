@@ -1,6 +1,6 @@
 # Consulting bpgraph
 
-This repository consults bpgraph, a knowledge graph of protein–protein interactions, human–human and virus–human, through the tools of the `bpgraph` MCP server. The server says how to query the graph. This file holds the rules every query here follows, and the skills the analyses that recur.
+This repository consults bpgraph, a knowledge graph of protein–protein interactions, human–human and virus–human, through the tools of the `bpgraph` MCP server. The server says how to query the graph. This file holds the rules every query here follows, and the skills the analyses that recur. The skills' mechanical steps run `bpgraph-client`, the command of the `bpgraph-client` package this repository depends on.
 
 ## Evidence
 

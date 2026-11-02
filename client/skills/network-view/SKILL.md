@@ -8,7 +8,7 @@ description: Draw a subnetwork of the bpgraph protein–protein interaction grap
 You draw a subnetwork of the graph as an interactive page, in three steps:
 
 1. **Gather the dataset.** Query the graph, choose what the network holds, and write it to `<name>.json`. This is your judgment.
-2. **Render it.** Run `uv run <this skill's folder>/render.py <name>.json`. It writes a standard page, `<name>.cytoscape.html`, beside the JSON, from the `cytoscape.html` template next to the script. Every network goes through that template, so networks share one look and compare directly.
+2. **Render it.** Run `uv run bpgraph-client render <name>.json`. It writes a standard page, `<name>.cytoscape.html`, beside the JSON, from the `cytoscape.html` template of the `bpgraph-client` package. Every network goes through that template, so networks share one look and compare directly.
 3. **Adjust the page**, if the network calls for it: colours, labels, shapes or layout, in the page's `adjust` block and nowhere else.
 
 ## Inputs
