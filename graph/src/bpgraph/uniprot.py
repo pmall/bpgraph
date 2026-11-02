@@ -1,11 +1,18 @@
 """UniProt `CC FUNCTION` text and protein names, fetched for the viral silo.
 
-The export holds neither, so they are fetched here and written into the viral
-silo — `data/2026-09-09/viral/functions.tsv` and `entries.tsv`. Sequences are
-not fetched: the export carries each mature protein's own.
-The loader reads them back from there; this module never touches the graph.
-It is also the cache: a fetch runs once per export, and every build after it
-reads what is there. Host proteins get theirs from `bpgraph.swissprot`.
+`bpgraph-functions RUN` reads the run's export to learn which viral entries
+and spans it names, fetches them from UniProt and writes, sorted, the run's
+`viral/functions.tsv`, one row per text of an entry and span: `accession`,
+`start`, `stop`, `function` and `pmids`, `;`-separated; and `viral/entries.tsv`,
+each entry's protein name: `accession` and `description`. It records the fetch
+in `sources.tsv`, its release UniProt's `X-UniProt-Release`. Rebuilding is what
+puts them in the graph.
+
+The export holds neither, so they are fetched here. Sequences are not fetched:
+the export carries each mature protein's own. The build reads these files;
+this module never touches the graph. They are also the cache: a fetch runs once
+per export, and every build after it reads what is there. Host proteins get
+theirs from `bpgraph.swissprot`.
 
 An entry is one accession, but a viral protein is one chain of it: a
 polyprotein carries a mature protein per chain, and UniProt scopes a FUNCTION
@@ -15,8 +22,8 @@ boundary often enough — an export's NS5A ending at 2419 where UniProt's chain
 ends at 2420 — while two chains of one entry never sit close enough for the
 overlap to be ambiguous.
 
-**Only reviewed entries give function text.** An unreviewed entry's text is
-automatic annotation that cites no publication; its protein name is kept.
+**Only reviewed entries give function text**, for the reason
+docs/schema.md#protein gives; an unreviewed entry's protein name is kept.
 
 **Text that is not about the protein is not written.** An entry's own FUNCTION
 describes the whole accession, which is the protein itself only where the
@@ -393,20 +400,10 @@ def write_viral(export: Path, viral: ViralPaths) -> tuple[int, int, int, str]:
 
 
 def main() -> None:
-    """Fetch the viral silo's function text and protein names.
+    from bpgraph.run import command_line
 
-    `uv run bpgraph-functions data/2026-09-09` reads that run's export to learn
-    which viral entries and spans it names, and writes `viral/functions.tsv`
-    and `viral/entries.tsv`. Rebuilding is what puts them in the graph.
-    """
-    import sys
-
-    from bpgraph.run import Run
-
+    run = command_line(__doc__)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    if len(sys.argv) != 2:
-        sys.exit("usage: bpgraph-functions <run directory>")
-    run = Run(Path(sys.argv[1]))
     written, held, asked, release = write_viral(run.export, run.viral)
     record_source(run.sources, "viral uniprot", ACCESSIONS_URL, release)
     print(

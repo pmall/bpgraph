@@ -1,6 +1,6 @@
 """Intermediate files, sorted on disk and read side by side.
 
-Nothing a build or a fetch reads is ever held whole in memory. Where rows of
+How a build or a fetch streams, as docs/development.md#code asks. Where rows of
 two files have to meet — a curated row and the IntAct row it merges onto, a
 peptide and its description — both are written to an intermediate file with
 the shared key in their leading fields, sorted on disk by GNU `sort`, and read

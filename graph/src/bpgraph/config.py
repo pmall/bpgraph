@@ -1,4 +1,7 @@
-"""Connection settings, read from the environment."""
+"""Connection settings, read from the environment: the FalkorDB server at
+`FALKORDB_HOST` and `FALKORDB_PORT` (`localhost:6379` by default), with
+`FALKORDB_PASSWORD`, empty for a server without auth, and the live graph's
+vaults in `BPGRAPH_VAULT` (`data/vault` by default)."""
 
 import os
 from dataclasses import dataclass
@@ -22,8 +25,7 @@ class Config:
 
     @classmethod
     def from_env(cls) -> Self:
-        """Read the same variables docker-compose.yml uses. An empty password
-        means the server runs without auth, which is the local default."""
+        """Read the variables, the same docker-compose.yml sets."""
         return cls(
             host=os.environ.get("FALKORDB_HOST", "localhost"),
             port=int(os.environ.get("FALKORDB_PORT", "6379")),

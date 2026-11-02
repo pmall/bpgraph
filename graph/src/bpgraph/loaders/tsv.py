@@ -1,10 +1,17 @@
 """Reading the tab-separated files a run holds, with every error located.
 
-Every file a build reads is TSV — the export, and everything fetched beside it.
+Every file a build reads is TSV — the export, and everything fetched beside it:
+UTF-8, a byte order mark allowed, with one header row naming the columns.
+Column order does not matter, names do, and a column no reader asks for may be
+there. Leading and trailing whitespace is stripped from every cell. Every
+column a reader asks for must be there, and a cell it reads may be empty only
+where it says so. Empty is the empty string: `NULL` or `\\N` is text like any
+other.
+
 One line is one row and a tab is always a separator: quoting is off, so a
 double quote in an abstract is text like any other. A cell holding a tab or a
 newline of its own no longer parses, and is caught by its line number rather
-than silently swallowing the rows around it.
+than silently swallowing the rows around it. A blank line is skipped.
 """
 
 import csv

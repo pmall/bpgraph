@@ -47,12 +47,12 @@ def test_render_fills_the_template() -> None:
     assert "</script>" not in page
 
 
-def test_main_writes_the_page_beside_the_file(tmp_path: Path) -> None:
+def test_draw_writes_the_page_beside_the_file(tmp_path: Path) -> None:
     path = tmp_path / "ferroptosis-flaviviridae.json"
     path.write_text(Network.model_validate(network()).model_dump_json())
-    render.main([str(path)])
-    page = (tmp_path / "ferroptosis-flaviviridae.cytoscape.html").read_text()
-    assert '"name":"GPX4"' in page
+    page = render.draw(path)
+    assert page == tmp_path / "ferroptosis-flaviviridae.cytoscape.html"
+    assert '"name":"GPX4"' in page.read_text()
 
 
 @pytest.mark.parametrize(

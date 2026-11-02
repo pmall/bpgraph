@@ -1,11 +1,20 @@
-"""A graph of protein-protein interactions, their evidence and their context."""
+"""A graph of protein-protein interactions, their evidence and their context.
+
+`bpgraph` reports what the live graph holds: its nodes of each kind, counted, or
+that it is not built yet. The package's other commands build the graph and
+serve it, and each one's `--help` says what it does.
+"""
+
+import argparse
 
 from bpgraph.client import connect
 from bpgraph.config import Config
 
 
 def main() -> None:
-    """Report what the live graph currently holds."""
+    argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    ).parse_args()
     config = Config.from_env()
     db = connect(config)
     # Not GRAPH.LIST: it once missed a graph swapped in over one 6.0 wrote.

@@ -1,10 +1,10 @@
 """The curated publication groups: publications that report one experiment
-again, whose IntAct rows are resolved as a whole.
+again, whose IntAct rows are resolved as a whole by `bpgraph.intact`.
 
-`curation/publications.tsv` has one row per publication: its `group`, its
-`pmid` and a `note`. Within a group, a protein pair keeps the IntAct rows of
-the lowest pmid that reports it, and drops the others. `curation/publications.md`
-says why.
+`curation/publications.tsv` has a header and one row per publication: its
+`group`, its `pmid`, and a `note` saying what the publication is and why it is
+grouped. A pmid is in one group at most, and a group holds two publications at
+least. `curation/publications.md` says what a group means.
 """
 
 import csv

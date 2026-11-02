@@ -1,26 +1,50 @@
 """The curation export: our HH and VH descriptions, the viral sites they
 observe, and the peptides they report.
 
-The format is documented in docs/export.md. `descriptions_hh` and
-`descriptions_vh` hold one row per observation and restate both partners
-inline; `interactors_viral` the sequence of every viral site; `mappings_h` and
-`mappings_v` the sequences the descriptions map, from a human and a viral
-partner. Which silo a row feeds follows from its file: an `hh` row is our
-curation of the human interactome, merged onto IntAct; a `vh` row is a viral
-probe.
+The relational database exports five TSV files, read as `bpgraph.loaders.tsv`
+says, into a run's `export/`, `data/2026-10-14/export/`. It names each after
+the run that wrote it, `descriptions_hh_run87.tsv`, so a file is found by its
+stem, and an export holds exactly one file of each stem. The `.xlsx` copy the
+database also writes of each is ignored.
 
-The database names each file after the run that wrote it,
-`descriptions_hh_run87.tsv`, so a file is found by its stem: exactly one
-`descriptions_hh*.tsv` per export.
+- `descriptions_hh`, one row per human–human observation: a pair, a pmid, a
+  method; `descriptions_vh`, one per virus–human observation. `ExportRow`.
+- `interactors_viral`, one row per viral entry and span a VH row names, with
+  its residues. `ViralSite`.
+- `mappings_h` and `mappings_v`, one row per sequence a description maps on
+  one of its partners. `PeptideRow`.
 
-Human or viral is not a column either. A `vh` row's second partner is the
-viral one, and every other partner is human. Of a human partner, only the
-accession is read: its name and description come from Swiss-Prot. A viral
-partner is grouped by curation: its virus is the row's species taxon and its
-name the row's `protein`.
+The export carries only what our curation alone knows: our interactions, how
+the viral proteins they name are grouped, the viral sequences, and the
+sequences the interactions map. Everything a public source knows better comes
+from that source, fetched into the run beside the export: a human protein's
+name and function from Swiss-Prot, a viral entry's function text from UniProt,
+a method's name from PSI-MI, a publication's metadata from PubMed.
+
+Which silo a row feeds follows from its file: an `hh` row is our curation of
+the human interactome, which stands for its publication in place of IntAct's
+records, as `bpgraph.loaders.host` says; a `vh` row is a viral probe. Human or
+viral is not a column either: slot 1 is always the human partner, a `vh` row's
+second partner is the viral one, and every other partner is human. Two viral
+proteins may not interact, so there is no `vv` file. A pair may be one protein
+twice, a homodimer.
+
+**UniProt entries are the ones curation recorded.** A human accession is a
+Swiss-Prot entry of the current release, canonical, not an isoform's;
+`bpgraph.loaders.curated` drops a row naming any other. A viral entry may be of
+any release: curation matches its entries to the current UniProt where it can,
+and keeps the recorded one where it cannot. Each partner says which release it
+is of, and a viral site's coordinates and sequence are that release's.
+
+**Curation groups the viral proteins**, and the build takes the grouping as
+given: a viral partner's virus is the row's species taxon, and its protein the
+virus plus the row's `protein`, a name grouping its curated forms: HBV's `X`
+and `HBx` are both `HBx`, EBV's `EBNA6` is `EBNA3C`. docs/schema.md says what
+they become.
 
 Every reader here yields one validated row at a time, with the file and line
-it came from.
+it came from, so a malformed export fails before anything is written:
+`descriptions_vh_run87.tsv:2: MI:9999 is not a PSI-MI term`.
 """
 
 import re
@@ -61,7 +85,21 @@ def export_file(export: Path, stem: str) -> Path:
 
 @dataclass(frozen=True, slots=True)
 class ViralMention:
-    """The viral partner of a VH row, as curation groups it."""
+    """The viral partner of a VH row, as curation groups it, from the columns
+    of `descriptions_vh`:
+
+    - `accession2`, `start2`, `stop2`: the entry and span it was observed at,
+      1-based inclusive;
+    - `release2`: the UniProt release of the entry, which must be the one its
+      row of `interactors_viral` gives;
+    - `protein`: the curated protein name, case-sensitive, as part of the
+      protein's identity;
+    - `species_ncbi_taxon_id`, `species`: the virus, the species taxon curation
+      groups the protein under, and its name;
+    - `strain_ncbi_taxon_id`, `strain`: the entry's strain, kept in the vault;
+      `strain` may be empty;
+    - `uniprot_name2`, `generic_name2`: not read.
+    """
 
     accession: str
     start: int
@@ -76,9 +114,26 @@ class ViralMention:
 
 @dataclass(frozen=True, slots=True)
 class ExportRow:
-    """One description row, its method already a current PSI-MI id. `second`
-    is the second partner's accession for an HH row, and `viral` is set for a
-    VH row alone."""
+    """One row of `descriptions_hh` or `descriptions_vh`, one description: one
+    protein pair, one publication, one method. `second` is the second
+    partner's accession, and `viral` is set for a VH row alone.
+
+    The columns both files share:
+
+    - `stable_id`: curation's identifier, the description's key, so unique
+      across the two files;
+    - `pmid`: digits only;
+    - `psimi_id`: a PSI-MI id, or a secondary id PSI-MI maps to its term's,
+      which the row then carries;
+    - `accession1`: the first partner, always human;
+    - `version`, `method`, `release1`, `gene_name1`: not read: the row's
+      revision, the method's name, which PSI-MI gives, and the partner's
+      release and gene name, which Swiss-Prot gives.
+
+    `descriptions_hh` names its second partner, human, the same way:
+    `accession2`, with `release2` and `gene_name2` unread. `descriptions_vh`
+    names its viral partner as `ViralMention` says.
+    """
 
     cursor: Cursor
     stable_id: str
@@ -92,8 +147,17 @@ class ExportRow:
 
 @dataclass(frozen=True, slots=True)
 class ViralSite:
-    """One row of `interactors_viral`: a viral entry and span, and its
-    residues in the UniProt release curation recorded them from."""
+    """One row of `interactors_viral`: a viral entry and span a VH row names,
+    and its residues in the UniProt release curation recorded them from. Every
+    viral partner of `descriptions_vh` must have its row. The residues go to
+    the viral vault, not the graph.
+
+    - `accession`, `start`, `stop`: the entry and span, as the descriptions
+      name them;
+    - `release`: the UniProt release the sequence is from;
+    - `sequence`: the residues of that span, exactly `stop - start + 1`,
+      uppercased on load.
+    """
 
     cursor: Cursor
     accession: str
@@ -105,10 +169,31 @@ class ViralSite:
 
 @dataclass(frozen=True, slots=True)
 class PeptideRow:
-    """One mapping of 5 to 20 residues, its source not yet matched to a
-    partner. `start` and `stop` are a viral source's span, and `0` for a human
-    source, which is its whole entry. `target` is the kind of the partner it
-    binds."""
+    """One row of `mappings_h` or `mappings_v` that is a peptide, its source
+    not yet matched to a partner.
+
+    A mapping is a sequence a description maps on one of its partners: the
+    region it reports as sufficient for the interaction. A description may map
+    none, or several. `mappings_h` holds the ones on a human partner,
+    `mappings_v` the ones on a viral partner:
+
+    - `stable_id`: the description's, which must be in a description file;
+    - `sequence`: the residues, uppercased on load, so a lowercase residue is
+      taken as given;
+    - `accession`: the partner it is on, its source, which must be one of the
+      description's two; a mapping on an isoform is its entry's;
+    - `start`, `stop`: `mappings_v` only, the viral partner's span, which must
+      be the description's;
+    - `target`: `mappings_h` only, `h` or `v`, the kind of the partner the
+      sequence binds;
+    - `isoform`, `release`, `nter`, `cter`: not read.
+
+    Every mapping's sequence must be letters. Only a peptide is kept, 5 to 20
+    residues, both included: a longer or shorter mapping is skipped without
+    being checked further. `start` and `stop` are a viral source's span, and
+    `0` for a human source, which is its whole entry. `target` is the kind of
+    the partner it binds: a viral source binds a human one.
+    """
 
     cursor: Cursor
     stable_id: str

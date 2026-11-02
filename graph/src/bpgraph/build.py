@@ -1,12 +1,36 @@
-"""Running a build: prepare, write into staging, validate, swap, publish vaults.
+"""Build one run directory into the live graph and its vaults.
 
-The live graph is never written to. A run builds beside it and publishes with a
-single `RENAME`, so a bad export cannot land on something people are querying.
+`bpgraph-build RUN` reads a run the fetch commands filled first, each reading
+what the ones before it wrote: `bpgraph-taxonomy`, `bpgraph-psimi`,
+`bpgraph-methods`, `bpgraph-swissprot`, `bpgraph-intact`, `bpgraph-go`,
+`bpgraph-functions` and `bpgraph-pubmed`, in this order. It then runs, in order:
 
-Every step streams: the preparation reads the run a line at a time into files
-in the run's `build/`, and the graph is written from those files in batches.
-Nothing whole is ever held in memory, and `build/` is removed when the build
-ends, whether it succeeded or not. docs/build.md tells the whole order.
+1. **Preparation.** Every silo of the run is read and checked into files in
+   the run's `build/` by `bpgraph.loaders`, before the graph is touched.
+2. **Staging.** `bpgraph_staging` is emptied and its indexes created, before
+   any data, so every `MATCH` a write performs is an index lookup.
+3. **Writing**, from the prepared files, in batches, in dependency order:
+   proteins, human then viral; viruses, their families, `:PARENT` and
+   `:IN_TAXON`; publications, and `:FUNCTION_CITES` onto them; peptides;
+   interactions, each with its descriptions; each curated description's
+   `:REPORTS`, and each peptide's `:FROM` and `:BINDS`; GO terms, their
+   edges, and the annotations. A GO term marked obsolete fails the build: GO
+   detaches the terms it retires, so one here is annotated.
+4. **Gate.** The unique constraints are created and must all settle on
+   `OPERATIONAL`, `bpgraph.schema`: a duplicate key drops staging.
+5. **Swap.** `RENAME bpgraph_staging bpgraph`, which overwrites its
+   destination: this is the whole deployment.
+6. **Vaults.** `host-9606.sqlite` and `viral.sqlite` are written into the
+   run's `vault/`, then published to the live vault directory, as
+   `bpgraph.vault` says.
+7. **Cleanup.** `build/` is removed, whether the build succeeded or not.
+
+It prints what it wrote, the vaults it published, and the release of every
+public dataset the run was fetched from. It logs what is worth a human's look
+without being wrong enough to stop it: how our HH curation sits on IntAct, as
+our descriptions, IntAct's, and the IntAct records skipped because we curated
+their publication; and the curated rows dropped for naming an accession no
+longer in Swiss-Prot, with the accessions.
 """
 
 import logging
@@ -33,7 +57,7 @@ from bpgraph.loaders.records import (
 from bpgraph.loaders.run import Prepared, prepare
 from bpgraph.loaders.tsv import listed, rows
 from bpgraph.pubmed import AUTHOR_SEPARATOR
-from bpgraph.run import Run
+from bpgraph.run import Run, command_line
 from bpgraph.schema import ConstraintRow
 from bpgraph.write import annotations, interactions, proteins, taxonomy
 
@@ -395,23 +419,11 @@ def write_vaults(run: Run, prepared: Prepared) -> list[Path]:
 
 
 def main() -> None:
-    """Build one run directory into the live graph and its vaults, and report
-    what went in.
-
-    `uv run bpgraph-build data/2026-09-09` prepares every silo of the run into
-    `build/`, builds the graph through staging, writes the vaults and publishes
-    them beside the live graph, removes `build/`, and prints the counts and the
-    release of every public dataset the run was fetched from.
-    """
-    import sys
-
     from bpgraph.client import connect
     from bpgraph.sources import read_sources
 
+    run = command_line(__doc__)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    if len(sys.argv) != 2:
-        sys.exit("usage: bpgraph-build <run directory>")
-    run = Run(Path(sys.argv[1]))
     config = Config.from_env()
     scratch = run.build
     shutil.rmtree(scratch, ignore_errors=True)

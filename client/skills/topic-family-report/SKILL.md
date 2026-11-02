@@ -91,22 +91,33 @@ Each of these is a decision to make for this family, not a fixed rule. State wha
 
 ## The report
 
-Every report has these sections, in this order. A section can be one line when it has nothing notable. Add family-specific sections after section 7, or subsections anywhere. Use tables only where they carry a comparison. If a full listing is still useful, such as every target with its evidence, put it in an appendix after section 9. A network figure, if the report needs one, is drawn with the `network-view` skill.
+Every report has these sections, in this order. A section can be one line when it has nothing notable. Add subsections anywhere. Use tables only where they carry a comparison. A network figure, if the report needs one, is drawn with the `network-view` skill.
 
 1. **Summary.** A few sentences: how the family engages the topic, its likely net effect, and the strongest finding.
+
 2. **Scope and evidence basis.** The topic file and its date, the date the graph was queried, the family and the viruses present, the evidence level, the tiers included, the backgrounds chosen, and any gap in the data (missing viruses, sparse literature).
+
 3. **Coverage.** A table of the topic proteins targeted, with the viral protein, virus, topic property and evidence (publications, methods) for each one. Then a reading of it: convergence, conservation across viruses, notable absences.
+
 4. **Enrichment.** By the topic's properties (e.g. role), then by function (GO, UniProt function). Give the results that matter, each with its counts, background and test, and group the non-significant ones in a single line.
+
 5. **Network context.** The targets' place in the topic's HH subnetwork, indirect reach, and candidate topic proteins.
+
 6. **Mechanisms.** One entry per interaction, or group of interactions, that decides the net effect or supports a hypothesis: what the viral protein does to its target, and what that means for the topic. Name the remaining targets in one line.
-7. **Net effect and hypotheses.** The family's overall action on the topic, with the conflicting evidence and your confidence, then the hypotheses.
+
+7. **Net effect and hypotheses.** The family's overall action on the topic, with the conflicting evidence and your confidence, then the hypotheses. Sections specific to the family, if any, follow it.
+
 8. **Limitations.** Study bias, small counts, missing directionality, what the graph does not cover.
+
 9. **Comparison hooks.** A short, fixed-format block that `topic-synthesis` reads:
+
    - topic proteins targeted, golden / all tiers, out of the topic total
    - targeted proteins broken down by the topic property
    - viral proteins involved
    - net effect on the topic, in one word or phrase (e.g. *pro-ferroptotic*, *anti-ferroptotic*, *mixed*, *undetermined*)
    - top three findings, one line each
+
+   If a full listing is still useful, such as every target with its evidence, put it in an appendix after this block.
 
 ## Report back
 

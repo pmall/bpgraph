@@ -1,14 +1,17 @@
 """The curated methods: for every PSI-MI detection method, whether IntAct keeps
 it.
 
-`curation/methods.tsv` has one row per detection method (`MI:0001` and below)
-and says `yes` or `no`: whether an IntAct row with that method enters the
-graph, as evidence of a real interaction, observed by an experiment. Our
-curated descriptions are kept whatever their method. `curation/methods.md`
-says where the flags come from and what `no` means.
+`bpgraph-methods RUN` checks `curation/methods.tsv` against the run's PSI-MI:
+every current detection method listed once, flagged `yes` or `no`, under its
+current name. It fails naming the detection methods without a row, or the rows
+that are not current detection methods, warns of a row whose name PSI-MI has
+changed, and otherwise prints how many are kept.
 
-A detection method without a row fails the IntAct fetch, as an uncurated viral
-taxon fails the build: a new PSI-MI term is always a decision someone made.
+`curation/methods.tsv` has a header and one row per detection method, which is
+`MI:0001` and every term below it: its `psimi_id`, its `name` and `keep`, `yes`
+or `no`. `curation/methods.md` says what the flag means and where it comes
+from. A detection method without a row fails the IntAct fetch, which
+`Methods.check` names: a new PSI-MI term is always a decision someone made.
 """
 
 import csv
@@ -20,7 +23,7 @@ from pathlib import Path
 from typing import Self
 
 from bpgraph.psimi import Ontology, read_ontology
-from bpgraph.run import Run
+from bpgraph.run import command_line
 
 logger = logging.getLogger(__name__)
 
@@ -125,18 +128,10 @@ class Methods:
 
 
 def main() -> None:
-    """Check `curation/methods.tsv` against one run's PSI-MI.
-
-    `uv run bpgraph-methods data/2026-09-09` fails naming the detection methods
-    without a row, or the rows that are not current detection methods, and
-    otherwise prints how many are kept.
-    """
     import sys
 
+    run = command_line(__doc__)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    if len(sys.argv) != 2:
-        sys.exit("usage: bpgraph-methods <run directory>")
-    run = Run(Path(sys.argv[1]))
     try:
         methods = Methods.load(read_ontology(run.psimi))
     except ValueError as error:

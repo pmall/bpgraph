@@ -1,6 +1,6 @@
 """Writing the interaction stage: claims, observations, and what supports them.
 
-The shape here is the reification described in docs/schema.md: a description is
+The shape here is the reification docs/schema.md#principles describes: a description is
 a node because it links a pair *and* a publication *and* some peptides, which no
 single edge can do. Neither an interaction nor a description has a key: each is
 what it links, so an interaction is written in one statement with its two

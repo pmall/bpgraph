@@ -1,5 +1,10 @@
 """Auditing a built graph against docs/schema.md.
 
+`bpgraph-audit` reads the live graph and checks it against every invariant of
+docs/schema.md#invariants, which the build does not prove. It prints each
+check that fails, by its invariant's ID, with a few of the rows breaking it,
+and exits non-zero when any fails.
+
 The constraint gate in `schema.py` only proves that natural keys are unique.
 Everything else the schema promises — that no property is missing or
 mistyped, that a `:Protein` is human or viral and never both, that a node
@@ -19,12 +24,13 @@ publications repeat one experiment. They are the rules, not code.
 Every check is one read-only query that returns the rows *breaking* its rule,
 so an empty result is a pass. Queries end in `RETURN` — the runner appends the
 limit. The audit must stay quick enough to run after every build, well
-under a minute, and it runs its checks side by side to get there. Across a
+under a minute, and it runs its checks side by side to get there, as many at
+a time as the server has threads, `FALKORDB_THREADS`. Across a
 large label, count rather than test node by node: compare the edges, the
 distinct sources and the nodes, with the totals the runner passes as
-parameters. Never use `outdegree` on a type with many edges, never a pattern
-comprehension, and never walk a variable-length path down the GO DAG, whose
-paths explode.
+parameters, as docs/development.md#falkordb says of the engine. Never use a
+pattern comprehension, and never walk a variable-length path down the GO DAG,
+whose paths explode.
 """
 
 from collections.abc import Mapping, Sequence
@@ -68,8 +74,12 @@ EXPERIMENTAL = (
 
 @dataclass(frozen=True, slots=True)
 class Check:
-    """One rule, and the query that finds what breaks it."""
+    """One rule, and the query that finds what breaks it. `invariant` is the
+    rule's ID: an invariant of docs/schema.md#invariants, or `E1`, the
+    engine's, of docs/development.md#falkordb. `name` tells apart the checks of
+    one invariant, one per label or edge type."""
 
+    invariant: str
     name: str
     rule: str
     cypher: str
@@ -91,6 +101,7 @@ def _node_shape(label: str, properties: Mapping[str, str]) -> Check:
         f"typeOf(n.{name}) <> '{kind}'" for name, kind in properties.items()
     )
     return Check(
+        invariant="S2",
         name=f"{label}.properties",
         rule=f"{label} carries exactly {', '.join(properties)}",
         cypher=(
@@ -104,6 +115,7 @@ def _node_shape(label: str, properties: Mapping[str, str]) -> Check:
 def _sublabel(base: str, options: tuple[str, str]) -> Check:
     allowed = ", ".join(f"'{option}'" for option in options)
     return Check(
+        invariant="S3",
         name=f"{base}.labels",
         rule=f"{base} carries exactly one of {' | '.join(options)}",
         cypher=(
@@ -125,6 +137,7 @@ def _edge_joins(kind: str, source: str, target: str) -> Check:
         for i, label in enumerate(source.split("|"))
     )
     return Check(
+        invariant="S4",
         name=f"{kind}.joins",
         rule=f"every {kind} edge is (:{source})-[:{kind}]->(:{target})",
         cypher=(
@@ -141,8 +154,9 @@ def _edge_properties(kind: str, source: str, properties: tuple[str, ...]) -> Che
     tests = [f"typeOf(r.{name}) = 'Null'" for name in properties]
     tests.append(f"size(keys(r)) <> {len(properties)}")
     return Check(
-        name=f"{kind}.properties",
-        rule=f"{kind} carries {', '.join(properties) or 'no properties'}",
+        invariant="S4",
+        name=f"{source}.{kind}.properties",
+        rule=f"{kind} from {source} carries {', '.join(properties) or 'nothing'}",
         cypher=(
             f"MATCH (:{source.split('|')[0]})-[r:{kind}]->()\n"
             f"WHERE {' OR '.join(tests)}\n"
@@ -163,13 +177,14 @@ def _edge_shape(
     )
 
 
-def _exactly_one(label: str, kind: str, rule: str) -> Check:
+def _exactly_one(invariant: str, label: str, kind: str, rule: str) -> Check:
     """Every node of a label has exactly one outgoing edge of a type. Counted:
     when the distinct sources are all the nodes, each has one edge at least,
     and when the edges are as many as the nodes, each has one at most.
     `outdegree` would say it per node, but on 4.22 its cost grows with the
     type's edges across the whole graph: a million descriptions never end."""
     return Check(
+        invariant=invariant,
         name=f"{label}.{kind}",
         rule=rule,
         cypher=(
@@ -203,6 +218,7 @@ INVARIANTS: tuple[Check, ...] = (
     # FalkorDB 6.0.0 dropped this WHERE, and returned every interaction: an
     # engine that does is not one the graph can be queried on.
     Check(
+        "E1",
         "engine.filters",
         "the engine keeps the WHERE of a MATCH that a following MATCH extends",
         "MATCH (i:Interaction) WHERE i.n_publications < 0\n"
@@ -210,6 +226,7 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN ID(i) AS interaction, i.n_publications AS n_publications",
     ),
     Check(
+        "S1",
         "graph.labels",
         "every node carries one of the labels schema.md defines",
         "MATCH (n)\n"
@@ -219,6 +236,7 @@ INVARIANTS: tuple[Check, ...] = (
     # Counted, as in `_exactly_one`: every interaction a source, and twice as
     # many edges as interactions; the partner checks below leave two each.
     Check(
+        "I2",
         "Interaction.involves",
         "two INVOLVES edges per interaction",
         "OPTIONAL MATCH (i:Interaction)-[:INVOLVES]->()\n"
@@ -228,6 +246,7 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN $nodes_Interaction AS interactions, $edges_INVOLVES AS edges, sources",
     ),
     Check(
+        "I3",
         "VH.partners",
         "a VH interaction joins one human protein and one viral protein",
         "MATCH (i:VH)-[:INVOLVES]->(p:Protein)\n"
@@ -237,6 +256,7 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN ID(i) AS interaction, humans, virals",
     ),
     Check(
+        "I3",
         "HH.partners",
         "an HH interaction joins two human proteins",
         "MATCH (i:HH)-[:INVOLVES]->(p:Protein)\n"
@@ -244,6 +264,7 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN ID(i) AS interaction, labels(p) AS partner",
     ),
     Check(
+        "I1",
         "Interaction.unique",
         "one interaction per pair of proteins",
         PAIRS + "WITH CASE WHEN ID(a) < ID(b) THEN [ID(a), ID(b)]\n"
@@ -251,16 +272,20 @@ INVARIANTS: tuple[Check, ...] = (
         "WHERE interactions > 1\n"
         "RETURN pair, interactions",
     ),
-    _exactly_one("Description", "SUPPORTS", "one interaction behind every description"),
     _exactly_one(
-        "Description", "REPORTED_IN", "one publication behind every description"
+        "D1", "Description", "SUPPORTS", "one interaction behind every description"
+    ),
+    _exactly_one(
+        "D1", "Description", "REPORTED_IN", "one publication behind every description"
     ),
     Check(
+        "D2",
         "Curated.stable_id",
         "a curated description has a stable id",
         "MATCH (d:Curated)\nWHERE d.stable_id = ''\nRETURN ID(d) AS description",
     ),
     Check(
+        "D4",
         "IntAct.unique",
         "one IntAct description per interaction, publication and method",
         "MATCH (i:Interaction)<-[:SUPPORTS]-(d:IntAct)\n"
@@ -272,6 +297,7 @@ INVARIANTS: tuple[Check, ...] = (
     # Counted: the publications of HH descriptions are ours or IntAct's, and
     # none is both when the two counts add up to all of them.
     Check(
+        "D5",
         "IntAct.uncurated",
         "IntAct describes no publication we curated for HH interactions",
         "MATCH (d:Description)-[:SUPPORTS]->(:HH)\n"
@@ -283,13 +309,17 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN publications, ours, intact",
     ),
     Check(
+        "D6",
         "VH.curated",
         "every VH description is curated",
         "MATCH (d:IntAct)-[:SUPPORTS]->(:VH)\nRETURN ID(d) AS description",
     ),
-    _exactly_one("Annotation", "ANNOTATES", "one protein behind every annotation"),
-    _exactly_one("Annotation", "OF_TERM", "one term behind every annotation"),
+    _exactly_one(
+        "A1", "Annotation", "ANNOTATES", "one protein behind every annotation"
+    ),
+    _exactly_one("A1", "Annotation", "OF_TERM", "one term behind every annotation"),
     Check(
+        "A2",
         "Annotation.published",
         "a publication behind every annotation",
         "OPTIONAL MATCH (a:Annotation)-[:REPORTED_IN]->()\n"
@@ -298,6 +328,7 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN $nodes_Annotation AS annotations, published",
     ),
     Check(
+        "A3",
         "Annotation.unique",
         "one annotation per protein, term and qualifier",
         "MATCH (p:Human)<-[:ANNOTATES]-(a:Annotation)-[:OF_TERM]->(g:GoTerm)\n"
@@ -308,6 +339,7 @@ INVARIANTS: tuple[Check, ...] = (
     _edge_properties("REPORTED_IN", "Description", ()),
     _edge_properties("REPORTED_IN", "Annotation", ("evidence_codes",)),
     Check(
+        "A4",
         "Annotation.evidence",
         "an annotation's publications show it by experimental evidence",
         "MATCH (a:Annotation)-[r:REPORTED_IN]->(b:Publication)\n"
@@ -316,6 +348,7 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN ID(a) AS annotation, b.pmid AS pmid, r.evidence_codes AS codes",
     ),
     Check(
+        "A5",
         "Annotation.functional",
         "no annotation is to a cellular component, or at or below protein binding",
         "MATCH (a:Annotation)-[:OF_TERM]->(g:GoTerm)\n"
@@ -325,6 +358,7 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN ID(a) AS annotation, g.go_id AS go_id, g.name AS name",
     ),
     Check(
+        "D7",
         "IntAct.method_kept",
         "an IntAct description carries a method curation/methods.tsv keeps",
         "MATCH (d:IntAct)\n"
@@ -332,6 +366,7 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN ID(d) AS description, d.method_id AS method_id",
     ),
     Check(
+        "D8",
         "IntAct.unrepeated",
         "no interaction has IntAct descriptions from two publications of one "
         "group of curation/publications.tsv",
@@ -343,6 +378,7 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN group, ID(i) AS interaction, pmids",
     ),
     Check(
+        "D3",
         "Description.method",
         "a method id is a PSI-MI id, and its name is never empty",
         "MATCH (d:Description)\n"
@@ -351,6 +387,7 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN ID(d) AS description, d.method_id AS method_id",
     ),
     Check(
+        "I4",
         "Interaction.counters",
         "the counters equal what they count",
         "MATCH (i:Interaction)<-[:SUPPORTS]-(d:Description)\n"
@@ -367,6 +404,7 @@ INVARIANTS: tuple[Check, ...] = (
     # Counted: as many shortcuts as interactions, and one copying each
     # interaction's counters between its two proteins.
     Check(
+        "I5",
         "INTERACTS_WITH.count",
         "one shortcut edge per interaction",
         "WITH 1 AS one\n"
@@ -374,6 +412,7 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN $nodes_Interaction AS interactions, $edges_INTERACTS_WITH AS edges",
     ),
     Check(
+        "I5",
         "INTERACTS_WITH.shortcut",
         "every interaction has a shortcut edge between its two proteins, "
         "copying its counters",
@@ -386,6 +425,7 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN $nodes_Interaction AS interactions, copied",
     ),
     Check(
+        "I6",
         "Interaction.supported",
         "no interaction without a description behind it",
         "OPTIONAL MATCH (:Description)-[:SUPPORTS]->(i:Interaction)\n"
@@ -394,6 +434,7 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN $nodes_Interaction AS interactions, supported",
     ),
     Check(
+        "T1",
         "Viral.taxon",
         "a viral protein has one IN_TAXON edge, to the virus of its taxon id",
         "MATCH (p:Viral)\n"
@@ -403,11 +444,13 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN p.ncbi_taxon_id AS ncbi_taxon_id, p.name AS name, taxa",
     ),
     Check(
+        "T2",
         "Human.taxon",
         "a human protein gets no Taxon node",
         "MATCH (p:Human)-[:IN_TAXON]->()\nRETURN p.accession AS accession",
     ),
     Check(
+        "T3",
         "Taxon.parent",
         "a virus has at most one family",
         "MATCH (t:Virus)\n"
@@ -415,6 +458,7 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN t.ncbi_taxon_id AS ncbi_taxon_id, outdegree(t, 'PARENT') AS parents",
     ),
     Check(
+        "T4",
         "Taxon.used",
         "every virus has a protein, and every family a virus",
         "MATCH (t:Taxon)\n"
@@ -423,6 +467,7 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN t.ncbi_taxon_id AS ncbi_taxon_id, t.name AS name",
     ),
     Check(
+        "G1",
         "GoTerm.namespace",
         "every term is a biological process or a molecular function",
         "MATCH (t:GoTerm)\n"
@@ -430,6 +475,7 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN t.go_id AS go_id, t.namespace AS namespace",
     ),
     Check(
+        "G2",
         "GoTerm.ancestors",
         "every term sits under a parent, up to a namespace root",
         "MATCH (t:GoTerm)\n"
@@ -440,6 +486,7 @@ INVARIANTS: tuple[Check, ...] = (
     # One step at a time: a term that is not annotated but has a child leads,
     # down acyclic edges, to one that is.
     Check(
+        "G3",
         "GoTerm.reached",
         "every term is annotated, or lies above one that is",
         "MATCH (t:GoTerm)\n"
@@ -448,6 +495,7 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN t.go_id AS go_id, t.name AS name",
     ),
     Check(
+        "P1",
         "Peptide.sequence",
         "length is the residue count, 5 to 20, and residues are upper case",
         "MATCH (x:Peptide)\n"
@@ -456,6 +504,7 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN x.sequence AS sequence, x.length AS length",
     ),
     Check(
+        "B1",
         "Publication.cited",
         "every publication backs a description, an annotation or a function text",
         "MATCH (b:Publication)\n"
@@ -463,6 +512,7 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN b.pmid AS pmid",
     ),
     Check(
+        "P2",
         "Peptide.described",
         "every peptide is reported by a curated description, cut from a "
         "protein and binding one",
@@ -472,6 +522,7 @@ INVARIANTS: tuple[Check, ...] = (
         "RETURN x.sequence AS sequence",
     ),
     Check(
+        "P3",
         "REPORTS.source",
         "of a reporting description's two proteins, exactly one is a source of "
         "the peptide, and one it binds",
@@ -540,7 +591,8 @@ def format_findings(findings: Sequence[Finding], total: int) -> str:
         return f"{total} checks passed: the graph matches docs/schema.md"
     lines = [f"{len(findings)} of {total} checks failed", ""]
     for finding in findings:
-        lines.append(f"{finding.check.name}: {finding.check.rule}")
+        check = finding.check
+        lines.append(f"{check.invariant} {check.name}: {check.rule}")
         lines.append(f"  {' | '.join(finding.columns)}")
         for row in finding.examples:
             lines.append(f"  {' | '.join(str(value) for value in row)}")
@@ -549,13 +601,16 @@ def format_findings(findings: Sequence[Finding], total: int) -> str:
 
 
 def main() -> None:
-    """Audit the live graph. Exits non-zero when anything fails."""
+    import argparse
     import os
     import sys
 
     from bpgraph.client import connect
     from bpgraph.config import Config
 
+    argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    ).parse_args()
     config = Config.from_env()
     db = connect(config)
     # Not GRAPH.LIST: it once missed a graph swapped in over one 6.0 wrote.

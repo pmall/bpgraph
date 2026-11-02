@@ -1,5 +1,10 @@
 """Publication metadata from PubMed, fetched per silo.
 
+`bpgraph-pubmed RUN` needs every other fetch of the run first: what a silo
+cites is what it fetches. It writes each silo's `publications.tsv`, sorted by
+pmid: `pmid`, `title`, `year`, `journal`, `authors`, `; `-separated, and
+`abstract`. It is the one slow fetch.
+
 Every pmid a silo cites — its interactions, its GO annotations, the evidence
 behind its UniProt function text — becomes a `:Publication`, and its title,
 abstract, journal, year and authors come from here. Each silo fetches its own
@@ -12,8 +17,8 @@ empty text, year `0` — and logged, so the graph still says what cited it.
 
 The file is also the cache: a pmid already in it is not fetched again, so a
 rerun after a new source only fetches what is new, and a pmid nothing cites
-any more is dropped from it. Without `NCBI_API_KEY`,
-NCBI allows three requests a second; with it, ten.
+any more is dropped from it. Without `NCBI_API_KEY`, NCBI allows three
+requests a second; with it, ten.
 """
 
 import logging
@@ -32,7 +37,7 @@ from urllib.request import Request, urlopen
 
 from bpgraph import files
 from bpgraph.enums import InteractionKind
-from bpgraph.run import HUMAN, HostPaths, Run
+from bpgraph.run import HUMAN, HostPaths, Run, command_line
 from bpgraph.sources import record_source
 
 logger = logging.getLogger(__name__)
@@ -280,18 +285,8 @@ def viral_pmids(run: Run) -> Iterator[str]:
 
 
 def main() -> None:
-    """Fetch the publications of every silo of one run directory.
-
-    `uv run bpgraph-pubmed data/2026-09-09` needs the silos' other fetches
-    first — what a silo cites is what it fetches — and writes each silo's
-    `publications.tsv`.
-    """
-    import sys
-
+    run = command_line(__doc__)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    if len(sys.argv) != 2:
-        sys.exit("usage: bpgraph-pubmed <run directory>")
-    run = Run(Path(sys.argv[1]))
     host = run.host(HUMAN)
     for dataset, path, pmids in (
         (f"{HUMAN} pubmed", host.publications, host_pmids(run, host)),

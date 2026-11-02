@@ -1,12 +1,12 @@
 # Methods: the IntAct keep flag
 
-[`methods.tsv`](methods.tsv) lists every PSI-MI detection method: `MI:0001` and all 341 terms below it. Each row says `yes` or `no`: does an IntAct row with this detection method enter the graph? It is the ground truth for detection methods. Our curated descriptions are kept whatever their method, and methods are not grouped or counted as evidence.
+[`methods.tsv`](methods.tsv) flags every PSI-MI detection method `yes` or `no`: does an IntAct row with this detection method enter the graph? It is the ground truth for detection methods, and `bpgraph.methods` reads it. Our curated descriptions are kept whatever their method, and methods are not grouped or counted as evidence.
 
 ## Where it comes from
 
 The graph is for an agent that explores it to formulate biological hypotheses, such as mechanistic explanations. An IntAct row enters it when it reports **a real interaction, observed by an experiment, in a publication**, and the flag is the method's part of that judgement.
 
-On 2026-09-30 a first draft flagged each term against that goal, from PSI-MI's definitions and from how IntAct uses the term. A curator biologist then reviewed every row and set the final flags: 266 `yes`, 76 `no`.
+Each flag is a curator biologist's decision against that goal, from PSI-MI's definition of the term and from how IntAct uses it.
 
 ## What is `no`
 
@@ -21,4 +21,4 @@ On 2026-09-30 a first draft flagged each term against that goal, from PSI-MI's d
 
 ## Changing it
 
-The flags are curation: change a row only as a decision. A detection method with no row fails the IntAct fetch, so a term PSI-MI adds must get a row. `uv run bpgraph-methods <run directory>` checks the file against a run's PSI-MI: every current detection method listed once, flagged `yes` or `no`, under its current name. After a change, refetch IntAct and rebuild.
+The flags are curation: change a row only as a decision. A detection method with no row fails the IntAct fetch, so a term PSI-MI adds must get a row; `bpgraph-methods` checks the file against a run's PSI-MI. After a change, refetch IntAct and rebuild.

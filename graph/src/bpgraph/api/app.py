@@ -1,11 +1,18 @@
 """The API server, `bpgraph-api`: one `POST /<name>` per endpoint.
 
+`bpgraph-api` serves until stopped, on `API_HOST` and `API_PORT`
+(`127.0.0.1:8000` by default). It reads the live graph and the published
+vaults where `bpgraph.config` finds them.
+
 A request's JSON body holds the endpoint's parameters, and the response is
-its result as JSON. `GET /` lists the endpoints. Bad parameters answer 422, a
-query the graph refuses or a question with no answer 400, a vault not
-published 503. Not exposed: only the MCP server reaches it.
+its result as text, as the agent reads it. `GET /` lists the endpoints, as
+JSON. An error answers a JSON object, its `error` the message: bad parameters
+422, a result over `max_tokens` 413, a query the graph refuses or a question
+with no answer 400, a vault not published 503. Not exposed: only the MCP
+server reaches it.
 """
 
+import argparse
 import os
 from collections.abc import Awaitable, Callable
 
@@ -64,9 +71,11 @@ def application(backend: Backend) -> Starlette:
 
 
 def main() -> None:
-    """`bpgraph-api`: serve until stopped, on `API_HOST` and `API_PORT`."""
     import uvicorn
 
+    argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    ).parse_args()
     config = Config.from_env()
     backend = Backend(
         graph=connect(config).select_graph(config.live_graph), vault=config.vault

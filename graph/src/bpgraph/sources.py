@@ -2,8 +2,14 @@
 
 Every fetcher records what it fetched in the run directory's `sources.tsv`:
 the dataset, the URL, the day it was fetched and the release the source itself
-names, where it names one. A run that is rebuilt a year later then says which
-GO, which UniProt and which taxonomy its graph describes.
+names, where it names one, as each fetcher's docstring says. A run that is
+rebuilt a year later then says which GO, which UniProt and which taxonomy its
+graph describes, and `bpgraph-build` prints them.
+
+The file has a header, `dataset`, `url`, `fetched` and `release`, then one row
+per dataset, sorted, each fetch replacing its dataset's row. A dataset fetched
+for one silo is named after it, `9606 intact` or `viral pubmed`; one every silo
+shares is named alone, `psi-mi`.
 """
 
 import csv

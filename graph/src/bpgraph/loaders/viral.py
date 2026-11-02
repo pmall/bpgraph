@@ -1,13 +1,10 @@
 """The viral silo: our virus–host interactions, probing a host interactome.
 
-A viral protein is a curated mature protein of a virus, whichever strains and
-accessions it was observed on: curation groups it under a species taxon and a
-name, so every strain's copy of `HBx` lands on one protein. Its sites — each
-entry and span it was observed at — come from our kept VH rows, their
-sequences from `interactors_viral`.
-
-The grouping is curation's, taken as given. A protein keeps every distinct
-function text its members carry.
+A viral protein is the one curation groups its rows under, as
+`bpgraph.loaders.export` says, so every strain's copy of `HBx` lands on one
+protein. Its sites — each entry and span it was observed at — come from our
+kept VH rows, their sequences from `interactors_viral`. A protein keeps every
+distinct function text its members carry.
 
 Where each viral protein sits on each entry and its residues there, the
 entry's strain and the UniProt release it was recorded from, and which entry

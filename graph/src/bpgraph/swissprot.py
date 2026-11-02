@@ -1,17 +1,23 @@
 """Every reviewed UniProt entry of a host: the reference for a host protein.
 
+`bpgraph-swissprot RUN` fetches every reviewed human entry, a page of 500 at a
+time, into the run's `hosts/9606/`: `swissprot.tsv`, with the columns
+`accession`, `name`, `description`, `function` and `pmids`, and `sequences.tsv`
+for the vault, `accession` and `sequence`, both sorted by accession. It records
+the fetch in `sources.tsv`, its release UniProt's `X-UniProt-Release`.
+
 A host protein's name, description and function text come from here, and so
 does the set of accessions a host protein may have: every entry is a protein
 of the graph, IntAct and GO are cut to them, and a curated host partner outside
-them is dropped. One snapshot of about twenty thousand entries for human,
-written into the host's silo as `swissprot.tsv`, with the sequences beside it
-in `sequences.tsv` for the vault.
+them is dropped. About twenty thousand entries for human. Swiss-Prot is for the
+host only: viral entries come from UniProtKB as a whole, reviewed or not, by
+`bpgraph.uniprot`.
 
 `name` is the primary gene symbol. An entry with none — a handful of
 uncharacterized ORFs — is named after its accession, since the graph has no
 empty name. `function` is the entry's `CC FUNCTION` text, joined the way
 `bpgraph.uniprot` joins it, evidence stripped; `pmids` are the PubMed ids that
-text cites as its evidence.
+text cites as its evidence, `;`-separated.
 """
 
 import json
@@ -28,7 +34,7 @@ from urllib.parse import urlencode
 from urllib.request import urlopen
 
 from bpgraph import files
-from bpgraph.run import HUMAN, HostPaths, Run
+from bpgraph.run import HUMAN, HostPaths, command_line
 from bpgraph.sources import record_source
 from bpgraph.uniprot import (
     ATTEMPTS,
@@ -205,16 +211,7 @@ def canonical(identifier: str) -> str:
 
 
 def main() -> None:
-    """Fetch Swiss-Prot human into one run directory.
-
-    `uv run bpgraph-swissprot data/2026-09-09` writes `hosts/9606/swissprot.tsv`
-    and `sequences.tsv`, and records the fetch.
-    """
-    import sys
-
+    run = command_line(__doc__)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    if len(sys.argv) != 2:
-        sys.exit("usage: bpgraph-swissprot <run directory>")
-    run = Run(Path(sys.argv[1]))
     host = run.host(HUMAN)
     print(f"{host.swissprot}: {write_swissprot(host, run.sources)} entries")

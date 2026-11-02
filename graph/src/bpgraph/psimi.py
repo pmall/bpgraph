@@ -1,5 +1,8 @@
 """The PSI-MI ontology: what a method's `psimi_id` is called, and what it is under.
 
+`bpgraph-psimi RUN` downloads `psi-mi.obo` into the run, unless it is there
+already, and records the fetch in `sources.tsv`.
+
 Every method name the graph holds comes from here, not from the export or
 IntAct, which each carry their own copy of the name. The hierarchy tells
 `bpgraph.methods` which terms are detection methods, each of which must have a
@@ -19,7 +22,7 @@ from typing import TypedDict, cast
 from urllib.request import Request, urlopen
 
 from bpgraph.obo import TERM, stanzas, target
-from bpgraph.run import Run
+from bpgraph.run import Run, command_line
 from bpgraph.sources import record_source
 
 logger = logging.getLogger(__name__)
@@ -133,15 +136,7 @@ def fetch(run: Run) -> Path:
 
 
 def main() -> None:
-    """Fetch PSI-MI into one run directory.
-
-    `uv run bpgraph-psimi data/2026-09-09` writes `psi-mi.obo` beside the export
-    and records the fetch.
-    """
-    import sys
-
+    run = command_line(__doc__)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    if len(sys.argv) != 2:
-        sys.exit("usage: bpgraph-psimi <run directory>")
-    path = fetch(Run(Path(sys.argv[1])))
+    path = fetch(run)
     print(f"{path}: {len(read_ontology(path).terms)} terms")
