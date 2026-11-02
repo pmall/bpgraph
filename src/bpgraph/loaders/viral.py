@@ -6,18 +6,14 @@ name, so every strain's copy of `HBx` lands on one protein. Its sites — each
 entry and span it was observed at — come from our kept VH rows, their
 sequences from `interactors_viral`.
 
-Its members are one chain by definition, so they should carry one function
-text. That is checked rather than assumed: a protein keeps every distinct text
-its members carry, and the ones carrying more than one are listed for curation
-to look at, as are names within one virus that differ only in case, and
-members whose lengths differ by more than half.
+The grouping is curation's, taken as given. A protein keeps every distinct
+function text its members carry.
 
 Where each viral protein sits on each entry and its residues there, the
 entry's strain and the UniProt release it was recorded from, and which entry
 each description used go to the viral vault rather than the graph.
 """
 
-import logging
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,12 +33,6 @@ from bpgraph.loaders.records import (
 )
 from bpgraph.loaders.tsv import LoadError, integer, listed, required, rows, text
 from bpgraph.run import ViralPaths
-
-logger = logging.getLogger(__name__)
-
-LENGTH_SPREAD = 0.5
-"""A viral protein whose shortest member is under half its longest is
-reported: those members may not be one chain."""
 
 FUNCTION = "f"
 
@@ -81,9 +71,8 @@ def vh_descriptions(
 def _texts(
     viral: ViralPaths, by_site: Path, exported: Path, scratch: Path
 ) -> Iterator[list[str]]:
-    """`[ref, f, text, pmids, site]` for each function text of each
-    site. A text for a span the export does not have means the file no longer
-    matches it."""
+    """`[ref, f, text, pmids]` for each function text of each site. A text
+    for a span the export does not have means the file no longer matches it."""
     functions = files.sorted_file(
         scratch / "functions_by_site",
         (
@@ -109,7 +98,7 @@ def _texts(
         if found and texts:
             site = of(Site, found[0], 3)
             for _, _, _, function, pmids in texts:
-                yield [site.ref, FUNCTION, function, pmids, ":".join(site[3:6])]
+                yield [site.ref, FUNCTION, function, pmids]
 
 
 def _entries(viral: ViralPaths, sites: Path, scratch: Path, entries: TextIO) -> None:
@@ -148,21 +137,10 @@ def _distinct(values: list[str]) -> list[str]:
     return sorted(set(values))
 
 
-def _disagree(carried: list[list[str]]) -> bool:
-    """Whether the members carrying function text carry different ones. One
-    entry may hold several texts — a generic one beside a curated one — and
-    that is no disagreement; members holding different sets are."""
-    held: dict[str, set[str]] = {}
-    for record in carried:
-        held.setdefault(record[4], set()).add(record[2])
-    return len({frozenset(texts) for texts in held.values()}) > 1
-
-
 def viral_proteins(
     viral: ViralPaths, sites: Path, exported: Path, scratch: Path
 ) -> ViralFiles:
-    """Assemble the viral proteins from their sites, and check that the members
-    of each agree."""
+    """Assemble the viral proteins from their sites."""
     by_site = files.sorted_file(
         scratch / "sites_by_site", ([*of(Site, r)[3:6], *r] for r in files.read(sites))
     )
@@ -175,8 +153,6 @@ def viral_proteins(
     by_protein = files.sorted_file(scratch / "sites_by_protein", files.read(sites))
 
     proteins = scratch / "viral_proteins_final"
-    several_functions: list[str] = []
-    spread: list[str] = []
     with proteins.open("w", encoding="utf-8") as out:
         for (identity,), found, carried in files.cogroup(
             files.read(by_protein), files.read(texts), 1
@@ -186,11 +162,6 @@ def viral_proteins(
             pmids = dict.fromkeys(
                 pmid for r in carried for pmid in r[3].split(";") if pmid
             )
-            if _disagree(carried):
-                several_functions.append(identity)
-            lengths = [int(m.stop) - int(m.start) + 1 for m in members]
-            if min(lengths) < LENGTH_SPREAD * max(lengths):
-                spread.append(f"{identity} {min(lengths)}-{max(lengths)}")
             protein = ViralProtein(
                 ref=identity,
                 virus_id=members[0].virus_id,
@@ -199,42 +170,4 @@ def viral_proteins(
                 pmids=";".join(pmids),
             )
             out.write("\t".join(protein) + "\n")
-
-    for label, listed_ids in (
-        ("have members carrying different function texts", several_functions),
-        ("have members differing in length by more than half", spread),
-    ):
-        if listed_ids:
-            logger.warning(
-                "%d viral proteins %s: %s",
-                len(listed_ids),
-                label,
-                ", ".join(listed_ids),
-            )
-    _case_collisions(proteins, scratch)
     return ViralFiles(proteins=proteins, entries=files.sort(entries, unique=True))
-
-
-def _case_collisions(proteins: Path, scratch: Path) -> None:
-    """Names within one virus that differ only in case are two proteins —
-    genuinely so for EBV's `BARF1` and `BaRF1`, but any new pair is worth a
-    look."""
-    folded = files.sorted_file(
-        scratch / "folded",
-        (
-            [p.virus_id, p.name.lower(), p.name]
-            for p in (of(ViralProtein, r) for r in files.read(proteins))
-        ),
-        unique=True,
-    )
-    collisions = [
-        f"{virus} {'/'.join(r[2] for r in found)}"
-        for (virus, _), found in files.groups(files.read(folded), 2)
-        if len(found) > 1
-    ]
-    if collisions:
-        logger.warning(
-            "%d viral protein names differ only in case: %s",
-            len(collisions),
-            "; ".join(collisions),
-        )

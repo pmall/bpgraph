@@ -74,7 +74,7 @@ An `hh` row is our curation of the human interactome: it is merged onto IntAct's
 
 Two viral proteins may not interact, so there is no `vv`. A pair **may** interact with itself: a homodimer is an ordinary `hh` row with the same accession twice, and becomes one interaction whose two `:INVOLVES` edges point at the one protein.
 
-A human accession is canonical — not an isoform — and must be a Swiss-Prot entry, or the row is dropped and logged. The rows observing one viral site must agree on its `protein`, its virus, its strain and its release, and a virus has one name; either disagreement fails the build. Its function text is UniProt's, fetched for the entry and span, and every distinct one its members carry is kept — see [`schema.md`](schema.md). The build also warns, without stopping, about viral proteins whose members carry several texts, names within one virus that differ only in case, and members whose spans differ in length by more than half — members that may not be one chain.
+A human accession is canonical — not an isoform — and must be a Swiss-Prot entry, or the row is dropped and logged. The rows observing one viral site must agree on its `protein`, its virus, its strain and its release, and a virus has one name; either disagreement fails the build. Its function text is UniProt's, fetched for the entry and span, and every distinct one its members carry is kept — see [`schema.md`](schema.md).
 
 ## interactors_viral
 
