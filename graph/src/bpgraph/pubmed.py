@@ -29,6 +29,7 @@ import time
 import xml.etree.ElementTree as ET
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
+from http.client import IncompleteRead
 from itertools import batched
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -162,7 +163,7 @@ def _post(url: str, fields: dict[str, str]) -> bytes:
             request = Request(url, data=data, headers={"User-Agent": "bpgraph"})
             with urlopen(request, timeout=TIMEOUT) as response:
                 return response.read()
-        except (URLError, TimeoutError) as error:
+        except (URLError, TimeoutError, ConnectionError, IncompleteRead) as error:
             if isinstance(error, HTTPError) and error.code not in {429, 500, 502, 503}:
                 raise
             if attempt == ATTEMPTS:
