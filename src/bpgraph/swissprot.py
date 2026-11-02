@@ -18,10 +18,12 @@ import json
 import logging
 import re
 import tempfile
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NotRequired, TypedDict, cast
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
@@ -29,8 +31,12 @@ from bpgraph import files
 from bpgraph.run import HUMAN, HostPaths, Run
 from bpgraph.sources import record_source
 from bpgraph.uniprot import (
+    ATTEMPTS,
+    BACKOFF,
     FUNCTION,
     PMID_SEPARATOR,
+    RETRIABLE,
+    TIMEOUT,
     ProteinDescription,
     Text,
     cited,
@@ -123,12 +129,30 @@ def _pages(taxon_id: int) -> Iterator[tuple[list[_Record], str]]:
         }
     )
     while url is not None:
-        with urlopen(url) as response:
-            records = cast(_Response, json.load(response))["results"]
-            release = response.headers.get("X-UniProt-Release", "")
-            following = NEXT.search(response.headers.get("Link", ""))
+        records, release, url = _page(url)
         yield records, release
-        url = following.group(1) if following else None
+
+
+def _page(url: str) -> tuple[list[_Record], str, str | None]:
+    """One page, its release and the next page's URL, retried while the
+    failure is UniProt's rather than ours."""
+    attempt = 1
+    while True:
+        try:
+            with urlopen(url, timeout=TIMEOUT) as response:
+                records = cast(_Response, json.load(response))["results"]
+                release = response.headers.get("X-UniProt-Release", "")
+                following = NEXT.search(response.headers.get("Link", ""))
+            return records, release, following.group(1) if following else None
+        except (URLError, TimeoutError) as error:
+            if isinstance(error, HTTPError) and error.code not in RETRIABLE:
+                raise
+            if attempt == ATTEMPTS:
+                raise
+            delay = BACKOFF * attempt
+            logger.warning("swiss-prot: %s, retrying in %.0fs", error, delay)
+            time.sleep(delay)
+            attempt += 1
 
 
 def write_swissprot(host: HostPaths, sources: Path) -> int:
