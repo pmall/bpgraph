@@ -10,11 +10,11 @@ The repository is a uv workspace of two packages, each standing alone with its c
 
 - `graph/`: the graph and everything around it, the package `bpgraph` and its `bpgraph-*` commands: `graph/src/bpgraph/`, the build, the query API and the MCP server; `graph/tests/`, its tests, the docs against the code; `graph/curation/`, the curated lists a build reads; `graph/docs/`, the builder's docs; `graph/README.md`, the package and its folders; `graph/Dockerfile`, the image of the query API and the MCP server. What any team's queries need travels with the MCP server, never one team's conventions, so every agent gets it without reading a file: its instructions, `graph/src/bpgraph/guide/server.md`, kept under the 2,048 characters Claude Code passes on; the tool descriptions; and the `schema` tool, which returns `graph/src/bpgraph/guide/schema.md`: the graph as a client sees it, written for clients and kept apart from the builder's contract, `graph/docs/schema.md`.
 - `client/`: what a repository consulting the graph needs, the package `bpgraph-client`: `client/instructions.md`, which becomes the consulting repository's `AGENTS.md` and holds our rules for every query, the golden dataset, deterministic work in one agent and exploration fanned out to subagents; `client/skills/`, the analyses that recur, which `.agents/skills` and `.claude/skills` link to; `client/src/bpgraph_client/`, the `bpgraph-client` command, the mechanical part of the skills; `client/tests/`, its tests; `client/README.md`, the package and its folders; `client/docs/development.md`, how it is written and how a consulting repository installs it. A skill says what to analyse and what to report, and a `bpgraph-client` subcommand gives it a standard entry point for the mechanical part.
-- The root: the workspace, `pyproject.toml` and `uv.lock`; `docker-compose.yml` and `.env`, which run the services; `data/`, the runs a build reads and the vaults of the live graph, gitignored.
+- The root: the workspace, `pyproject.toml` and `uv.lock`; `docker-compose.yml` and `.env`, which run the services; `_data/`, the runs a build reads and the vaults of the live graph, gitignored.
 
 ## The graph is the source of truth
 
-The live graph `bpgraph` on the FalkorDB server is the only source of truth about the data. `data/` holds the sources a build ingests, not answers.
+The live graph `bpgraph` on the FalkorDB server is the only source of truth about the data. `_data/` holds the sources a build ingests, not answers.
 
 `docker compose up -d` brings up:
 

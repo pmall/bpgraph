@@ -1,7 +1,7 @@
 """Where one run's files live.
 
-A run is one directory under `data/`, named after the export it builds from —
-`data/2026-09-09`. It holds three kinds of thing:
+A run is one directory under `_data/`, named after the export it builds from —
+`_data/2026-09-09`. It holds three kinds of thing:
 
 - what the relational database exported, in `export/`, exactly as produced;
 - what every silo shares: the NCBI taxonomy and PSI-MI, at the top;
@@ -150,7 +150,7 @@ class Run:
 
 
 def command_line(description: str | None) -> Run:
-    """The run directory a command is given, `data/2026-09-09`. Its `--help`
+    """The run directory a command is given, `_data/2026-09-09`. Its `--help`
     prints `description`, the docstring of the command's module."""
     parser = argparse.ArgumentParser(
         description=description, formatter_class=argparse.RawDescriptionHelpFormatter

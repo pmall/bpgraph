@@ -33,7 +33,7 @@ services:
 
   # Query API, built from this repository. Not published: only the MCP server
   # reaches it, over the compose network. The only service that reads the
-  # graph and the vaults a build publishes in data/vault; nothing it runs
+  # graph and the vaults a build publishes in _data/vault; nothing it runs
   # writes.
   bpgraph-api:
     build:
@@ -50,7 +50,7 @@ services:
       API_HOST: 0.0.0.0
       API_PORT: 8000
     volumes:
-      - ./data/vault:/vault:ro
+      - ./_data/vault:/vault:ro
     depends_on:
       - falkordb-server
 
