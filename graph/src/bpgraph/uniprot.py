@@ -43,7 +43,7 @@ import time
 import urllib.parse
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from http.client import HTTPMessage
+from http.client import HTTPMessage, IncompleteRead
 from itertools import batched
 from pathlib import Path
 from typing import NotRequired, TypedDict, cast
@@ -152,7 +152,7 @@ def get(url: str, label: str) -> tuple[object, HTTPMessage]:
         try:
             with urlopen(url, timeout=TIMEOUT) as response:
                 return json.load(response), response.headers
-        except (URLError, TimeoutError) as error:
+        except (URLError, TimeoutError, ConnectionError, IncompleteRead) as error:
             if isinstance(error, HTTPError) and error.code not in RETRIABLE:
                 raise
             if attempt == ATTEMPTS:
