@@ -43,6 +43,7 @@ import time
 import urllib.parse
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from http.client import HTTPMessage
 from itertools import batched
 from pathlib import Path
 from typing import NotRequired, TypedDict, cast
@@ -50,7 +51,10 @@ from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 from bpgraph import files
-from bpgraph.run import ViralPaths
+from bpgraph.files import clean
+from bpgraph.loaders.export import VIRAL_SITES, export_file
+from bpgraph.loaders.tsv import rows
+from bpgraph.run import ViralPaths, command_line
 from bpgraph.sources import record_source
 
 logger = logging.getLogger(__name__)
@@ -108,18 +112,18 @@ class _Feature(TypedDict):
     description: NotRequired[str]
 
 
-class _Comment(TypedDict):
+class Comment(TypedDict):
     commentType: str
     molecule: NotRequired[str]
     texts: NotRequired[list[Text]]
 
 
-class _Value(TypedDict):
+class Value(TypedDict):
     value: str
 
 
 class _Name(TypedDict):
-    fullName: _Value
+    fullName: Value
 
 
 class ProteinDescription(TypedDict):
@@ -131,7 +135,7 @@ class _Record(TypedDict):
     primaryAccession: str
     entryType: str
     proteinDescription: ProteinDescription
-    comments: NotRequired[list[_Comment]]
+    comments: NotRequired[list[Comment]]
     features: NotRequired[list[_Feature]]
 
 
@@ -139,16 +143,24 @@ class _Response(TypedDict):
     results: list[_Record]
 
 
-@dataclass(frozen=True, slots=True)
-class _Batch:
-    records: list[_Record]
-    release: str
-    """UniProt's release, from the response's `X-UniProt-Release` header."""
-
-
-def clean(text: str) -> str:
-    """One line of text: a TSV cell holds no tab and no newline."""
-    return " ".join(text.split())
+def get(url: str, label: str) -> tuple[object, HTTPMessage]:
+    """A UniProt REST response, parsed from JSON, and its headers, retried
+    while the failure is UniProt's rather than ours. `label` names the fetch
+    in the warning a retry logs."""
+    attempt = 1
+    while True:
+        try:
+            with urlopen(url, timeout=TIMEOUT) as response:
+                return json.load(response), response.headers
+        except (URLError, TimeoutError) as error:
+            if isinstance(error, HTTPError) and error.code not in RETRIABLE:
+                raise
+            if attempt == ATTEMPTS:
+                raise
+            delay = BACKOFF * attempt
+            logger.warning("%s: %s, retrying in %.0fs", label, error, delay)
+            time.sleep(delay)
+            attempt += 1
 
 
 CITATIONS = re.compile(r"\s*\((?:PubMed|Ref\.)[^()]*\)")
@@ -307,8 +319,8 @@ def _entry(record: _Record) -> Entry:
     )
 
 
-def _request(accessions: Sequence[str]) -> _Batch:
-    """One batch, retried while the failure is UniProt's rather than ours."""
+def _request(accessions: Sequence[str]) -> tuple[list[_Record], str]:
+    """One batch, and the UniProt release it is from."""
     url = f"{ACCESSIONS_URL}?" + urllib.parse.urlencode(
         {
             "accessions": ",".join(accessions),
@@ -316,30 +328,15 @@ def _request(accessions: Sequence[str]) -> _Batch:
             "format": "json",
         }
     )
-    attempt = 1
-    while True:
-        try:
-            with urlopen(url, timeout=TIMEOUT) as response:
-                return _Batch(
-                    records=cast(_Response, json.load(response))["results"],
-                    release=response.headers.get("X-UniProt-Release", ""),
-                )
-        except (URLError, TimeoutError) as error:
-            if isinstance(error, HTTPError) and error.code not in RETRIABLE:
-                raise
-            if attempt == ATTEMPTS:
-                raise
-            delay = BACKOFF * attempt
-            logger.warning("uniprot: %s, retrying in %.0fs", error, delay)
-            time.sleep(delay)
-            attempt += 1
+    body, headers = get(url, "uniprot")
+    return cast(_Response, body)["results"], headers.get("X-UniProt-Release", "")
 
 
-def write_viral(export: Path, viral: ViralPaths) -> tuple[int, int, int, str]:
+def write_viral(export: Path, viral: ViralPaths, sources: Path) -> tuple[int, int, int]:
     """Fetch the function text of every viral entry and span the export names,
     and every such entry's protein name, and write both, sorted. Returns the
-    function rows written, the entries UniProt still holds, the entries asked
-    for, and the UniProt release they came from.
+    function rows written, the entries UniProt still holds and the entries
+    asked for.
 
     The spans are read sorted by accession, a hundred accessions to a request;
     an accession named at one span only is the protein as a whole. An accession
@@ -347,9 +344,6 @@ def write_viral(export: Path, viral: ViralPaths) -> tuple[int, int, int, str]:
     keeps such an entry as it recorded it, but UniProt has nothing to say
     about it any more.
     """
-    from bpgraph.loaders.export import VIRAL_SITES, export_file
-    from bpgraph.loaders.tsv import rows
-
     viral.directory.mkdir(parents=True, exist_ok=True)
     releases: set[str] = set()
     asked = held = 0
@@ -371,9 +365,9 @@ def write_viral(export: Path, viral: ViralPaths) -> tuple[int, int, int, str]:
             for batch in batched(
                 files.groups(files.read(sites), 1), BATCH_SIZE, strict=False
             ):
-                response = _request([accession for (accession,), _ in batch])
-                releases.add(response.release)
-                entries = {e.accession: e for e in map(_entry, response.records)}
+                records, release = _request([accession for (accession,), _ in batch])
+                releases.add(release)
+                entries = {e.accession: e for e in map(_entry, records)}
                 asked += len(batch)
                 held += len(entries)
                 for (accession,), spans in batch:
@@ -396,16 +390,14 @@ def write_viral(export: Path, viral: ViralPaths) -> tuple[int, int, int, str]:
         files.write_table(viral.entries, ENTRY_COLUMNS, files.read(files.sort(names)))
     if len(releases) > 1:
         logger.warning("uniprot: the release changed mid-fetch: %s", sorted(releases))
-    return written, held, asked, ",".join(sorted(releases))
+    record_source(sources, "viral uniprot", ACCESSIONS_URL, ",".join(sorted(releases)))
+    return written, held, asked
 
 
 def main() -> None:
-    from bpgraph.run import command_line
-
     run = command_line(__doc__)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    written, held, asked, release = write_viral(run.export, run.viral)
-    record_source(run.sources, "viral uniprot", ACCESSIONS_URL, release)
+    written, held, asked = write_viral(run.export, run.viral, run.sources)
     print(
         f"{run.viral.functions}: {written} function texts\n"
         f"{run.viral.entries}: {held} of {asked} entries are in UniProt"

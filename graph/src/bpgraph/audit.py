@@ -33,12 +33,17 @@ pattern comprehension, and never walk a variable-length path down the GO DAG,
 whose paths explode.
 """
 
+import argparse
+import os
+import sys
 from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from falkordb.graph import Graph
 
+from bpgraph.client import connect, exists
+from bpgraph.config import Config
 from bpgraph.methods import read_methods
 from bpgraph.publications import read_groups
 from bpgraph.shape import NODE_PROPERTIES, RELATIONSHIPS, SUBLABELS
@@ -601,20 +606,12 @@ def format_findings(findings: Sequence[Finding], total: int) -> str:
 
 
 def main() -> None:
-    import argparse
-    import os
-    import sys
-
-    from bpgraph.client import connect
-    from bpgraph.config import Config
-
     argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     ).parse_args()
     config = Config.from_env()
     db = connect(config)
-    # Not GRAPH.LIST: it once missed a graph swapped in over one 6.0 wrote.
-    if not db.connection.exists(config.live_graph):
+    if not exists(db, config.live_graph):
         sys.exit(f"{config.live_graph}: not built yet")
     findings = audit(
         db.select_graph(config.live_graph),

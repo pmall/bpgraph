@@ -20,34 +20,28 @@ empty name. `function` is the entry's `CC FUNCTION` text, joined the way
 text cites as its evidence, `;`-separated.
 """
 
-import json
 import logging
 import re
 import tempfile
-import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NotRequired, TypedDict, cast
-from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
-from urllib.request import urlopen
 
 from bpgraph import files
+from bpgraph.files import clean
 from bpgraph.run import HUMAN, HostPaths, command_line
 from bpgraph.sources import record_source
 from bpgraph.uniprot import (
-    ATTEMPTS,
-    BACKOFF,
     FUNCTION,
     PMID_SEPARATOR,
-    RETRIABLE,
-    TIMEOUT,
+    Comment,
     ProteinDescription,
-    Text,
+    Value,
     cited,
-    clean,
     function_text,
+    get,
     protein_name,
 )
 
@@ -61,26 +55,16 @@ COLUMNS = ("accession", "name", "description", "function", "pmids")
 SEQUENCE_COLUMNS = ("accession", "sequence")
 
 
-class _Value(TypedDict):
-    value: str
-
-
 class _Gene(TypedDict):
-    geneName: NotRequired[_Value]
-
-
-class _Comment(TypedDict):
-    commentType: str
-    molecule: NotRequired[str]
-    texts: NotRequired[list[Text]]
+    geneName: NotRequired[Value]
 
 
 class _Record(TypedDict):
     primaryAccession: str
     proteinDescription: ProteinDescription
     genes: NotRequired[list[_Gene]]
-    comments: NotRequired[list[_Comment]]
-    sequence: _Value
+    comments: NotRequired[list[Comment]]
+    sequence: Value
 
 
 class _Response(TypedDict):
@@ -140,25 +124,12 @@ def _pages(taxon_id: int) -> Iterator[tuple[list[_Record], str]]:
 
 
 def _page(url: str) -> tuple[list[_Record], str, str | None]:
-    """One page, its release and the next page's URL, retried while the
-    failure is UniProt's rather than ours."""
-    attempt = 1
-    while True:
-        try:
-            with urlopen(url, timeout=TIMEOUT) as response:
-                records = cast(_Response, json.load(response))["results"]
-                release = response.headers.get("X-UniProt-Release", "")
-                following = NEXT.search(response.headers.get("Link", ""))
-            return records, release, following.group(1) if following else None
-        except (URLError, TimeoutError) as error:
-            if isinstance(error, HTTPError) and error.code not in RETRIABLE:
-                raise
-            if attempt == ATTEMPTS:
-                raise
-            delay = BACKOFF * attempt
-            logger.warning("swiss-prot: %s, retrying in %.0fs", error, delay)
-            time.sleep(delay)
-            attempt += 1
+    """One page, its release and the next page's URL."""
+    body, headers = get(url, "swiss-prot")
+    records = cast(_Response, body)["results"]
+    following = NEXT.search(headers.get("Link", ""))
+    release = headers.get("X-UniProt-Release", "")
+    return records, release, following.group(1) if following else None
 
 
 def write_swissprot(host: HostPaths, sources: Path) -> int:

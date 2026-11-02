@@ -27,6 +27,12 @@ def connect(config: Config) -> FalkorDB:
     )
 
 
+def exists(db: FalkorDB, graph: str) -> bool:
+    """Whether a graph is there, by its key: `GRAPH.LIST` once missed a graph
+    swapped in over one FalkorDB 6.0 wrote."""
+    return bool(db.connection.exists(graph))
+
+
 def _create(label: str, properties: Iterable[str]) -> str:
     assignments = ", ".join(f"{name}: r.{name}" for name in properties)
     return f"CREATE (:{label} {{{assignments}}})"

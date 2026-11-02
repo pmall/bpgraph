@@ -43,7 +43,7 @@ from pathlib import Path
 from falkordb import FalkorDB
 
 from bpgraph import files, schema, vault
-from bpgraph.client import BATCH_SIZE, GraphWriter, Row
+from bpgraph.client import BATCH_SIZE, GraphWriter, Row, connect, exists
 from bpgraph.config import Config
 from bpgraph.enums import GoRelation, InteractionKind, ProteinKind
 from bpgraph.loaders.records import (
@@ -58,7 +58,7 @@ from bpgraph.loaders.run import Prepared, prepare
 from bpgraph.loaders.tsv import listed, rows
 from bpgraph.pubmed import AUTHOR_SEPARATOR
 from bpgraph.run import Run, command_line
-from bpgraph.schema import ConstraintRow
+from bpgraph.sources import read_sources
 from bpgraph.write import annotations, interactions, proteins, taxonomy
 
 logger = logging.getLogger(__name__)
@@ -66,11 +66,10 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True, slots=True)
 class BuildReport:
-    """What a run wrote, and the constraint states it passed."""
+    """What a run wrote."""
 
     graph: str
     counts: dict[str, int]
-    constraints: list[ConstraintRow]
 
     @property
     def total(self) -> int:
@@ -78,8 +77,7 @@ class BuildReport:
 
 
 def _reset(db: FalkorDB, name: str) -> None:
-    # The key, not GRAPH.LIST, which once missed a graph that was there.
-    if db.connection.exists(name):
+    if exists(db, name):
         db.select_graph(name).delete()
 
 
@@ -153,11 +151,13 @@ def _publications(prepared: Prepared) -> Iterator[Row]:
         }
 
 
+def _reports(prepared: Prepared) -> Iterator[Report]:
+    return (of(Report, r) for r in files.read(prepared.reports))
+
+
 def _peptides(prepared: Prepared, scratch: Path) -> Iterator[Row]:
     sequences = files.sorted_file(
-        scratch / "peptides",
-        ([of(Report, r).sequence] for r in files.read(prepared.reports)),
-        unique=True,
+        scratch / "peptides", ([r.sequence] for r in _reports(prepared)), unique=True
     )
     for (sequence,) in files.read(sequences):
         yield {"sequence": sequence, "length": len(sequence)}
@@ -213,10 +213,6 @@ def _interactions(
                 writer, kind, rows_of_kind
             )
     return counts
-
-
-def _reports(prepared: Prepared) -> Iterator[Report]:
-    return (of(Report, r) for r in files.read(prepared.reports))
 
 
 def _peptide_proteins(
@@ -371,20 +367,17 @@ def build(
     """
     _reset(db, config.staging_graph)
     staging = db.select_graph(config.staging_graph)
-
-    # Indexes before the data so every MATCH during the load is index-backed;
-    # constraints after it, so a duplicate shows up as a FAILED constraint.
     schema.create_indexes(staging)
     try:
         counts = _load(GraphWriter(staging), prepared, scratch)
         schema.create_constraints(staging)
-        constraints = schema.validate_constraints(staging)
+        schema.validate_constraints(staging)
     except BaseException:
         _reset(db, config.staging_graph)
         raise
 
     db.connection.rename(config.staging_graph, config.live_graph)
-    return BuildReport(graph=config.live_graph, counts=counts, constraints=constraints)
+    return BuildReport(graph=config.live_graph, counts=counts)
 
 
 def write_vaults(run: Run, prepared: Prepared) -> list[Path]:
@@ -419,9 +412,6 @@ def write_vaults(run: Run, prepared: Prepared) -> list[Path]:
 
 
 def main() -> None:
-    from bpgraph.client import connect
-    from bpgraph.sources import read_sources
-
     run = command_line(__doc__)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     config = Config.from_env()

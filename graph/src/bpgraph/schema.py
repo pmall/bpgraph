@@ -83,7 +83,7 @@ def _constraints(graph: Graph) -> list[ConstraintRow]:
     return cast(list[ConstraintRow], graph.list_constraints())
 
 
-def validate_constraints(graph: Graph, timeout: float = 60.0) -> list[ConstraintRow]:
+def validate_constraints(graph: Graph, timeout: float = 60.0) -> None:
     """Wait for every constraint to settle, then insist all are operational.
 
     Raises `ConstraintsNotSatisfied` naming the ones that failed, so the caller
@@ -107,4 +107,3 @@ def validate_constraints(graph: Graph, timeout: float = 60.0) -> list[Constraint
         raise ConstraintsNotSatisfied(
             f"expected {len(UNIQUE_CONSTRAINTS)} constraints, found {len(report)}"
         )
-    return report

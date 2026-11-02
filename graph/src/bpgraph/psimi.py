@@ -55,7 +55,6 @@ class _Entry(TypedDict):
 
 @dataclass(frozen=True, slots=True)
 class Term:
-    psimi_id: str
     name: str
     obsolete: bool
 
@@ -104,7 +103,6 @@ def read_ontology(path: Path) -> Ontology:
             continue
         psimi_id = fields["id"][0]
         terms[psimi_id] = Term(
-            psimi_id=psimi_id,
             name=" ".join(fields["name"][0].split()),
             obsolete=fields.get(OBSOLETE, ())[:1] == [TRUE],
         )
