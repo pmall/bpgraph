@@ -4,20 +4,16 @@
 Every check a curated row can fail happens here, before anything is written:
 
 - a `stable_id` is unique across both files;
-- a row whose human partner is not a Swiss-Prot entry of the host is dropped,
-  and the accessions are logged;
-- every viral partner is a row of `interactors_viral`, whose sequence goes to
-  the vault, and the rows observing one site agree on its protein, virus,
+- every human partner is a row of `interactors_human`, a protein of the host;
+- every viral partner is a row of `interactors_viral`, whose name and sequence
+  go to the vault, and the rows observing one site agree on its protein, virus,
   strain and release;
 - a virus has one name.
 
 Curation groups the viral proteins, as `bpgraph.loaders.export` says, and the
-grouping is taken as given. A dropped row stays in the file, marked, because
-its peptides are still its own: they are dropped with it rather than orphaned.
+grouping is taken as given.
 """
 
-import logging
-from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,11 +22,9 @@ from typing import TextIO
 from bpgraph import files
 from bpgraph.enums import InteractionKind
 from bpgraph.loaders.export import ExportRow, export_rows, viral_sites
-from bpgraph.loaders.records import ABSENT, KEPT, Curated, Site, of, viral_ref
+from bpgraph.loaders.records import Curated, Site, of, viral_ref
 from bpgraph.loaders.tsv import LoadError
 from bpgraph.psimi import Ontology
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,11 +32,11 @@ class CuratedFiles:
     curated: Path
     """Every curated row, unsorted."""
     sites: Path
-    """The viral sites kept rows observe, unsorted."""
+    """The viral sites VH rows observe, unsorted."""
     exported: Path
     """Every row of `interactors_viral`, sorted by site."""
     viruses: Path
-    """The viruses kept rows name: taxon id, name, sorted."""
+    """The viruses VH rows name: taxon id, name, sorted."""
 
 
 def _curated(row: ExportRow) -> Curated:
@@ -50,7 +44,6 @@ def _curated(row: ExportRow) -> Curated:
     return Curated(
         stable_id=row.stable_id,
         kind=row.kind.value,
-        status=KEPT,
         pmid=row.pmid,
         psimi_id=row.psimi_id,
         accession_1=row.first,
@@ -91,18 +84,16 @@ def _unique(ids: Path) -> None:
             )
 
 
-def _on_swissprot(keyed: Path, proteins: Path, absent: TextIO) -> Iterator[Curated]:
-    """The rows of a file keyed by a human accession, marked `absent` when
-    Swiss-Prot has no such entry."""
+def _on_host(keyed: Path, proteins: Path) -> Iterator[Curated]:
+    """The rows of a file keyed by a human accession, which must be a protein
+    of the host."""
     for (accession,), found, entry in files.cogroup(
         files.read(keyed), files.read(proteins), 1
     ):
-        for record in found:
-            curated = of(Curated, record, 1)
-            if not entry and curated.status == KEPT:
-                absent.write(accession + "\n")
-                curated = curated.with_status(ABSENT)
-            yield curated
+        rows = [of(Curated, record, 1) for record in found]
+        if rows and not entry:
+            raise rows[0].cursor.fail(f"{accession} is not in interactors_human")
+        yield from rows
 
 
 def _placement(row: Curated) -> tuple[str, str, str, str, str]:
@@ -114,12 +105,19 @@ def _viral_sites(
     by_site: Path, export: Path, scratch: Path, out: TextIO, sites: TextIO
 ) -> Path:
     """Match each VH row's viral partner with its row of `interactors_viral`,
-    and write the sites kept rows observe. Returns `interactors_viral` sorted
+    and write the sites they observe. Returns `interactors_viral` sorted
     by site."""
     known = files.sorted_file(
         scratch / "viral_sites",
         (
-            [s.accession, str(s.start), str(s.stop), s.release, s.sequence]
+            [
+                s.accession,
+                str(s.start),
+                str(s.stop),
+                s.release,
+                s.description,
+                s.sequence,
+            ]
             for s in viral_sites(export)
         ),
     )
@@ -132,7 +130,7 @@ def _viral_sites(
         where = ":".join(site)
         if not exported:
             raise rows[0].cursor.fail(f"{where} is not in interactors_viral")
-        _, _, _, release, sequence = exported[0]
+        _, _, _, release, description, sequence = exported[0]
         first = rows[0]
         for curated in rows:
             if _placement(curated) != _placement(first):
@@ -146,33 +144,32 @@ def _viral_sites(
                     f"{release} in interactors_viral"
                 )
             out.write("\t".join(curated) + "\n")
-        kept = next((r for r in rows if r.status == KEPT), None)
-        if kept is not None:
-            record = Site(
-                kept.partner_2,
-                kept.virus_id,
-                kept.name_2,
-                site[0],
-                site[1],
-                site[2],
-                kept.strain_id,
-                kept.strain_name,
-                release,
-                sequence,
-            )
-            sites.write("\t".join(record) + "\n")
+        record = Site(
+            first.partner_2,
+            first.virus_id,
+            first.name_2,
+            site[0],
+            site[1],
+            site[2],
+            first.strain_id,
+            first.strain_name,
+            release,
+            description,
+            sequence,
+        )
+        sites.write("\t".join(record) + "\n")
     return known
 
 
 def _viruses(curated: Path, scratch: Path) -> Path:
-    """The viruses kept VH rows name, each once. A taxon under two names
+    """The viruses VH rows name, each once. A taxon under two names
     fails."""
     named = files.sorted_file(
         scratch / "viruses",
         (
             [row.virus_id, row.virus_name]
             for row in (of(Curated, record) for record in files.read(curated))
-            if row.kind == InteractionKind.VH.value and row.status == KEPT
+            if row.kind == InteractionKind.VH.value
         ),
         unique=True,
     )
@@ -201,18 +198,14 @@ def load_curated(
     _unique(ids)
 
     curated, sites = scratch / "curated", scratch / "sites"
-    absent = scratch / "absent"
-    with (
-        absent.open("w", encoding="utf-8") as lacking,
-        curated.open("w", encoding="utf-8") as out,
-    ):
+    with curated.open("w", encoding="utf-8") as out:
         by_second = scratch / "by_second"
         by_site = scratch / "by_site"
         with (
             by_second.open("w", encoding="utf-8") as hh,
             by_site.open("w", encoding="utf-8") as vh,
         ):
-            for row in _on_swissprot(by_first, proteins, lacking):
+            for row in _on_host(by_first, proteins):
                 if row.kind == InteractionKind.HH.value:
                     hh.write("\t".join([row.accession_2, *row]) + "\n")
                 else:
@@ -220,17 +213,8 @@ def load_curated(
                         "\t".join([row.accession_2, row.start_2, row.stop_2, *row])
                         + "\n"
                     )
-        for row in _on_swissprot(files.sort(by_second), proteins, lacking):
+        for row in _on_host(files.sort(by_second), proteins):
             out.write("\t".join(row) + "\n")
         with sites.open("w", encoding="utf-8") as observed:
             exported = _viral_sites(files.sort(by_site), export, scratch, out, observed)
-
-    statuses = Counter(of(Curated, record).status for record in files.read(curated))
-    if statuses[ABSENT]:
-        accessions = [r[0] for r in files.read(files.sort(absent, unique=True))]
-        logger.warning(
-            "dropped %d curated rows whose human partner is not in Swiss-Prot: %s",
-            statuses[ABSENT],
-            ", ".join(accessions),
-        )
     return CuratedFiles(curated, sites, exported, _viruses(curated, scratch))

@@ -7,8 +7,8 @@ viral one. The source must be one of that row's partners — a human one by
 accession alone, since a human partner is its whole entry, and a mapping on
 an isoform is its entry's — and is the protein the peptide was cut from; the
 other partner is the one it binds, whose kind the mapping's `target` must
-give. A homodimer's peptide binds its own source. A dropped row drops its
-peptides; a peptide naming no row at all fails the build.
+give. A homodimer's peptide binds its own source. A peptide naming no row
+fails the build.
 """
 
 from collections.abc import Iterator
@@ -17,7 +17,7 @@ from pathlib import Path
 from bpgraph import files
 from bpgraph.enums import InteractionKind, ProteinKind
 from bpgraph.loaders.export import peptide_rows
-from bpgraph.loaders.records import KEPT, Curated, Description, Report, of
+from bpgraph.loaders.records import Curated, Description, Report, of
 from bpgraph.loaders.tsv import Cursor
 
 
@@ -44,7 +44,7 @@ def _target(row: Curated, kind: str) -> str:
 
 
 def _sources(export: Path, curated: Path, scratch: Path) -> Iterator[list[str]]:
-    """`[stable_id, sequence, source]` for every peptide of a kept row."""
+    """`[stable_id, sequence, source]` for every peptide of a curated row."""
     peptides = files.sorted_file(
         scratch / "peptides_by_row",
         (
@@ -74,8 +74,6 @@ def _sources(export: Path, curated: Path, scratch: Path) -> Iterator[list[str]]:
                 f"{stable_id} is not in the description files"
             )
         row = of(Curated, owner[0])
-        if row.status != KEPT:
-            continue
         for _, sequence, kind, accession, start, stop, target, path, line in found:
             cursor = Cursor(Path(path), int(line))
             source = _source(row, kind, accession, start, stop)

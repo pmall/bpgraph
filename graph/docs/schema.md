@@ -22,7 +22,7 @@ ______________________________________________________________________
 
 What an interaction joins, and what an analysis means by a protein: `GPX4`, `NS5A` of HCV, `HBx` of HBV. Human or viral comes from `labels(p)`.
 
-A **human** protein is one reviewed UniProt entry, keyed by its accession. **Every** Swiss-Prot human entry is a protein of the graph, whether or not an interaction names it, each with its function text and GO annotations.
+A **human** protein is one reviewed UniProt entry, keyed by its accession. **Every** human entry of the Swiss-Prot release curation used is a protein of the graph, whether or not an interaction names it, each with its function text and GO annotations. Its name and description are that release's, as curation recorded them; its function text is UniProt's current one.
 
 | property      | type | notes                                                 |
 | ------------- | ---- | ----------------------------------------------------- |
@@ -252,4 +252,4 @@ ______________________________________________________________________
 
 ## The sequence vaults <a id="vaults"></a>
 
-Sequences are not in the graph. A build writes them beside it, one SQLite file per silo, from the same run as the graph. They answer questions about one protein at a time — verifying a hypothesis the graph produced — and are never the basis of reasoning over many, for the reasons [`roadmap.md`](roadmap.md#principles) gives. The host vault holds the sequence of every Swiss-Prot human entry. The viral vault holds every place a viral protein was observed, keyed as the graph keys the protein: each entry and span as curation recorded them, of the UniProt release curation gives, with the entry's strain; and the entry each curated VH description observed. `bpgraph.vault` gives their tables.
+Sequences are not in the graph. A build writes them beside it, one SQLite file per silo, from the same run as the graph. They answer questions about one protein at a time — verifying a hypothesis the graph produced — and are never the basis of reasoning over many, for the reasons [`roadmap.md`](roadmap.md#principles) gives. The host vault holds the sequence of every human protein, of the release curation recorded it from. The viral vault holds every place a viral protein was observed, keyed as the graph keys the protein: each entry and span as curation recorded them, of the UniProt release curation gives, with the entry's strain and its name there; and the entry each curated VH description observed. `bpgraph.vault` gives their tables.

@@ -11,8 +11,9 @@ Both sources are written to one file sorted on disk by publication, ours
 first, so whether we curated a publication is known before its IntAct
 records are read, and nothing else is held.
 
-Everything else a host contributes — its proteins, their function text, its
-GO — is read straight from its silo's files when the graph is written.
+A host's proteins are the entries of the export's `interactors_human`, each
+with the function text its silo's `functions.tsv` gives it. Its GO is read
+straight from its silo's files when the graph is written.
 """
 
 import logging
@@ -22,14 +23,59 @@ from typing import TextIO
 
 from bpgraph import files
 from bpgraph.enums import InteractionKind
-from bpgraph.loaders.records import KEPT, Curated, Description, of, pair_ref
-from bpgraph.loaders.tsv import required, rows
+from bpgraph.loaders.export import host_entries
+from bpgraph.loaders.records import Curated, Description, HumanProtein, of, pair_ref
+from bpgraph.loaders.tsv import LoadError, listed, required, rows
 from bpgraph.run import HostPaths
 
 logger = logging.getLogger(__name__)
 
 CURATED, INTACT = "0", "1"
 """Which source a row of the merge file comes from; ours sort first."""
+
+
+def human_proteins(export: Path, host: HostPaths, scratch: Path) -> Path:
+    """The host's proteins, `HumanProtein` records sorted by accession. An
+    accession twice in the export fails, and so does a text for one the export
+    does not have: the file no longer matches it."""
+    entries = files.sorted_file(
+        scratch / "human_entries",
+        (
+            [e.accession, e.name, e.description, str(e.cursor.line)]
+            for e in host_entries(export)
+        ),
+    )
+    functions = files.sorted_file(
+        scratch / "human_functions",
+        (
+            [
+                required(c, r, "accession"),
+                required(c, r, "function"),
+                ";".join(listed(c, r, "pmids")),
+            ]
+            for c, r in rows(host.functions)
+        ),
+    )
+    proteins = scratch / "human_proteins"
+    with proteins.open("w", encoding="utf-8") as out:
+        for (accession,), found, texts in files.cogroup(
+            files.read(entries), files.read(functions), 1
+        ):
+            if not found:
+                raise LoadError(
+                    f"{host.functions.name}: {accession} is not in the export: "
+                    "run bpgraph-functions again"
+                )
+            if len(found) > 1:
+                lines = ", ".join(line for *_, line in found)
+                raise LoadError(f"interactors_human: {accession} at lines {lines}")
+            if len(texts) > 1:
+                raise LoadError(f"{host.functions.name}: {accession} appears twice")
+            _, name, description, _ = found[0]
+            function, pmids = texts[0][1:] if texts else ("", "")
+            protein = HumanProtein(accession, name, description, function, pmids)
+            out.write("\t".join(protein) + "\n")
+    return proteins
 
 
 def _merge_keys(host: HostPaths, curated: Path) -> Iterator[list[str]]:
@@ -48,7 +94,7 @@ def _merge_keys(host: HostPaths, curated: Path) -> Iterator[list[str]]:
         ]
     for record in files.read(curated):
         row = of(Curated, record)
-        if row.kind != InteractionKind.HH.value or row.status != KEPT:
+        if row.kind != InteractionKind.HH.value:
             continue
         a, b = sorted((row.accession_1, row.accession_2))
         yield [row.pmid, CURATED, a, b, row.psimi_id, row.stable_id]

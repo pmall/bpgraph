@@ -1,11 +1,11 @@
 """The Gene Ontology, and a host's experimental GO annotations.
 
-`bpgraph-go RUN` needs the run's `cutoff` and `hosts/9606/swissprot.tsv`
-first. Two dumps of the GO release current on the cutoff, the latest of GO's
-dated releases on or before it, are streamed from the network and neither is
-kept: the ontology, `go-basic.obo`, and the host's GOA annotations. A release
-holds both, the annotations made against its ontology. What the host's silo keeps is
-exactly what the build writes:
+`bpgraph-go RUN` needs the run's `cutoff` and its export, whose
+`interactors_human` is the host's proteins. Two dumps of the GO release current
+on the cutoff, the latest of GO's dated releases on or before it, are streamed
+from the network and neither is kept: the ontology, `go-basic.obo`, and the
+host's GOA annotations. A release holds both, the annotations made against its
+ontology. What the host's silo keeps is exactly what the build writes:
 
 - `go_annotations.tsv`, the annotations the graph takes, one row per pmid:
   `accession`, `go_id`, `qualifier`, `evidence_code`, `assigned_by`, `pmid`;
@@ -35,7 +35,8 @@ The two dumps:
   involved in `regulation of X` is not involved in `X`.
 - **GOA** is every GO annotation on the host's reference proteome, with the
   evidence code, the qualifier, the assigning database and the references.
-  Everything not on a Swiss-Prot entry of the host is dropped. GOA annotates
+  Everything not on a protein of the host, an entry of `interactors_human`, is
+  dropped. GOA annotates
   whichever id a term had when the annotation was made, so a secondary id is
   mapped onto the term's current one, and a term GO has deleted outright drops
   its annotation.
@@ -60,7 +61,7 @@ from urllib.request import Request, urlopen
 from bpgraph import files
 from bpgraph.enums import GoNamespace, GoRelation
 from bpgraph.files import clean
-from bpgraph.loaders.tsv import rows
+from bpgraph.loaders.export import host_accessions
 from bpgraph.obo import TERM, parse, target
 from bpgraph.run import HUMAN, HostPaths, command_line
 from bpgraph.sources import dated_release, record_source
@@ -236,14 +237,14 @@ def _candidates(lines: Iterable[str], dropped: Counter[str]) -> Iterator[list[st
 
 def _annotations(
     url: str,
-    host: HostPaths,
+    export: Path,
     ids: Path,
     excluded: Path,
     scratch: Path,
     dropped: Counter[str],
 ) -> tuple[Path, str]:
     """The host's annotations, on current terms that are not excluded and on
-    Swiss-Prot entries, distinct, as a sorted file keyed by accession. Returns
+    proteins of the host, distinct, as a sorted file keyed by accession. Returns
     it and the release."""
     logger.info("go: streaming %s", url)
     header = _Header(_lines(url), GENERATED)
@@ -286,19 +287,20 @@ def _annotations(
         )
     proteins = files.sorted_file(
         scratch / "proteins",
-        ([row["accession"]] for _, row in rows(host.swissprot)),
+        host_accessions(export),
+        unique=True,
     )
 
-    def on_swissprot() -> Iterator[list[str]]:
+    def on_host() -> Iterator[list[str]]:
         for _, found, entry in files.cogroup(
             files.read(by_accession), files.read(proteins), 1
         ):
             if entry:
                 yield from found
             else:
-                dropped["not swiss-prot of the host"] += len(found)
+                dropped["not a protein of the host"] += len(found)
 
-    return files.sorted_file(scratch / "annotations", on_swissprot(), unique=True), (
+    return files.sorted_file(scratch / "annotations", on_host(), unique=True), (
         header.release
     )
 
@@ -349,7 +351,7 @@ def _closure(annotated: Path, edges: Path, scratch: Path) -> tuple[Path, Path]:
 
 
 def write_go(
-    host: HostPaths, sources: Path, cutoff: date
+    host: HostPaths, export: Path, sources: Path, cutoff: date
 ) -> tuple[int, int, int, Counter[str]]:
     """Fetch the ontology and the host's annotations of the GO release current
     on `cutoff`, and write the host's three files. Returns the annotations,
@@ -364,7 +366,7 @@ def write_go(
         terms, ids, edges, go_release = _ontology(ontology_url, scratch)
         excluded = _excluded(terms, edges, scratch)
         annotations, goa_release = _annotations(
-            annotations_url, host, ids, excluded, scratch, dropped
+            annotations_url, export, ids, excluded, scratch, dropped
         )
         annotated = files.sorted_file(
             scratch / "annotated", ([r[1]] for r in files.read(annotations))
@@ -394,7 +396,9 @@ def main() -> None:
     run = command_line(__doc__)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     host = run.host(HUMAN)
-    annotations, terms, edges, dropped = write_go(host, run.sources, run.cutoff)
+    annotations, terms, edges, dropped = write_go(
+        host, run.export, run.sources, run.cutoff
+    )
     for reason, count in dropped.most_common():
         print(f"dropped {count}: {reason}")
     print(f"{host.directory}: {annotations} annotations, {terms} terms, {edges} edges")

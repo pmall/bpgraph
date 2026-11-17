@@ -1,11 +1,11 @@
 """IntAct's interactions of one host, filtered to what its network is built on.
 
-`bpgraph-intact RUN` needs the run's `cutoff`, `psi-mi.obo` and
-`hosts/9606/swissprot.tsv` first. It reads the IntAct release current on the
-cutoff, the latest of IntAct's dated directories on or before it, and writes
-`hosts/9606/intact.tsv`, one row per IntAct record kept: `intact_id`,
-`accession1` and `accession2`, the pair in sorted order, `pmid` and
-`psimi_id`, the method's current PSI-MI id. It prints how many rows it
+`bpgraph-intact RUN` needs the run's `cutoff`, `psi-mi.obo` and its export,
+whose `interactors_human` is the host's proteins. It reads the IntAct release
+current on the cutoff, the latest of IntAct's dated directories on or before
+it, and writes `hosts/9606/intact.tsv`, one row per IntAct record kept:
+`intact_id`, `accession1` and `accession2`, the pair in sorted order, `pmid`
+and `psimi_id`, the method's current PSI-MI id. It prints how many rows it
 dropped for each reason, and records the fetch in `sources.tsv`, its release
 that directory's date.
 
@@ -17,8 +17,8 @@ way past, so only `intact.tsv` lands in the host's silo.
 An IntAct row is kept when it reports a real interaction, observed by an
 experiment, in a publication, as `curation/methods.md` explains:
 
-- both partners are Swiss-Prot entries of the host, once an isoform or a chain
-  is mapped to its entry;
+- both partners are proteins of the host, entries of `interactors_human`, once
+  an isoform or a chain is mapped to its entry;
 - it cites exactly one PubMed id: the publication an agent reads;
 - it is not a negative result;
 - its detection method is flagged `keep` in `curation/methods.tsv`;
@@ -27,8 +27,8 @@ experiment, in a publication, as `curation/methods.md` explains:
   the first of its group to report.
 
 A detection method with no row there fails the fetch, naming it, once the
-whole file is read. Whether both partners are Swiss-Prot entries is two sorted
-merges against `swissprot.tsv`, one per partner.
+whole file is read. Whether both partners are proteins of the host is two
+sorted merges against `interactors_human`, one per partner.
 
 Spoke-expanded complexes are kept, so one IntAct interaction id may name
 several rows, one per pair. Negative interactions are published apart and never
@@ -48,13 +48,12 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 
 from bpgraph import files
-from bpgraph.loaders.tsv import rows
+from bpgraph.loaders.export import host_accessions
 from bpgraph.methods import Methods
 from bpgraph.psimi import Ontology, read_ontology
 from bpgraph.publications import read_groups
 from bpgraph.run import HUMAN, HostPaths, command_line
 from bpgraph.sources import dated_release, record_source
-from bpgraph.swissprot import canonical
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +133,12 @@ def _lines(url: str) -> Iterator[str]:
             yield pending.decode("utf-8")
 
 
+def canonical(identifier: str) -> str:
+    """The entry an isoform (`P04637-2`) or a chain (`P04637-PRO_0000185703`)
+    belongs to."""
+    return identifier.partition("-")[0]
+
+
 def _accession(identifier: str) -> str | None:
     return (
         canonical(identifier.removeprefix(UNIPROT))
@@ -159,7 +164,7 @@ def _candidates(
 ) -> Iterator[list[str]]:
     """The rows that pass every test a row can pass alone, keyed by their first
     partner: `[accession1, accession2, intact_id, pmid, psimi_id]`. Whether
-    both partners are Swiss-Prot entries is for the merges that follow."""
+    both partners are proteins of the host is for the merges that follow."""
     for line in lines:
         if line.startswith("#") or not line:
             continue
@@ -204,16 +209,14 @@ def _candidates(
         yield [first, second, ids[0], pmids[0], method]
 
 
-def _on_swissprot(
-    path: Path, proteins: Path, dropped: Counter[str]
-) -> Iterator[list[str]]:
-    """The rows of a file keyed by an accession whose accession is a Swiss-Prot
-    entry, with that accession rotated to the end: the next key comes first."""
+def _on_host(path: Path, proteins: Path, dropped: Counter[str]) -> Iterator[list[str]]:
+    """The rows of a file keyed by an accession whose accession is a protein
+    of the host, with that accession rotated to the end: the next key comes first."""
     for _, found, entry in files.cogroup(files.read(path), files.read(proteins), 1):
         if entry:
             yield from (row[1:] + row[:1] for row in found)
         else:
-            dropped["not swiss-prot of the host"] += len(found)
+            dropped["not a protein of the host"] += len(found)
 
 
 def _unrepeated(
@@ -233,7 +236,7 @@ def _unrepeated(
 
 
 def write_intact(
-    host: HostPaths, psimi: Path, sources: Path, cutoff: date
+    host: HostPaths, export: Path, psimi: Path, sources: Path, cutoff: date
 ) -> tuple[int, Counter[str]]:
     """Stream, filter and write one host's `intact.tsv`. Returns the rows
     written and the count dropped per reason."""
@@ -248,7 +251,7 @@ def write_intact(
     with tempfile.TemporaryDirectory(dir=host.directory) as directory:
         scratch = Path(directory)
         proteins = files.sorted_file(
-            scratch / "proteins", ([r["accession"]] for _, r in rows(host.swissprot))
+            scratch / "proteins", host_accessions(export), unique=True
         )
         first = files.sorted_file(
             scratch / "first",
@@ -257,15 +260,13 @@ def write_intact(
         if uncurated:
             methods.check(uncurated)
         second = files.sorted_file(
-            scratch / "second", _on_swissprot(first, proteins, dropped)
+            scratch / "second", _on_host(first, proteins, dropped)
         )
         pairs = files.sorted_file(
             scratch / "pairs",
             (
                 [a, b, pmid, intact_id, method]
-                for intact_id, pmid, method, a, b in _on_swissprot(
-                    second, proteins, dropped
-                )
+                for intact_id, pmid, method, a, b in _on_host(second, proteins, dropped)
             ),
             unique=True,
         )
@@ -281,7 +282,9 @@ def main() -> None:
     run = command_line(__doc__)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     host = run.host(HUMAN)
-    written, dropped = write_intact(host, run.psimi, run.sources, run.cutoff)
+    written, dropped = write_intact(
+        host, run.export, run.psimi, run.sources, run.cutoff
+    )
     for reason, count in dropped.most_common():
         print(f"dropped {count}: {reason}")
     print(f"{host.intact}: {written} rows")

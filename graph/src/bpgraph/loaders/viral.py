@@ -3,7 +3,7 @@
 A viral protein is the one curation groups its rows under, as
 `bpgraph.loaders.export` says, so every strain's copy of `HBx` lands on one
 protein. Its sites — each entry and span it was observed at — come from our
-kept VH rows, their sequences from `interactors_viral`. A protein keeps every
+VH rows, their names and sequences from `interactors_viral`. A protein keeps every
 distinct function text its members carry.
 
 Where each viral protein sits on each entry and its residues there, the
@@ -19,7 +19,6 @@ from typing import TextIO
 from bpgraph import files
 from bpgraph.enums import InteractionKind
 from bpgraph.loaders.records import (
-    KEPT,
     SEPARATOR,
     Curated,
     Description,
@@ -28,7 +27,7 @@ from bpgraph.loaders.records import (
     of,
     pair_ref,
 )
-from bpgraph.loaders.tsv import LoadError, integer, listed, required, rows, text
+from bpgraph.loaders.tsv import LoadError, integer, listed, required, rows
 from bpgraph.run import ViralPaths
 
 
@@ -38,16 +37,16 @@ class ViralFiles:
     """`ViralProtein` records."""
     entries: Path
     """The vault's entries: accession, strain id, strain name, release,
-    UniProt name."""
+    UniProt name as curation recorded it."""
 
 
 def vh_descriptions(
     curated: Path, name_of: Callable[[str], str], out: TextIO, observations: TextIO
 ) -> None:
-    """Write the kept VH rows as descriptions, and which entry each observed."""
+    """Write the VH rows as descriptions, and which entry each observed."""
     for record in files.read(curated):
         row = of(Curated, record)
-        if row.kind != InteractionKind.VH.value or row.status != KEPT:
+        if row.kind != InteractionKind.VH.value:
             continue
         description = Description(
             interaction=pair_ref(row.accession_1, row.partner_2),
@@ -96,35 +95,24 @@ def _texts(
                 yield [site.ref, function, pmids]
 
 
-def _entries(viral: ViralPaths, sites: Path, scratch: Path, entries: TextIO) -> None:
-    """Write the vault's entries: each with its strain and release, which are
-    one, and the name UniProt gives it."""
+def _entries(sites: Path, scratch: Path, entries: TextIO) -> None:
+    """Write the vault's entries: each with its strain, release and name,
+    which are one."""
     by_accession = files.sorted_file(
         scratch / "sites_by_accession",
         ([of(Site, r).accession, *r] for r in files.read(sites)),
     )
-    names = files.sorted_file(
-        scratch / "names_by_accession",
-        (
-            [required(c, r, "accession"), text(c, r, "description")]
-            for c, r in rows(viral.entries)
-        ),
-    )
-    for (accession,), found, named in files.cogroup(
-        files.read(by_accession), files.read(names), 1
-    ):
-        if not found:
-            continue
+    for (accession,), found in files.groups(files.read(by_accession), 1):
         members = [of(Site, record, 1) for record in found]
         recorded = {
-            (site.strain_id, site.strain_name, site.release) for site in members
+            (site.strain_id, site.strain_name, site.release, site.description)
+            for site in members
         }
         if len(recorded) > 1:
             raise LoadError(
-                f"{accession} is of several taxa or releases: {sorted(recorded)}"
+                f"{accession} is of several taxa, releases or names: {sorted(recorded)}"
             )
-        (strain_id, strain_name, release), *_ = recorded
-        name = named[0][1] if named else ""
+        (strain_id, strain_name, release, name), *_ = recorded
         entries.write(f"{accession}\t{strain_id}\t{strain_name}\t{release}\t{name}\n")
 
 
@@ -137,7 +125,7 @@ def viral_proteins(
     )
     entries = scratch / "vault_entries"
     with entries.open("w", encoding="utf-8") as handle:
-        _entries(viral, sites, scratch, handle)
+        _entries(sites, scratch, handle)
     texts = files.sorted_file(
         scratch / "texts", _texts(viral, by_site, exported, scratch), unique=True
     )

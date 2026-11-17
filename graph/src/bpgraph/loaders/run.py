@@ -20,10 +20,16 @@ from pathlib import Path
 
 from bpgraph import files
 from bpgraph.loaders.curated import load_curated
-from bpgraph.loaders.host import hh_descriptions
+from bpgraph.loaders.host import hh_descriptions, human_proteins
 from bpgraph.loaders.peptides import reports
-from bpgraph.loaders.records import Description, ViralProtein, Virus, of
-from bpgraph.loaders.tsv import LoadError, listed, rows
+from bpgraph.loaders.records import (
+    Description,
+    HumanProtein,
+    ViralProtein,
+    Virus,
+    of,
+)
+from bpgraph.loaders.tsv import LoadError, rows
 from bpgraph.loaders.viral import vh_descriptions, viral_proteins
 from bpgraph.psimi import read_ontology
 from bpgraph.pubmed import COLUMNS as PUBLICATION_COLUMNS
@@ -40,6 +46,8 @@ class Prepared:
     """Everything a build writes, as files in the run's `build/`."""
 
     host: HostPaths
+    human_proteins: Path
+    """`HumanProtein` records, sorted by accession."""
     descriptions: Path
     """`Description` records, sorted by interaction."""
     reports: Path
@@ -59,16 +67,20 @@ class Prepared:
     """The vault's observations: description id, viral entry."""
 
 
-def _cited(host: HostPaths, descriptions: Path, proteins: Path) -> Iterator[list[str]]:
+def _cited(
+    host: HostPaths, descriptions: Path, human: Path, viral: Path
+) -> Iterator[list[str]]:
     """Every pmid the graph cites: descriptions, GO annotations, and the
     function text of every protein."""
     for record in files.read(descriptions):
         yield [of(Description, record).pmid]
     for _, row in rows(host.go_annotations):
         yield [row["pmid"]]
-    for cursor, row in rows(host.swissprot):
-        yield from ([pmid] for pmid in listed(cursor, row, "pmids"))
-    for record in files.read(proteins):
+    for record in files.read(human):
+        yield from (
+            [pmid] for pmid in of(HumanProtein, record).pmids.split(";") if pmid
+        )
+    for record in files.read(viral):
         yield from (
             [pmid] for pmid in of(ViralProtein, record).pmids.split(";") if pmid
         )
@@ -137,9 +149,7 @@ def prepare(run: Run, scratch: Path) -> Prepared:
     taxonomy = Taxonomy.open(run.taxonomy)
     host = run.host(HUMAN)
 
-    proteins = files.sorted_file(
-        scratch / "swissprot", ([row["accession"]] for _, row in rows(host.swissprot))
-    )
+    proteins = human_proteins(run.export, host, scratch)
     curated = load_curated(run.export, proteins, scratch, psimi)
 
     descriptions = scratch / "descriptions"
@@ -156,10 +166,13 @@ def prepare(run: Run, scratch: Path) -> Prepared:
     viruses = tuple(of(Virus, r) for r in files.read(curated.viruses))
 
     cited = files.sorted_file(
-        scratch / "cited", _cited(host, descriptions, viral.proteins), unique=True
+        scratch / "cited",
+        _cited(host, descriptions, proteins, viral.proteins),
+        unique=True,
     )
     return Prepared(
         host=host,
+        human_proteins=proteins,
         descriptions=descriptions,
         reports=reports(run.export, curated.curated, descriptions, scratch),
         viral_proteins=viral.proteins,

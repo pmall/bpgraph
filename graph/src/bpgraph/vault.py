@@ -4,8 +4,9 @@ Sequences are kept out of the graph on purpose, for the reasons
 docs/roadmap.md#principles gives: the question a vault answers is about one
 protein at a time, never many.
 
-- **A host vault**, `host-9606.sqlite`: every Swiss-Prot entry of the host, by
-  accession, the human protein's key: `sequence(accession, sequence)`.
+- **A host vault**, `host-9606.sqlite`: every protein of the host, by
+  accession, the human protein's key, with the sequence of the UniProt release
+  curation recorded it from: `sequence(accession, sequence)`.
 - **The viral vault**, `viral.sqlite`: every viral entry once, with its strain
   and the UniProt release curation recorded it from, and the mature proteins
   observed on them, each with the sequence curation recorded. A viral protein
@@ -59,15 +60,15 @@ VIRAL_SCHEMA = (
         accession TEXT NOT NULL REFERENCES entry (accession)
     )""",
 )
-"""An entry is the one curation recorded. Its `taxon_id` and `taxon_name` are
-its strain's, as curation recorded them; `release` is the UniProt release its
+"""An entry is the one curation recorded. Its `taxon_id` and `taxon_name` are its
+strain's, as curation recorded them; `release` is the UniProt release its name,
 sequences and coordinates are from: the current one where curation could match
 the entry, an older one otherwise, which may predate the entry's retirement;
-`description` is the current UniProt protein name, empty for an entry UniProt
-has retired. A mature protein is keyed as the graph keys a viral protein, by
-its virus's NCBI taxon id and its name, then by where it sits on an entry,
-1-based inclusive; an observation by the stable id of the curated description
-that made it, the entry it observed its value."""
+`description` is the entry's protein name in that release. A mature protein is
+keyed as the graph keys a viral protein, by its virus's NCBI taxon id and its
+name, then by where it sits on an entry, 1-based inclusive; an observation by
+the stable id of the curated description that made it, the entry it observed
+its value."""
 
 
 @dataclass(frozen=True, slots=True)

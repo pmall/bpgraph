@@ -1,7 +1,7 @@
-"""The curation export: our HH and VH descriptions, the viral sites they
-observe, and the peptides they report.
+"""The curation export: our HH and VH descriptions, the human and viral
+entries they name, and the peptides they report.
 
-The relational database exports five TSV files, read as `bpgraph.loaders.tsv`
+The relational database exports six TSV files, read as `bpgraph.loaders.tsv`
 says, into a run's `export/`, `$BPGRAPH_DATA/run88/export/`. It names each after
 the run that wrote it, `descriptions_hh_run88.tsv`, so a file is found by its
 stem, and an export holds exactly one file of each stem. The `.xlsx` copy the
@@ -9,17 +9,19 @@ database also writes of each is ignored.
 
 - `descriptions_hh`, one row per human–human observation: a pair, a pmid, a
   method; `descriptions_vh`, one per virus–human observation. `ExportRow`.
+- `interactors_human`, one row per Swiss-Prot human entry of the release
+  curation used, with its names and residues. `HostEntry`.
 - `interactors_viral`, one row per viral entry and span a VH row names, with
-  its residues. `ViralSite`.
+  its name and residues. `ViralSite`.
 - `mappings_h` and `mappings_v`, one row per sequence a description maps on
   one of its partners. `PeptideRow`.
 
-The export carries only what our curation alone knows: our interactions, how
-the viral proteins they name are grouped, the viral sequences, and the
-sequences the interactions map. Everything a public source knows better comes
-from that source, fetched into the run beside the export: a human protein's
-name and function from Swiss-Prot, a viral entry's function text from UniProt,
-a method's name from PSI-MI, a publication's metadata from PubMed.
+The export carries what our curation knows: our interactions, the UniProt
+entries they were curated against, with the names and sequences curation
+recorded, how the viral proteins they name are grouped, and the sequences the
+interactions map. Everything else comes from the public source that knows it,
+fetched into the run beside the export: a protein's function text from
+UniProt, a method's name from PSI-MI, a publication's metadata from PubMed.
 
 Which silo a row feeds follows from its file: an `hh` row is our curation of
 the human interactome, which stands for its publication in place of IntAct's
@@ -29,12 +31,13 @@ second partner is the viral one, and every other partner is human. Two viral
 proteins may not interact, so there is no `vv` file. A pair may be one protein
 twice, a homodimer.
 
-**UniProt entries are the ones curation recorded.** A human accession is a
-Swiss-Prot entry of the current release, canonical, not an isoform's;
-`bpgraph.loaders.curated` drops a row naming any other. A viral entry may be of
-any release: curation matches its entries to the current UniProt where it can,
-and keeps the recorded one where it cannot. Each partner says which release it
-is of, and a viral site's coordinates and sequence are that release's.
+**UniProt entries are the ones curation recorded.** The human ones are the
+Swiss-Prot release curation used, every entry of it, canonical, not an
+isoform's: they are the host's proteins, and a row naming a human accession
+outside them fails. A viral entry may be of any release: curation matches its
+entries to the current UniProt where it can, and keeps the recorded one where
+it cannot. Each entry says which release it is of, and its names, coordinates
+and sequence are that release's.
 
 **Curation groups the viral proteins**, and the build takes the grouping as
 given: a viral partner's virus is the row's species taxon, and its protein the
@@ -60,6 +63,7 @@ DESCRIPTIONS: Mapping[InteractionKind, str] = {
     InteractionKind.HH: "descriptions_hh",
     InteractionKind.VH: "descriptions_vh",
 }
+HOST_ENTRIES = "interactors_human"
 VIRAL_SITES = "interactors_viral"
 MAPPINGS: Mapping[ProteinKind, str] = {
     ProteinKind.HUMAN: "mappings_h",
@@ -68,6 +72,9 @@ MAPPINGS: Mapping[ProteinKind, str] = {
 
 PEPTIDE_LENGTHS = range(5, 21)
 """A mapped sequence is a peptide from 5 to 20 residues, both included."""
+
+NO_GENE = "N/A"
+"""The `gene_name` of an entry UniProt gives no gene name."""
 
 PMID = re.compile(r"^\d+$")
 RESIDUES = re.compile(r"^[A-Z]+$")
@@ -128,7 +135,7 @@ class ExportRow:
     - `accession1`: the first partner, always human;
     - `version`, `method`, `release1`, `gene_name1`: not read: the row's
       revision, the method's name, which PSI-MI gives, and the partner's
-      release and gene name, which Swiss-Prot gives.
+      release and gene name, which `interactors_human` gives.
 
     `descriptions_hh` names its second partner, human, the same way:
     `accession2`, with `release2` and `gene_name2` unread. `descriptions_vh`
@@ -146,17 +153,42 @@ class ExportRow:
 
 
 @dataclass(frozen=True, slots=True)
+class HostEntry:
+    """One row of `interactors_human`: a Swiss-Prot human entry, a protein of
+    the graph, as the UniProt release curation recorded it from gives it. Every
+    human partner of a description must have its row, and an accession has one.
+
+    - `accession`: the entry, canonical;
+    - `release`: the UniProt release its names and residues are from;
+    - `gene_name`: its primary gene symbol, `N/A` for an entry with none, which
+      is then named after its accession, since the graph has no empty name;
+    - `uniprot_name`: its protein name;
+    - `sequence`: its residues, uppercased on load, which go to the host vault.
+    """
+
+    cursor: Cursor
+    accession: str
+    release: str
+    name: str
+    description: str
+    sequence: str
+
+
+@dataclass(frozen=True, slots=True)
 class ViralSite:
     """One row of `interactors_viral`: a viral entry and span a VH row names,
-    and its residues in the UniProt release curation recorded them from. Every
-    viral partner of `descriptions_vh` must have its row. The residues go to
-    the viral vault, not the graph.
+    its name and its residues in the UniProt release curation recorded them
+    from. Every viral partner of `descriptions_vh` must have its row. The
+    residues and the name go to the viral vault, not the graph.
 
     - `accession`, `start`, `stop`: the entry and span, as the descriptions
       name them;
-    - `release`: the UniProt release the sequence is from;
+    - `release`: the UniProt release the name and sequence are from, one per
+      entry;
+    - `uniprot_name`: the entry's protein name, one per entry;
     - `sequence`: the residues of that span, exactly `stop - start + 1`,
-      uppercased on load.
+      uppercased on load;
+    - `gene_name`: not read.
     """
 
     cursor: Cursor
@@ -164,6 +196,7 @@ class ViralSite:
     start: int
     stop: int
     release: str
+    description: str
     sequence: str
 
 
@@ -250,6 +283,30 @@ def export_rows(export: Path, ontology: Ontology) -> Iterator[ExportRow]:
             )
 
 
+def host_entries(export: Path) -> Iterator[HostEntry]:
+    """Every human entry, its residues letters."""
+    for cursor, row in rows(export_file(export, HOST_ENTRIES)):
+        accession = required(cursor, row, "accession")
+        gene = required(cursor, row, "gene_name")
+        sequence = required(cursor, row, "sequence").upper()
+        if not RESIDUES.match(sequence):
+            raise cursor.fail(f"sequence is not residues: {sequence[:20]!r}")
+        yield HostEntry(
+            cursor=cursor,
+            accession=accession,
+            release=required(cursor, row, "release"),
+            name=accession if gene == NO_GENE else gene,
+            description=required(cursor, row, "uniprot_name"),
+            sequence=sequence,
+        )
+
+
+def host_accessions(export: Path) -> Iterator[list[str]]:
+    """`[accession]` of every human entry, for a sorted file of them."""
+    for cursor, row in rows(export_file(export, HOST_ENTRIES)):
+        yield [required(cursor, row, "accession")]
+
+
 def viral_sites(export: Path) -> Iterator[ViralSite]:
     """Every viral entry and span, with its residues, which must span its
     coordinates exactly."""
@@ -264,6 +321,7 @@ def viral_sites(export: Path) -> Iterator[ViralSite]:
             start=start,
             stop=stop,
             release=required(cursor, row, "release"),
+            description=required(cursor, row, "uniprot_name"),
             sequence=sequence,
         )
 

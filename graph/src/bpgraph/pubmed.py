@@ -268,7 +268,7 @@ def host_pmids(run: Run, host: HostPaths) -> Iterator[str]:
     yield from (row["pmid"] for _, row in rows(host.intact))
     yield from export_pmids(run.export, InteractionKind.HH)
     yield from (row["pmid"] for _, row in rows(host.go_annotations))
-    for cursor, row in rows(host.swissprot):
+    for cursor, row in rows(host.functions):
         yield from listed(cursor, row, "pmids")
 
 

@@ -2,8 +2,8 @@
 
 `bpgraph-build RUN` reads a run the fetch commands filled first, each reading
 what the ones before it wrote: `bpgraph-taxonomy`, `bpgraph-psimi`,
-`bpgraph-methods`, `bpgraph-swissprot`, `bpgraph-intact`, `bpgraph-go`,
-`bpgraph-functions` and `bpgraph-pubmed`, in this order. It then runs, in order:
+`bpgraph-methods`, `bpgraph-intact`, `bpgraph-go`, `bpgraph-functions` and
+`bpgraph-pubmed`, in this order. It then runs, in order:
 
 1. **Preparation.** Every silo of the run is read and checked into files in
    the run's `build/` by `bpgraph.loaders`, before the graph is touched.
@@ -29,8 +29,7 @@ It prints what it wrote, the vaults it published, and the release of every
 public dataset the run was fetched from. It logs what is worth a human's look
 without being wrong enough to stop it: how our HH curation sits on IntAct, as
 our descriptions, IntAct's, and the IntAct records skipped because we curated
-their publication; and the curated rows dropped for naming an accession no
-longer in Swiss-Prot, with the accessions.
+their publication.
 """
 
 import logging
@@ -46,16 +45,18 @@ from bpgraph import files, schema, vault
 from bpgraph.client import BATCH_SIZE, GraphWriter, Row, connect, exists
 from bpgraph.config import Config, live_vault
 from bpgraph.enums import GoRelation, InteractionKind, ProteinKind
+from bpgraph.loaders.export import host_entries
 from bpgraph.loaders.records import (
     SEPARATOR,
     Description,
+    HumanProtein,
     Report,
     Site,
     ViralProtein,
     of,
 )
 from bpgraph.loaders.run import Prepared, prepare
-from bpgraph.loaders.tsv import listed, rows
+from bpgraph.loaders.tsv import rows
 from bpgraph.pubmed import AUTHOR_SEPARATOR
 from bpgraph.run import Run, command_line
 from bpgraph.sources import read_sources
@@ -101,13 +102,17 @@ def _key(ref: str, viral: dict[str, Row]) -> tuple[ProteinKind, Row]:
     return ProteinKind.HUMAN, {"accession": ref}
 
 
+def _human(prepared: Prepared) -> Iterator[HumanProtein]:
+    return (of(HumanProtein, r) for r in files.read(prepared.human_proteins))
+
+
 def _human_proteins(prepared: Prepared) -> Iterator[Row]:
-    for _, row in rows(prepared.host.swissprot):
+    for protein in _human(prepared):
         yield {
-            "accession": row["accession"],
-            "name": row["name"],
-            "description": row["description"],
-            "function": row["function"],
+            "accession": protein.accession,
+            "name": protein.name,
+            "description": protein.description,
+            "function": protein.function,
         }
 
 
@@ -122,9 +127,9 @@ def _viral_proteins(prepared: Prepared) -> Iterator[Row]:
 
 
 def _human_citations(prepared: Prepared) -> Iterator[Row]:
-    for cursor, row in rows(prepared.host.swissprot):
-        for pmid in listed(cursor, row, "pmids"):
-            yield {"accession": row["accession"], "pmid": pmid}
+    for protein in _human(prepared):
+        for pmid in filter(None, protein.pmids.split(";")):
+            yield {"accession": protein.accession, "pmid": pmid}
 
 
 def _viral_citations(prepared: Prepared) -> Iterator[Row]:
@@ -389,7 +394,7 @@ def write_vaults(run: Run, prepared: Prepared) -> list[Path]:
         vault.write_host(
             run.vault,
             host.vault,
-            ((row["accession"], row["sequence"]) for _, row in rows(host.sequences)),
+            ((e.accession, e.sequence) for e in host_entries(run.export)),
         ),
         vault.write_viral(
             run.vault,

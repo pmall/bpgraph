@@ -43,15 +43,10 @@ class HostPaths:
     directory: Path
 
     @property
-    def swissprot(self) -> Path:
-        """Every reviewed entry of the host: names, descriptions, function
-        text and the pmids it cites. Written by `bpgraph.swissprot`."""
-        return self.directory / "swissprot.tsv"
-
-    @property
-    def sequences(self) -> Path:
-        """The sequence of every reviewed entry, for the vault."""
-        return self.directory / "sequences.tsv"
+    def functions(self) -> Path:
+        """UniProt function text of every entry of the host the export names,
+        and the pmids it cites, by `bpgraph.uniprot`."""
+        return self.directory / "functions.tsv"
 
     @property
     def intact(self) -> Path:
@@ -96,11 +91,6 @@ class ViralPaths:
     def functions(self) -> Path:
         """UniProt function text per entry and span, by `bpgraph.uniprot`."""
         return self.directory / "functions.tsv"
-
-    @property
-    def entries(self) -> Path:
-        """UniProt's protein name for every viral entry, by `bpgraph.uniprot`."""
-        return self.directory / "entries.tsv"
 
     @property
     def publications(self) -> Path:

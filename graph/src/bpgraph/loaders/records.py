@@ -12,7 +12,7 @@ found by its own properties.
 """
 
 from pathlib import Path
-from typing import NamedTuple, Self
+from typing import NamedTuple
 
 from bpgraph.files import Record
 from bpgraph.loaders.tsv import Cursor
@@ -36,9 +36,6 @@ def of[T: tuple[str, ...]](kind: type[T], record: Record, width: int = 0) -> T:
 class Curated(NamedTuple):
     """One row of the export's description files.
 
-    `status` says what the build does with it: `kept`, or dropped because it
-    names a human partner Swiss-Prot does not have (`absent`). A dropped row
-    still answers for its peptides, which go with it.
     `partner_2` is the second partner's reference: its accession if human,
     its virus and name if viral. The viral fields are curation's: the virus is
     the species taxon the row groups its protein under, the strain the one the
@@ -48,7 +45,6 @@ class Curated(NamedTuple):
 
     stable_id: str
     kind: str
-    status: str
     pmid: str
     psimi_id: str
     accession_1: str
@@ -72,13 +68,6 @@ class Curated(NamedTuple):
     @property
     def site_2(self) -> tuple[str, str, str]:
         return (self.accession_2, self.start_2, self.stop_2)
-
-    def with_status(self, status: str) -> Self:
-        return self._replace(status=status)
-
-
-KEPT = "kept"
-ABSENT = "absent"
 
 
 class Description(NamedTuple):
@@ -107,9 +96,21 @@ class Report(NamedTuple):
     target: str
 
 
+class HumanProtein(NamedTuple):
+    """A human protein as the graph holds it: its entry as curation recorded
+    it, and UniProt's function text and the pmids it cites, `;`-joined."""
+
+    accession: str
+    name: str
+    description: str
+    function: str
+    pmids: str
+
+
 class Site(NamedTuple):
-    """One entry and span a viral protein was observed at, the entry's strain
-    and the UniProt release it was recorded from, and its residues."""
+    """One entry and span a viral protein was observed at, the entry's strain,
+    the UniProt release it was recorded from and its name there, and its
+    residues."""
 
     ref: str
     virus_id: str
@@ -120,6 +121,7 @@ class Site(NamedTuple):
     strain_id: str
     strain_name: str
     release: str
+    description: str
     sequence: str
 
 
