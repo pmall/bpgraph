@@ -13,11 +13,16 @@ shares is named alone, `psi-mi`.
 """
 
 import csv
+import re
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from urllib.request import Request, urlopen
 
 COLUMNS = ("dataset", "url", "fetched", "release")
+
+DATED = re.compile(r"(\d{4}-\d{2}-\d{2})/")
+"""A release directory of an archive, named after its date, `2026-01-09/`."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +40,20 @@ def read_sources(path: Path) -> list[Source]:
     with path.open(encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t", quoting=csv.QUOTE_NONE)
         return [Source(**{column: row[column] for column in COLUMNS}) for row in reader]
+
+
+def dated_release(index: str, cutoff: date) -> str:
+    """The release current on `cutoff` of an archive whose index page lists
+    one directory per release, named after its date: the latest on or before
+    it."""
+    request = Request(index, headers={"User-Agent": "bpgraph"})
+    with urlopen(request) as response:
+        page = response.read().decode("utf-8")
+    released = {date.fromisoformat(d) for d in DATED.findall(page)}
+    current = max((d for d in released if d <= cutoff), default=None)
+    if current is None:
+        raise ValueError(f"{index}: no release on or before {cutoff}")
+    return current.isoformat()
 
 
 def record_source(path: Path, dataset: str, url: str, release: str) -> None:

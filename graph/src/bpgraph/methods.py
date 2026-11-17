@@ -2,16 +2,17 @@
 it.
 
 `bpgraph-methods RUN` checks `curation/methods.tsv` against the run's PSI-MI:
-every current detection method listed once, flagged `yes` or `no`, under its
-current name. It fails naming the detection methods without a row, or the rows
-that are not current detection methods, warns of a row whose name PSI-MI has
-changed, and otherwise prints how many are kept.
+every row a current detection method, listed once, flagged `yes` or `no`, under
+its current name. It fails naming the rows that are not current detection
+methods, warns of a row whose name PSI-MI has changed, and otherwise prints
+how many are kept.
 
 `curation/methods.tsv` has a header and one row per detection method, which is
 `MI:0001` and every term below it: its `psimi_id`, its `name` and `keep`, `yes`
 or `no`. `curation/methods.md` says what the flag means and where it comes
-from. A detection method without a row fails the IntAct fetch, which
-`Methods.check` names: a new PSI-MI term is always a decision someone made.
+from. A detection method an IntAct record uses without a row fails the IntAct
+fetch, which `Methods.check` names: keeping a method is always a decision
+someone made. A detection method no IntAct record uses needs no row.
 """
 
 import csv
@@ -33,7 +34,7 @@ COLUMNS = ("psimi_id", "name", "keep")
 KEEP = {"yes": True, "no": False}
 
 DETECTION = "MI:0001"
-"""Interaction detection method: every term below it must have a row."""
+"""Interaction detection method: every row is a term below it."""
 
 
 class UncuratedMethods(ValueError):
@@ -72,8 +73,8 @@ def read_methods(path: Path = CURATED) -> list[Method]:
 
 @dataclass(frozen=True, slots=True)
 class Methods:
-    """The list, checked against PSI-MI: every row a current detection method,
-    every current detection method a row."""
+    """The list, checked against PSI-MI: every row a current detection
+    method."""
 
     ontology: Ontology
     rows: Mapping[str, Method]
@@ -101,13 +102,7 @@ class Methods:
                     name,
                     path.name,
                 )
-        loaded = cls(ontology=ontology, rows={m.psimi_id: m for m in methods})
-        loaded.check(
-            term
-            for term, info in ontology.terms.items()
-            if not info.obsolete and ontology.under(term, (DETECTION,))
-        )
-        return loaded
+        return cls(ontology=ontology, rows={m.psimi_id: m for m in methods})
 
     def keep(self, psimi_id: str) -> bool | None:
         """Whether IntAct keeps a term, or nothing if it has no row."""

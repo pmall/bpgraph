@@ -2,8 +2,8 @@
 observe, and the peptides they report.
 
 The relational database exports five TSV files, read as `bpgraph.loaders.tsv`
-says, into a run's `export/`, `_data/2026-10-14/export/`. It names each after
-the run that wrote it, `descriptions_hh_run87.tsv`, so a file is found by its
+says, into a run's `export/`, `_data/run88/export/`. It names each after
+the run that wrote it, `descriptions_hh_run88.tsv`, so a file is found by its
 stem, and an export holds exactly one file of each stem. The `.xlsx` copy the
 database also writes of each is ignored.
 
@@ -44,7 +44,7 @@ they become.
 
 Every reader here yields one validated row at a time, with the file and line
 it came from, so a malformed export fails before anything is written:
-`descriptions_vh_run87.tsv:2: MI:9999 is not a PSI-MI term`.
+`descriptions_vh_run88.tsv:2: MI:9999 is not a PSI-MI term`.
 """
 
 import re

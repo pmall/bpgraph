@@ -4,7 +4,7 @@ The graph is rebuilt, never updated. A run gathers every source into one directo
 
 ## A run
 
-A run is one directory under `_data/`, gitignored, named after the export it builds from: `_data/2026-09-09/`. What the curation database exports goes in its `export/`, exactly as produced, in the format `bpgraph.loaders.export` gives. The fetch commands fill the rest, each from one public source, and `bpgraph-build` builds it: `uv run bpgraph-build --help` gives their order, and each command's `--help` says what it reads and writes. `bpgraph.run` says where each file of a run lives.
+A run is one directory under `_data/`, gitignored, named after the export it builds from: `_data/run88/`. What the curation database exports goes in its `export/`, exactly as produced, in the format `bpgraph.loaders.export` gives, and the date its curation stops in its `cutoff`. Copy the previous run's `publications.tsv` of each silo into the new run, at the same paths, before `bpgraph-pubmed`, so it fetches only the pmids they lack. The fetch commands fill the rest, each from one public source, and `bpgraph-build` builds it: `uv run bpgraph-build --help` gives their order, and each command's `--help` says what it reads and writes. `bpgraph.run` says where each file of a run lives, and which release of each source a run takes.
 
 ## Staging and the swap <a id="swap"></a>
 

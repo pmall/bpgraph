@@ -1,8 +1,10 @@
 """The Gene Ontology, and a host's experimental GO annotations.
 
-`bpgraph-go RUN` needs the run's `hosts/9606/swissprot.tsv` first. Two dumps
-are streamed from the network and neither is kept: the ontology,
-`go-basic.obo`, and the host's GOA annotations. What the host's silo keeps is
+`bpgraph-go RUN` needs the run's `cutoff` and `hosts/9606/swissprot.tsv`
+first. Two dumps of the GO release current on the cutoff, the latest of GO's
+dated releases on or before it, are streamed from the network and neither is
+kept: the ontology, `go-basic.obo`, and the host's GOA annotations. A release
+holds both, the annotations made against its ontology. What the host's silo keeps is
 exactly what the build writes:
 
 - `go_annotations.tsv`, the annotations the graph takes, one row per pmid:
@@ -49,6 +51,7 @@ import logging
 import tempfile
 from collections import Counter
 from collections.abc import Iterable, Iterator
+from datetime import date
 from enum import IntEnum
 from itertools import chain
 from pathlib import Path
@@ -60,14 +63,16 @@ from bpgraph.files import clean
 from bpgraph.loaders.tsv import rows
 from bpgraph.obo import TERM, parse, target
 from bpgraph.run import HUMAN, HostPaths, command_line
-from bpgraph.sources import record_source
+from bpgraph.sources import dated_release, record_source
 
 logger = logging.getLogger(__name__)
 
-ONTOLOGY_URL = "https://purl.obolibrary.org/obo/go/go-basic.obo"
-ANNOTATIONS_URL = "https://ftp.ebi.ac.uk/pub/databases/GO/goa/{0}/goa_{1}.gaf.gz"
-GOA_SPECIES = {HUMAN: ("HUMAN", "human")}
-"""GOA's directory and file name for each host."""
+RELEASES_URL = "https://release.geneontology.org/"
+"""GO's archive: one directory per release, named after its date."""
+ONTOLOGY_URL = RELEASES_URL + "{0}/ontology/go-basic.obo"
+ANNOTATIONS_URL = RELEASES_URL + "{0}/annotations/gaf/{1}-uniprot.gaf.gz"
+GOA_SPECIES = {HUMAN: "HUMAN"}
+"""The name of each host's annotation file in a release."""
 
 PROTEIN_BINDING = "GO:0005515"
 """The term whose whole subtree is left out: interactions, restated."""
@@ -80,7 +85,7 @@ EXPERIMENTAL = frozenset(
 PMID = "PMID:"
 
 USER_AGENT = "bpgraph"
-"""The CDN in front of the ontology answers `403` to urllib's own agent."""
+"""Some CDNs answer `403` to urllib's own agent."""
 
 IS_A = "is_a"
 RELATIONSHIP = "relationship"
@@ -139,12 +144,12 @@ class _Header:
             yield line
 
 
-def _ontology(scratch: Path) -> tuple[Path, Path, Path, str]:
+def _ontology(url: str, scratch: Path) -> tuple[Path, Path, Path, str]:
     """Stream the ontology into three sorted files: its terms, every id a
     term answers to (its own and its secondary ones) with that term, and its
     edges keyed by child. Returns them and the release."""
     terms, ids, edges = scratch / "terms", scratch / "ids", scratch / "edges"
-    header = _Header(_lines(ONTOLOGY_URL), VERSION)
+    header = _Header(_lines(url), VERSION)
     with (
         terms.open("w", encoding="utf-8") as t,
         ids.open("w", encoding="utf-8") as i,
@@ -230,12 +235,16 @@ def _candidates(lines: Iterable[str], dropped: Counter[str]) -> Iterator[list[st
 
 
 def _annotations(
-    host: HostPaths, ids: Path, excluded: Path, scratch: Path, dropped: Counter[str]
+    url: str,
+    host: HostPaths,
+    ids: Path,
+    excluded: Path,
+    scratch: Path,
+    dropped: Counter[str],
 ) -> tuple[Path, str]:
     """The host's annotations, on current terms that are not excluded and on
     Swiss-Prot entries, distinct, as a sorted file keyed by accession. Returns
     it and the release."""
-    url = ANNOTATIONS_URL.format(*GOA_SPECIES[host.taxon_id])
     logger.info("go: streaming %s", url)
     header = _Header(_lines(url), GENERATED)
     by_term = files.sorted_file(scratch / "by_term", _candidates(header, dropped))
@@ -339,16 +348,24 @@ def _closure(annotated: Path, edges: Path, scratch: Path) -> tuple[Path, Path]:
     return reached, files.sort(walked, unique=True)
 
 
-def write_go(host: HostPaths, sources: Path) -> tuple[int, int, int, Counter[str]]:
-    """Fetch GO and GOA and write the host's three files. Returns the
-    annotations, terms and edges written, and the GOA rows dropped per reason."""
+def write_go(
+    host: HostPaths, sources: Path, cutoff: date
+) -> tuple[int, int, int, Counter[str]]:
+    """Fetch the ontology and the host's annotations of the GO release current
+    on `cutoff`, and write the host's three files. Returns the annotations,
+    terms and edges written, and the GOA rows dropped per reason."""
+    release = dated_release(RELEASES_URL, cutoff)
+    ontology_url = ONTOLOGY_URL.format(release)
+    annotations_url = ANNOTATIONS_URL.format(release, GOA_SPECIES[host.taxon_id])
     dropped: Counter[str] = Counter()
     with tempfile.TemporaryDirectory(dir=host.directory) as directory:
         scratch = Path(directory)
-        logger.info("go: streaming %s", ONTOLOGY_URL)
-        terms, ids, edges, go_release = _ontology(scratch)
+        logger.info("go: streaming %s", ontology_url)
+        terms, ids, edges, go_release = _ontology(ontology_url, scratch)
         excluded = _excluded(terms, edges, scratch)
-        annotations, goa_release = _annotations(host, ids, excluded, scratch, dropped)
+        annotations, goa_release = _annotations(
+            annotations_url, host, ids, excluded, scratch, dropped
+        )
         annotated = files.sorted_file(
             scratch / "annotated", ([r[1]] for r in files.read(annotations))
         )
@@ -368,13 +385,8 @@ def write_go(host: HostPaths, sources: Path) -> tuple[int, int, int, Counter[str
             ),
         )
         n_edges = files.write_table(host.go_edges, EDGE_COLUMNS, files.read(walked))
-    record_source(sources, "go", ONTOLOGY_URL, go_release)
-    record_source(
-        sources,
-        f"{host.taxon_id} goa",
-        ANNOTATIONS_URL.format(*GOA_SPECIES[host.taxon_id]),
-        goa_release,
-    )
+    record_source(sources, "go", ontology_url, go_release)
+    record_source(sources, f"{host.taxon_id} goa", annotations_url, goa_release)
     return n_annotations, n_terms, n_edges, dropped
 
 
@@ -382,7 +394,7 @@ def main() -> None:
     run = command_line(__doc__)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     host = run.host(HUMAN)
-    annotations, terms, edges, dropped = write_go(host, run.sources)
+    annotations, terms, edges, dropped = write_go(host, run.sources, run.cutoff)
     for reason, count in dropped.most_common():
         print(f"dropped {count}: {reason}")
     print(f"{host.directory}: {annotations} annotations, {terms} terms, {edges} edges")

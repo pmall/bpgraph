@@ -1,6 +1,6 @@
 # Methods: the IntAct keep flag
 
-[`methods.tsv`](methods.tsv) flags every PSI-MI detection method `yes` or `no`: does an IntAct row with this detection method enter the graph? It is the ground truth for detection methods, and `bpgraph.methods` reads it. Our curated descriptions are kept whatever their method, and methods are not grouped or counted as evidence.
+[`methods.tsv`](methods.tsv) flags PSI-MI detection methods `yes` or `no`: does an IntAct row with this detection method enter the graph? It is the ground truth for detection methods, and `bpgraph.methods` reads it. Our curated descriptions are kept whatever their method, and methods are not grouped or counted as evidence.
 
 ## Where it comes from
 
@@ -21,4 +21,4 @@ Each flag is a curator biologist's decision against that goal, from PSI-MI's def
 
 ## Changing it
 
-The flags are curation: change a row only as a decision. A detection method with no row fails the IntAct fetch, so a term PSI-MI adds must get a row; `bpgraph-methods` checks the file against a run's PSI-MI. After a change, refetch IntAct and rebuild.
+The flags are curation: change a row only as a decision. A detection method that an IntAct record uses and that has no row fails the IntAct fetch, naming it, and needs a row before the fetch can pass; a method no IntAct record uses needs none. `bpgraph-methods` checks that every row is a current detection method of a run's PSI-MI. After a change, refetch IntAct and rebuild.

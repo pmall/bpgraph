@@ -1,9 +1,10 @@
 """Where one run's files live.
 
 A run is one directory under `_data/`, named after the export it builds from —
-`_data/2026-09-09`. It holds three kinds of thing:
+`_data/run88`. It holds three kinds of thing:
 
-- what the relational database exported, in `export/`, exactly as produced;
+- what the relational database exported, in `export/`, exactly as produced,
+  and `cutoff`, the date its curation stops, `2026-09-30` on one line;
 - what every silo shares: the NCBI taxonomy and PSI-MI, at the top;
 - one directory per silo, each holding what was fetched for it alone:
   `hosts/9606/` for human, `viral/` for our virus–host interactions.
@@ -14,12 +15,18 @@ PubMed; adding one adds a directory. The vaults a build writes sit in
 else. The build's own intermediate files live in `build/` while it runs, and
 go with it.
 
-A new export is a new directory, so it holds nothing fetched for the last one,
-and every public dump a run reads is at least as recent as its export.
+What a run fetches follows from what each source gives. IntAct and GO add
+facts beside the export's, so each is the release current on the cutoff, from
+its dated archive, and the graph is what was known on that date. UniProt,
+PSI-MI and the NCBI taxonomy only describe what the export and those facts
+name, so each is the release current when it is fetched. PubMed metadata does
+not change: a new run starts with the previous run's `publications.tsv` of each
+silo, copied in by hand, and `bpgraph-pubmed` fetches only the pmids they lack.
 """
 
 import argparse
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 from bpgraph.vault import VIRAL_FILE, host_file
@@ -117,6 +124,18 @@ class Run:
         return self.directory / "export"
 
     @property
+    def cutoff(self) -> date:
+        """The date the export's curation stops, written in `cutoff` beside
+        it."""
+        path = self.directory / "cutoff"
+        if not path.exists():
+            raise FileNotFoundError(
+                f"{path} does not exist: write the date the export's curation "
+                "stops in it, 2026-09-30"
+            )
+        return date.fromisoformat(path.read_text(encoding="utf-8").strip())
+
+    @property
     def sources(self) -> Path:
         """Which release of each public dataset was fetched, by `bpgraph.sources`."""
         return self.directory / "sources.tsv"
@@ -150,7 +169,7 @@ class Run:
 
 
 def command_line(description: str | None) -> Run:
-    """The run directory a command is given, `_data/2026-09-09`. Its `--help`
+    """The run directory a command is given, `_data/run88`. Its `--help`
     prints `description`, the docstring of the command's module."""
     parser = argparse.ArgumentParser(
         description=description, formatter_class=argparse.RawDescriptionHelpFormatter

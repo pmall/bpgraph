@@ -1,11 +1,13 @@
 """IntAct's interactions of one host, filtered to what its network is built on.
 
-`bpgraph-intact RUN` needs the run's `psi-mi.obo` and `hosts/9606/swissprot.tsv`
-first. It writes `hosts/9606/intact.tsv`, one row per IntAct record kept:
-`intact_id`, `accession1` and `accession2`, the pair in sorted order, `pmid`
-and `psimi_id`, the method's current PSI-MI id. It prints how many rows it
+`bpgraph-intact RUN` needs the run's `cutoff`, `psi-mi.obo` and
+`hosts/9606/swissprot.tsv` first. It reads the IntAct release current on the
+cutoff, the latest of IntAct's dated directories on or before it, and writes
+`hosts/9606/intact.tsv`, one row per IntAct record kept: `intact_id`,
+`accession1` and `accession2`, the pair in sorted order, `pmid` and
+`psimi_id`, the method's current PSI-MI id. It prints how many rows it
 dropped for each reason, and records the fetch in `sources.tsv`, its release
-the dated directory beside IntAct's `current`.
+that directory's date.
 
 IntAct publishes every interaction with a partner of a species as one MITAB 2.7
 file — for human, a zip of over a gigabyte. It is streamed rather than
@@ -40,6 +42,7 @@ import tempfile
 import zlib
 from collections import Counter
 from collections.abc import Iterable, Iterator
+from datetime import date
 from enum import IntEnum
 from pathlib import Path
 from urllib.request import Request, urlopen
@@ -50,24 +53,21 @@ from bpgraph.methods import Methods
 from bpgraph.psimi import Ontology, read_ontology
 from bpgraph.publications import read_groups
 from bpgraph.run import HUMAN, HostPaths, command_line
-from bpgraph.sources import record_source
+from bpgraph.sources import dated_release, record_source
 from bpgraph.swissprot import canonical
 
 logger = logging.getLogger(__name__)
 
-SPECIES_URL = (
-    "https://ftp.ebi.ac.uk/pub/databases/intact/current/psimitab/species/{}.zip"
-)
+RELEASES_URL = "https://ftp.ebi.ac.uk/pub/databases/intact/"
+"""The archive: one directory per release, named after its date."""
+SPECIES_URL = RELEASES_URL + "{0}/psimitab/species/{1}.zip"
 SPECIES = {HUMAN: "human"}
 """IntAct's name for each host's file."""
-RELEASES_URL = "https://ftp.ebi.ac.uk/pub/databases/intact/"
-"""`current` names no release; the dated directory beside it does."""
 
 UNIPROT = "uniprotkb:"
 PUBMED = "pubmed:"
 INTACT = "intact:"
 PSIMI = re.compile(r'psi-mi:"(MI:\d{4})"')
-RELEASE = re.compile(r'href="(\d{4}-\d{2}-\d{2})/"')
 COLUMNS = ("intact_id", "accession1", "accession2", "pmid", "psimi_id")
 MITAB_COLUMNS = 42
 
@@ -232,15 +232,8 @@ def _unrepeated(
             yield [intact_id, a, b, pmid, method]
 
 
-def _release() -> str:
-    """The most recent dated release beside `current`."""
-    request = Request(RELEASES_URL, headers={"User-Agent": "bpgraph"})
-    with urlopen(request) as response:
-        return max(RELEASE.findall(response.read().decode("utf-8")), default="")
-
-
 def write_intact(
-    host: HostPaths, psimi: Path, sources: Path
+    host: HostPaths, psimi: Path, sources: Path, cutoff: date
 ) -> tuple[int, Counter[str]]:
     """Stream, filter and write one host's `intact.tsv`. Returns the rows
     written and the count dropped per reason."""
@@ -248,8 +241,8 @@ def write_intact(
     methods = Methods.load(ontology)
     groups = read_groups()
     uncurated: set[str] = set()
-    release = _release()
-    url = SPECIES_URL.format(SPECIES[host.taxon_id])
+    release = dated_release(RELEASES_URL, cutoff)
+    url = SPECIES_URL.format(release, SPECIES[host.taxon_id])
     logger.info("intact: streaming %s", url)
     dropped: Counter[str] = Counter()
     with tempfile.TemporaryDirectory(dir=host.directory) as directory:
@@ -288,7 +281,7 @@ def main() -> None:
     run = command_line(__doc__)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     host = run.host(HUMAN)
-    written, dropped = write_intact(host, run.psimi, run.sources)
+    written, dropped = write_intact(host, run.psimi, run.sources, run.cutoff)
     for reason, count in dropped.most_common():
         print(f"dropped {count}: {reason}")
     print(f"{host.intact}: {written} rows")
