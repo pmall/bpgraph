@@ -10,10 +10,7 @@ Curation itself happens in a separate relational database. The graph is never ed
 
 ## The parts
 
-This repository is a uv workspace of two packages:
-
-- **[`graph/`](graph/README.md)**, the package `bpgraph`: the graph and everything around it — the ingestion that builds it, an internal query API over the graph and its vaults, and the MCP server, the only thing consumers see.
-- **[`client/`](client/README.md)**, the package `bpgraph-client`: what a repository consulting the graph needs — its agent's instructions, the analysis skills, and the command that does their mechanical part. It reaches the graph through the MCP server only.
+This repository is a uv workspace. Its package **[`graph/`](graph/README.md)**, `bpgraph`, is the graph and everything around it: the ingestion that builds it, an internal query API over the graph and its vaults, and the MCP server, the only thing consumers see. A repository consulting the graph keeps its own instructions and analysis skills, and reaches the graph through the MCP server only.
 
 ## Running it
 
@@ -22,9 +19,9 @@ Requires Docker and [uv](https://docs.astral.sh/uv/).
 ```sh
 cp .env.example .env        # set FALKORDB_PASSWORD to enable auth
 docker compose up -d
-uv sync                     # both packages
+uv sync
 ```
 
-This brings up the graph, its browser UI at `http://localhost:3000` — log in with host `falkordb-server`, not `localhost` — and the MCP server at `http://localhost:8080/mcp`; `docker-compose.yml` describes each service. [`graph/docs/build.md`](graph/docs/build.md) says how to build a graph, and [`client/README.md`](client/README.md) how to consult it.
+This brings up the graph, its browser UI at `http://localhost:3000` — log in with host `falkordb-server`, not `localhost` — and the MCP server at `http://localhost:8080/mcp`; `docker-compose.yml` describes each service. [`graph/docs/build.md`](graph/docs/build.md) says how to build a graph, and the MCP server tells a consulting agent how to query it.
 
 [`AGENTS.md`](AGENTS.md) is the guide for agents working on this repository.

@@ -1,7 +1,7 @@
 """Where one run's files live.
 
-A run is one directory under `_data/`, named after the export it builds from —
-`_data/run88`. It holds three kinds of thing:
+A run is one directory of the data directory, `BPGRAPH_DATA`, named after the
+export it builds from — `run88`. It holds three kinds of thing:
 
 - what the relational database exported, in `export/`, exactly as produced,
   and `cutoff`, the date its curation stops, `2026-09-30` on one line;
@@ -169,7 +169,7 @@ class Run:
 
 
 def command_line(description: str | None) -> Run:
-    """The run directory a command is given, `_data/run88`. Its `--help`
+    """The run directory a command is given, `$BPGRAPH_DATA/run88`. Its `--help`
     prints `description`, the docstring of the command's module."""
     parser = argparse.ArgumentParser(
         description=description, formatter_class=argparse.RawDescriptionHelpFormatter

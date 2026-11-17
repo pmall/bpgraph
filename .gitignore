@@ -10,8 +10,5 @@ wheels/
 .venv
 .env
 
-# The TSV export a build reads.
-/_data/
-
 # What analyses produce from the graph.
 /reports/

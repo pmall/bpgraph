@@ -44,7 +44,7 @@ from falkordb import FalkorDB
 
 from bpgraph import files, schema, vault
 from bpgraph.client import BATCH_SIZE, GraphWriter, Row, connect, exists
-from bpgraph.config import Config
+from bpgraph.config import Config, live_vault
 from bpgraph.enums import GoRelation, InteractionKind, ProteinKind
 from bpgraph.loaders.records import (
     SEPARATOR,
@@ -423,7 +423,7 @@ def main() -> None:
         prepared = prepare(run, scratch)
         logger.info("writing %s", config.staging_graph)
         report = build(connect(config), prepared, config, scratch)
-        written = vault.publish(write_vaults(run, prepared), config.vault)
+        written = vault.publish(write_vaults(run, prepared), live_vault())
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
     for name, count in report.counts.items():

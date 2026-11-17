@@ -2,7 +2,7 @@
 observe, and the peptides they report.
 
 The relational database exports five TSV files, read as `bpgraph.loaders.tsv`
-says, into a run's `export/`, `_data/run88/export/`. It names each after
+says, into a run's `export/`, `$BPGRAPH_DATA/run88/export/`. It names each after
 the run that wrote it, `descriptions_hh_run88.tsv`, so a file is found by its
 stem, and an export holds exactly one file of each stem. The `.xlsx` copy the
 database also writes of each is ignored.

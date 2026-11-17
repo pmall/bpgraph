@@ -28,7 +28,7 @@ from starlette.routing import Route
 from bpgraph.api.base import Backend
 from bpgraph.api.endpoints import ENDPOINTS, Endpoint, TooLarge
 from bpgraph.client import connect
-from bpgraph.config import Config
+from bpgraph.config import Config, live_vault
 
 
 def _handler(
@@ -77,7 +77,7 @@ def main() -> None:
     ).parse_args()
     config = Config.from_env()
     backend = Backend(
-        graph=connect(config).select_graph(config.live_graph), vault=config.vault
+        graph=connect(config).select_graph(config.live_graph), vault=live_vault()
     )
     uvicorn.run(
         application(backend),

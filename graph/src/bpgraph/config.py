@@ -1,7 +1,8 @@
 """Connection settings, read from the environment: the FalkorDB server at
 `FALKORDB_HOST` and `FALKORDB_PORT` (`localhost:6379` by default), with
-`FALKORDB_PASSWORD`, empty for a server without auth, and the live graph's
-vaults in `BPGRAPH_VAULT` (`_data/vault` by default)."""
+`FALKORDB_PASSWORD`, empty for a server without auth, and the data directory
+in `BPGRAPH_DATA`, which holds the runs and, in `vault/`, the live graph's
+vaults. It has no default: it lies outside the repository."""
 
 import os
 from dataclasses import dataclass
@@ -10,8 +11,6 @@ from typing import Self
 
 LIVE_GRAPH = "bpgraph"
 STAGING_GRAPH = "bpgraph_staging"
-LIVE_VAULT = Path("_data/vault")
-"""Where a build publishes the vaults of the live graph, and the API reads them."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,7 +20,6 @@ class Config:
     password: str = ""
     live_graph: str = LIVE_GRAPH
     staging_graph: str = STAGING_GRAPH
-    vault: Path = LIVE_VAULT
 
     @classmethod
     def from_env(cls) -> Self:
@@ -30,5 +28,13 @@ class Config:
             host=os.environ.get("FALKORDB_HOST", "localhost"),
             port=int(os.environ.get("FALKORDB_PORT", "6379")),
             password=os.environ.get("FALKORDB_PASSWORD", ""),
-            vault=Path(os.environ.get("BPGRAPH_VAULT", str(LIVE_VAULT))),
         )
+
+
+def live_vault() -> Path:
+    """Where a build publishes the vaults of the live graph, and the API reads
+    them: `vault/` in the data directory, `BPGRAPH_DATA`."""
+    data = os.environ.get("BPGRAPH_DATA")
+    if not data:
+        raise SystemExit("BPGRAPH_DATA is not set: the data directory, as .env says")
+    return Path(data) / "vault"

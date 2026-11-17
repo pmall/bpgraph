@@ -1,18 +1,16 @@
 # The workspace of bpgraph: graph, the graph and everything around it (its build, its
-# query API, its MCP server), and client, what a repository consulting the graph needs.
-# Each member is a package of its own; the root only runs their tools together.
+# query API, its MCP server). Each member is a package of its own; the root only runs
+# their tools together.
 
 [tool.uv.workspace]
-members = ["graph", "client"]
+members = ["graph"]
 
 [tool.uv.sources]
 bpgraph = { workspace = true }
-bpgraph-client = { workspace = true }
 
 [dependency-groups]
 dev = [
     "bpgraph",
-    "bpgraph-client",
     "mdformat>=1.0.0",
     "mdformat-frontmatter>=2.1.2",
     "mdformat-gfm>=1.0.0",
@@ -22,10 +20,10 @@ dev = [
 ]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM", "TID251"]
+select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.pyright]
-include = ["graph/src", "graph/tests", "client/src", "client/tests"]
+include = ["graph/src", "graph/tests"]
 
 [tool.pytest.ini_options]
-testpaths = ["graph/tests", "client/tests"]
+testpaths = ["graph/tests"]

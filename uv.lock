@@ -5,13 +5,11 @@ requires-python = ">=3.14"
 [manifest]
 members = [
     "bpgraph",
-    "bpgraph-client",
 ]
 
 [manifest.dependency-groups]
 dev = [
     { name = "bpgraph", editable = "graph" },
-    { name = "bpgraph-client", editable = "client" },
     { name = "mdformat", specifier = ">=1.0.0" },
     { name = "mdformat-frontmatter", specifier = ">=2.1.2" },
     { name = "mdformat-gfm", specifier = ">=1.0.0" },
@@ -80,31 +78,6 @@ requires-dist = [
     { name = "starlette", specifier = ">=1.7.0" },
     { name = "uvicorn", specifier = ">=0.54.0" },
 ]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pyright", specifier = ">=1.1" },
-    { name = "pytest", specifier = ">=8" },
-    { name = "ruff", specifier = ">=0.9" },
-]
-
-[[package]]
-name = "bpgraph-client"
-version = "0.1.0"
-source = { editable = "client" }
-dependencies = [
-    { name = "pydantic" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pyright" },
-    { name = "pytest" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "pydantic", specifier = ">=2.11" }]
 
 [package.metadata.requires-dev]
 dev = [

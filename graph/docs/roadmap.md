@@ -38,12 +38,18 @@ What we curate by hand and hand over as-is: **peptides** reported sufficient for
 
 ## Beyond ingestion: splitting the repository
 
-Consumers of the graph — the analysis skills and the reports — will move to repositories of their own, so that each has its own instructions. This repository keeps the ingestion and the servers:
+Consumers of the graph — the analysis skills and the reports — live in repositories of their own, each with its own instructions. This repository keeps the ingestion and the servers:
 
 - an **internal query API**, not exposed: the schema and read-only Cypher, the graph queried as a graph, and fixed lookups into the vaults;
 - the **MCP server**, the only thing exposed, serving each endpoint of that API as a tool.
 
 A client reaches the graph through the MCP server's tools only, and the graph knows none of its clients.
+
+## Golden <a id="golden"></a>
+
+A query should be able to keep the interactions whose evidence is strong enough to reason from by default, without each consumer inventing its own threshold. Golden is that: an annotation the build writes on every interaction, described in the schema and in what the MCP server sends, so every client reads the same tier.
+
+How it is computed is open, to be decided from the start rather than carried over from the threshold consumers used, two publications or two detection methods. The questions to settle first: which detection methods are independent of each other, so that two of them confirm an interaction rather than restate one experiment; what a publication, a description or a peptide adds; and whether HH and VH interactions, with their different sources, are judged alike.
 
 ## Order of work
 
@@ -60,7 +66,8 @@ Each step has an id, which stays when steps are added or reordered.
 | `sae`            | ESM-C SAE features on host sequences, intra-host                          | later  |
 | `second-host`    | A second host: labels move from `:Human` to a host label with its species | later  |
 | `cross-host`     | SAE features as the cross-host link                                       | later  |
-| `query-api`      | Internal query API; MCP serves it; consumers move out                     | doing  |
+| `query-api`      | Internal query API; MCP serves it; consumers move out                     | done   |
+| `golden`         | Golden: an evidence annotation the build writes, computed from scratch    | later  |
 
 The steps done are one build, described in [`build.md`](build.md); they replaced a pipeline that took everything from the curation export.
 
@@ -68,4 +75,3 @@ Known gaps in what is done:
 
 - Only human is a host. `:Human`, `:HH` and the `9606` of the run layout are the places a second host touches (`second-host`).
 - The engine is pinned to FalkorDB 4.22, the C engine; 6.x is worth moving to once one passes the audit, as [`development.md`](development.md#falkordb) says.
-- `query-api` is nearly done. The API and the MCP server serve the schema, Cypher and the vaults, and what a query needs to know travels with the MCP server. What is left is the consuming repositories themselves.
